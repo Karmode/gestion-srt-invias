@@ -179,7 +179,7 @@ def render(sesion=None):
                 c2.markdown(_badge(pend, venc, dark), unsafe_allow_html=True)
 
                 # Col 3 – Checkbox "Firmar"
-                firma = c3.checkbox("", key=fkey, label_visibility="collapsed")
+                firma = c3.checkbox("Firmar", key=fkey, label_visibility="collapsed")
 
                 # Col 4 – Botón de descarga condicional
                 #   HABILITADO  : firma == True  Y  venc == 0
@@ -234,7 +234,7 @@ def render(sesion=None):
         st.markdown("##### 🔍 Previsualización del Formato")
         if _EXISTS:
             try:
-                st.components.v1.html(_preview_html(_PATH), height=590, scrolling=False)
+                st.html(_preview_html(_PATH))
             except Exception as e:
                 st.error(f"Error al renderizar el documento: {e}")
         else:

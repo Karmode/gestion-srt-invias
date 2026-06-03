@@ -63,16 +63,5 @@ with col_vista:
             st.warning("URL no configurada. Agrega la variable correspondiente en el archivo `.env`.")
         else:
             embed_url = _embed_url(share_url)
-            st.components.v1.html(
-                f"""
-                <iframe
-                    src="{embed_url}"
-                    width="100%"
-                    height="{recurso['embed_height']}px"
-                    style="border:none; border-radius:8px;"
-                    allowfullscreen>
-                </iframe>
-                """,
-                height=recurso["embed_height"] + 10,
-            )
+            st.iframe(embed_url, height=recurso["embed_height"] + 10)
             st.link_button("🔗 Abrir en Google Drive", share_url)
