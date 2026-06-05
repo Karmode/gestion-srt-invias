@@ -21,7 +21,14 @@ from app.services.correspondencia_service import CorrespondenciaService
 # ──────────────────────────────────────────────────────────────────
 
 def _personalizar_docx(template_bytes: bytes, nombre: str) -> bytes:
-    """Sustituye {responsable} en el DOCX por el nombre en MAYÚSCULAS."""
+    """Sustituye {responsable}, {numero_dia}, {mes}, {año} en el DOCX."""
+    from app.core.zona_horaria import datetime, ZONA_BOGOTA
+    hoy = datetime.now(ZONA_BOGOTA)
+    numero_dia = hoy.strftime("%d")
+    meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
+    mes = meses[hoy.month - 1]
+    ano = hoy.strftime("%Y")
+
     nombre_upper = nombre.upper()
     buf_in  = io.BytesIO(template_bytes)
     buf_out = io.BytesIO()
@@ -33,6 +40,9 @@ def _personalizar_docx(template_bytes: bytes, nombre: str) -> bytes:
                 try:
                     text = data.decode("utf-8")
                     text = re.sub(r"\{responsable\}", nombre_upper, text, flags=re.IGNORECASE)
+                    text = re.sub(r"\{numero_dia\}", numero_dia, text, flags=re.IGNORECASE)
+                    text = re.sub(r"\{mes\}", mes, text, flags=re.IGNORECASE)
+                    text = re.sub(r"\{a(ñ|n)o\}", ano, text, flags=re.IGNORECASE)
                     data = text.encode("utf-8")
                 except Exception:
                     pass
@@ -74,15 +84,30 @@ def _badge(pend: int, venc: int, dark: bool) -> str:
         txt = "✅ Al Día"
     elif venc > 0:
         bg, fg, bd = ("#511c1e","#ff9ca2","#8a2d32") if dark else ("#f8d7da","#721c24","#f5c6cb")
-        txt = f"❌&nbsp;{pend} pend.&nbsp;({venc}&nbsp;venc.)"
+        txt = f"❌&nbsp;{pend}&nbsp;pend.&nbsp;({venc}&nbsp;venc.)"
     else:
         bg, fg, bd = ("#4d3d0f","#ffe69c","#7a6010") if dark else ("#fff3cd","#856404","#ffeeba")
-        txt = f"⚠️&nbsp;{pend}&nbsp;pendientes"
+        txt = f"⚠️&nbsp;{pend}&nbsp;pend."
     return (
         f'<div style="background:{bg};color:{fg};border:1px solid {bd};'
-        f'border-radius:5px;padding:5px 9px;font-weight:700;font-size:.82em;'
-        f'line-height:1.3;text-align:center;">{txt}</div>'
+        f'border-radius:4px;padding:3px 4px;font-weight:700;font-size:.75em;'
+        f'line-height:1.2;text-align:center;white-space:nowrap;">{txt}</div>'
     )
+
+def _badge_vencer_fin_mes(cant: int, dark: bool) -> str:
+    """Devuelve HTML del badge para la columna 'Pendientes a vencer fin de mes'."""
+    if cant == 0:
+        bg, fg, bd = ("#1b4721","#75db8b","#2d7a3e") if dark else ("#d4edda","#155724","#c3e6cb")
+        txt = "✅ 0 a vencer"
+    else:
+        bg, fg, bd = ("#4d3d0f","#ffe69c","#7a6010") if dark else ("#fff3cd","#856404","#ffeeba")
+        txt = f"⚠️&nbsp;{cant}&nbsp;a&nbsp;vencer"
+    return (
+        f'<div style="background:{bg};color:{fg};border:1px solid {bd};'
+        f'border-radius:4px;padding:3px 4px;font-weight:700;font-size:.75em;'
+        f'line-height:1.2;text-align:center;white-space:nowrap;">{txt}</div>'
+    )
+
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -98,10 +123,6 @@ def render(sesion=None):
 
     if not sesion:
         st.warning("Debes iniciar sesión.")
-        st.stop()
-
-    if "admin" not in sesion.get("roles", []):
-        st.error("No tienes permisos para acceder a este módulo.")
         st.stop()
 
     # ── Archivo DOCX ──────────────────────────────────────────────
@@ -143,11 +164,13 @@ def render(sesion=None):
         st.markdown("##### 📊 Estado por Responsable")
 
         # ── Cabecera fija (fuera del scroll) ──────────────────────
-        hdr1, hdr2, hdr3, hdr4 = st.columns([2.6, 3.0, 1.1, 2.3])
-        hdr1.markdown("**Responsable**")
-        hdr2.markdown("**Correspondencia pendiente**")
-        hdr3.markdown("**Firmar**")
-        hdr4.markdown("**Descarga**")
+        hdr1, hdr2, hdr_venc, hdr3, hdr_secop, hdr4 = st.columns([1.8, 1.8, 1.3, 1.3, 1.0, 1.0])
+        hdr1.markdown("<span style='font-size:0.7em; font-weight:bold'>Responsable</span>", unsafe_allow_html=True)
+        hdr2.markdown("<span style='font-size:0.7em; font-weight:bold'>Pendiente</span>", unsafe_allow_html=True)
+        hdr_venc.markdown("<span style='font-size:0.7em; font-weight:bold'>Vencen Fin Mes</span>", unsafe_allow_html=True)
+        hdr3.markdown("<span style='font-size:0.7em; font-weight:bold'>Firma Corr/GD</span>", unsafe_allow_html=True)
+        hdr_secop.markdown("<span style='font-size:0.7em; font-weight:bold'>Firma SECOP</span>", unsafe_allow_html=True)
+        hdr4.markdown("<span style='font-size:0.7em; font-weight:bold'>Descarga</span>", unsafe_allow_html=True)
         st.markdown(
             "<hr style='margin:3px 0 5px;border:0;border-top:2px solid rgba(150,150,150,.3);'>",
             unsafe_allow_html=True,
@@ -159,33 +182,43 @@ def render(sesion=None):
                 uid    = row["usuario_id"]
                 pend   = row["cantidad_pendientes"]
                 venc   = row["cantidad_vencidas"]
+                vencer_fin_mes = row.get("cantidad_vencer_fin_mes", 0)
                 nombre = row["responsable"]
 
                 # Clave de firma persistente en session_state
-                fkey = f"firma_{uid}"
-                if fkey not in st.session_state:
-                    st.session_state[fkey] = False
+                fkey_doc = f"firma_doc_{uid}"
+                fkey_secop = f"firma_secop_{uid}"
+                if fkey_doc not in st.session_state:
+                    st.session_state[fkey_doc] = False
+                if fkey_secop not in st.session_state:
+                    st.session_state[fkey_secop] = False
 
-                c1, c2, c3, c4 = st.columns([2.6, 3.0, 1.1, 2.3])
+                c1, c2, c_venc, c3, c_secop, c4 = st.columns([1.8, 1.8, 1.3, 1.3, 1.0, 1.0])
 
                 # Col 1 – Nombre
                 c1.markdown(
-                    f"<div style='padding-top:7px;font-size:.86em;word-break:break-word;'>"
+                    f"<div style='padding-top:7px;font-size:.78em;word-break:break-word;'>"
                     f"{nombre}</div>",
                     unsafe_allow_html=True,
                 )
 
-                # Col 2 – Badge coloreado
+                # Col 2 – Badge coloreado correspondencia
                 c2.markdown(_badge(pend, venc, dark), unsafe_allow_html=True)
+                
+                # Col 2.5 - Badge coloreado próximos a vencer fin de mes
+                c_venc.markdown(_badge_vencer_fin_mes(vencer_fin_mes, dark), unsafe_allow_html=True)
 
-                # Col 3 – Checkbox "Firmar"
-                firma = c3.checkbox("Firmar", key=fkey, label_visibility="collapsed")
+                # Col 3 – Checkbox "Firmar Correspondencia..."
+                firma_doc = c3.checkbox("Firmar Correspondencia", key=fkey_doc, label_visibility="collapsed")
+                
+                # Col 3.5 - Checkbox "Firmar SECOP"
+                firma_secop = c_secop.checkbox("Firmar SECOP", key=fkey_secop, label_visibility="collapsed")
 
                 # Col 4 – Botón de descarga condicional
-                #   HABILITADO  : firma == True  Y  venc == 0
+                #   HABILITADO  : firma_doc == True Y firma_secop == True Y venc == 0
                 #                 (pendientes o sin pendientes, pero sin vencidas)
                 #   BLOQUEADO   : cualquier otro caso
-                puede = firma and (venc == 0) and _EXISTS and _BYTES
+                puede = firma_doc and firma_secop and (venc == 0) and _EXISTS and _BYTES
 
                 if puede:
                     docx_pers   = _personalizar_docx(_BYTES, nombre)
@@ -195,7 +228,7 @@ def render(sesion=None):
                         + ".docx"
                     )
                     c4.download_button(
-                        label="⬇️ Descargar",
+                        label="⬇️",
                         data=docx_pers,
                         file_name=nombre_arch,
                         mime=(
@@ -208,12 +241,12 @@ def render(sesion=None):
                 else:
                     if venc > 0:
                         tip = "Tiene correspondencias vencidas."
-                    elif not firma:
-                        tip = "Activa 'Firmar' para habilitar la descarga."
+                    elif not (firma_doc and firma_secop):
+                        tip = "Activa ambas firmas para habilitar la descarga."
                     else:
                         tip = "Archivo no disponible."
                     c4.button(
-                        "🔒 Bloqueado",
+                        "🔒",
                         disabled=True,
                         help=tip,
                         key=f"lk_{uid}_{idx}",

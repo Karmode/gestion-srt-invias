@@ -366,6 +366,16 @@ class CorrespondenciaService:
             
             cantidad_pendientes = len(corrs_usuario)
             cantidad_vencidas = 0
+            cantidad_vencer_fin_mes = 0
+            
+            # Obtener los últimos 3 días hábiles del mes actual
+            ultimo_dia_mes = (hoy_colombia.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+            ultimos_dias_habiles = set()
+            dia_actual = ultimo_dia_mes.date()
+            while len(ultimos_dias_habiles) < 3:
+                if dia_actual.weekday() < 5 and dia_actual not in self.festivos_co:
+                    ultimos_dias_habiles.add(dia_actual)
+                dia_actual -= timedelta(days=1)
             
             for corr in corrs_usuario:
                 fecha_venc = corr.get("fecha_vencimiento")
@@ -373,6 +383,8 @@ class CorrespondenciaService:
                     fecha_venc_bogota = utc_a_bogota(fecha_venc)
                     if fecha_venc_bogota.date() < hoy_colombia.date():
                         cantidad_vencidas += 1
+                    if fecha_venc_bogota.date() in ultimos_dias_habiles:
+                        cantidad_vencer_fin_mes += 1
                         
             if cantidad_pendientes == 0:
                 estado_pendiente = "gris"
@@ -386,7 +398,8 @@ class CorrespondenciaService:
                 "responsable": nombre_completo,
                 "estado_pendiente": estado_pendiente,
                 "cantidad_pendientes": cantidad_pendientes,
-                "cantidad_vencidas": cantidad_vencidas
+                "cantidad_vencidas": cantidad_vencidas,
+                "cantidad_vencer_fin_mes": cantidad_vencer_fin_mes
             })
             
         # Ordenar por nombre del responsable
