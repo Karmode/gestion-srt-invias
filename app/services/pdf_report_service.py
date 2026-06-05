@@ -64,12 +64,15 @@ class PDFReportService:
     def _obtener_datos_activos(self) -> list:
         return self.repo.listar({"estado_actual": {"$in": ["pendiente", "en_tramite", "en_revision"]}}, limit=10000)
 
-    def _construir_tabla_resumen(self, df_reporte, col_usuario):
+    def _construir_tabla_resumen(self, df_reporte, col_usuario, col_valor_nombre="Atrasados"):
         if df_reporte.empty:
             return None
         
         resumen = df_reporte[col_usuario].value_counts().reset_index()
-        resumen.columns = ["Usuario Responsable", "Atrasados"]
+        resumen.columns = ["Usuario Responsable", col_valor_nombre]
+        
+        total_valores = resumen[col_valor_nombre].sum()
+        resumen.loc[len(resumen)] = ["Total", total_valores]
         
         data_resumen = [resumen.columns.tolist()] + resumen.astype(str).values.tolist()
         tabla = Table(data_resumen, repeatRows=1)
@@ -80,6 +83,9 @@ class PDFReportService:
             ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
             ("ALIGN", (1, 1), (-1, -1), "CENTER"),
+            ("BACKGROUND", (0, -1), (-1, -1), colors.orange),
+            ("TEXTCOLOR", (0, -1), (-1, -1), colors.white),
+            ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
         ]))
         return tabla
 
@@ -237,6 +243,7 @@ class PDFReportService:
             elementos.append(Paragraph("No hay radicados activos atrasados.", styles["Normal"]))
         elementos.append(Spacer(1, 30))
         
+        elementos.append(PageBreak())
         elementos.append(Paragraph("<b>2. Reporte Detallado</b>", styles["Heading2"]))
         elementos.append(Spacer(1, 10))
         
@@ -333,13 +340,14 @@ class PDFReportService:
         
         elementos.append(Paragraph("<b>1. Resumen</b>", styles["Heading2"]))
         elementos.append(Spacer(1, 10))
-        tabla_resumen = self._construir_tabla_resumen(df_reporte, "Usuario Responsable")
+        tabla_resumen = self._construir_tabla_resumen(df_reporte, "Usuario Responsable", "Pendientes")
         if tabla_resumen:
             elementos.append(tabla_resumen)
         else:
             elementos.append(Paragraph("No hay radicados activos.", styles["Normal"]))
         elementos.append(Spacer(1, 30))
         
+        elementos.append(PageBreak())
         elementos.append(Paragraph("<b>2. Reporte Detallado</b>", styles["Heading2"]))
         elementos.append(Spacer(1, 10))
         

@@ -7,6 +7,7 @@ import io
 import os
 import re
 import zipfile
+import tempfile
 from datetime import datetime
 
 import mammoth
@@ -39,17 +40,16 @@ def _personalizar_docx(template_bytes: bytes, nombre: str) -> bytes:
             if item.filename.endswith(".xml"):
                 try:
                     text = data.decode("utf-8")
-                    text = re.sub(r"\{responsable\}", nombre_upper, text, flags=re.IGNORECASE)
-                    text = re.sub(r"\{numero_dia\}", numero_dia, text, flags=re.IGNORECASE)
-                    text = re.sub(r"\{mes\}", mes, text, flags=re.IGNORECASE)
-                    text = re.sub(r"\{a(ñ|n)o\}", ano, text, flags=re.IGNORECASE)
+                    text = re.sub(r"\{[^{}]*?responsable[^{}]*?\}", nombre_upper, text, flags=re.IGNORECASE)
+                    text = re.sub(r"\{[^{}]*?numero_dia[^{}]*?\}", numero_dia + " ", text, flags=re.IGNORECASE)
+                    text = re.sub(r"\{[^{}]*?mes[^{}]*?\}", mes, text, flags=re.IGNORECASE)
+                    text = re.sub(r"\{[^{}]*?a(?:ñ|n|&#241;||[^a-zA-Z0-9{}])o[^{}]*?\}", ano, text, flags=re.IGNORECASE)
                     data = text.encode("utf-8")
                 except Exception:
                     pass
             zout.writestr(item, data)
     buf_out.seek(0)
     return buf_out.getvalue()
-
 
 def _preview_html(filepath: str) -> str:
     """Convierte el DOCX a HTML estilizado para el visor lateral."""
@@ -131,16 +131,30 @@ def render(sesion=None):
     _BYTES  = open(_PATH, "rb").read() if _EXISTS else b""
 
     # ── Toggle ────────────────────────────────────────────────────
-    if "mostrar_formatos" not in st.session_state:
-        st.session_state.mostrar_formatos = False
+    if "formato_activo" not in st.session_state:
+        st.session_state.formato_activo = None
 
     st.write("")
-    if st.button("📄 Formato control de correspondencia y SECOP II",
-                 type="primary", key="btn_toggle_fmt"):
-        st.session_state.mostrar_formatos = not st.session_state.mostrar_formatos
+    col_btn1, col_btn2 = st.columns(2)
+    
+    if col_btn1.button("📄 Formato control correspondencia y SECOP II", 
+                       type="primary" if st.session_state.formato_activo == "secop" else "secondary",
+                       use_container_width=True):
+        st.session_state.formato_activo = None if st.session_state.formato_activo == "secop" else "secop"
+        st.rerun()
+        
+    if col_btn2.button("📄 Formato prueba WIP", 
+                       type="primary" if st.session_state.formato_activo == "wip" else "secondary",
+                       use_container_width=True):
+        st.session_state.formato_activo = None if st.session_state.formato_activo == "wip" else "wip"
         st.rerun()
 
-    if not st.session_state.mostrar_formatos:
+    if not st.session_state.formato_activo:
+        return
+
+    if st.session_state.formato_activo == "wip":
+        st.divider()
+        st.info("🚧 Sección en construcción: Formato prueba WIP")
         return
 
     # ── Carga de datos ────────────────────────────────────────────
@@ -163,21 +177,20 @@ def render(sesion=None):
     with col_tbl:
         st.markdown("##### 📊 Estado por Responsable")
 
-        # ── Cabecera fija (fuera del scroll) ──────────────────────
-        hdr1, hdr2, hdr_venc, hdr3, hdr_secop, hdr4 = st.columns([1.8, 1.8, 1.3, 1.3, 1.0, 1.0])
-        hdr1.markdown("<span style='font-size:0.7em; font-weight:bold'>Responsable</span>", unsafe_allow_html=True)
-        hdr2.markdown("<span style='font-size:0.7em; font-weight:bold'>Pendiente</span>", unsafe_allow_html=True)
-        hdr_venc.markdown("<span style='font-size:0.7em; font-weight:bold'>Vencen Fin Mes</span>", unsafe_allow_html=True)
-        hdr3.markdown("<span style='font-size:0.7em; font-weight:bold'>Firma Corr/GD</span>", unsafe_allow_html=True)
-        hdr_secop.markdown("<span style='font-size:0.7em; font-weight:bold'>Firma SECOP</span>", unsafe_allow_html=True)
-        hdr4.markdown("<span style='font-size:0.7em; font-weight:bold'>Descarga</span>", unsafe_allow_html=True)
-        st.markdown(
-            "<hr style='margin:3px 0 5px;border:0;border-top:2px solid rgba(150,150,150,.3);'>",
-            unsafe_allow_html=True,
-        )
+        # ── Estilos CSS para vista de Tarjetas (Compactas) ────────────────────
+        st.markdown("""
+        <style>
+        .card-title { font-size: 0.85em; font-weight: 600; margin-bottom: 2px; line-height: 1.1; color: var(--text-color); }
+        .card-badges { display: flex; gap: 4px; margin-bottom: 4px; flex-wrap: wrap; }
+        /* Reducir padding de las tarjetas y el espacio entre elementos */
+        div[data-testid="stVerticalBlockBorderWrapper"] > div { padding: 0.5rem 0.75rem !important; gap: 0.2rem !important; }
+        /* Reducir márgenes inferiores dentro de la tarjeta */
+        div[data-testid="stVerticalBlockBorderWrapper"] p { margin-bottom: 0 !important; }
+        </style>
+        """, unsafe_allow_html=True)
 
-        # ── Filas con scroll ──────────────────────────────────────
-        with st.container(height=520, border=False):
+        # ── Filas con scroll (Diseño Adaptable en Tarjetas) ───────
+        with st.container(height=550, border=False):
             for idx, row in enumerate(resultados):
                 uid    = row["usuario_id"]
                 pend   = row["cantidad_pendientes"]
@@ -187,78 +200,68 @@ def render(sesion=None):
 
                 # Clave de firma persistente en session_state
                 fkey_doc = f"firma_doc_{uid}"
+                fkey_gd = f"firma_gd_{uid}"
                 fkey_secop = f"firma_secop_{uid}"
+                
                 if fkey_doc not in st.session_state:
                     st.session_state[fkey_doc] = False
+                if fkey_gd not in st.session_state:
+                    st.session_state[fkey_gd] = False
                 if fkey_secop not in st.session_state:
                     st.session_state[fkey_secop] = False
 
-                c1, c2, c_venc, c3, c_secop, c4 = st.columns([1.8, 1.8, 1.3, 1.3, 1.0, 1.0])
-
-                # Col 1 – Nombre
-                c1.markdown(
-                    f"<div style='padding-top:7px;font-size:.78em;word-break:break-word;'>"
-                    f"{nombre}</div>",
-                    unsafe_allow_html=True,
-                )
-
-                # Col 2 – Badge coloreado correspondencia
-                c2.markdown(_badge(pend, venc, dark), unsafe_allow_html=True)
-                
-                # Col 2.5 - Badge coloreado próximos a vencer fin de mes
-                c_venc.markdown(_badge_vencer_fin_mes(vencer_fin_mes, dark), unsafe_allow_html=True)
-
-                # Col 3 – Checkbox "Firmar Correspondencia..."
-                firma_doc = c3.checkbox("Firmar Correspondencia", key=fkey_doc, label_visibility="collapsed")
-                
-                # Col 3.5 - Checkbox "Firmar SECOP"
-                firma_secop = c_secop.checkbox("Firmar SECOP", key=fkey_secop, label_visibility="collapsed")
-
-                # Col 4 – Botón de descarga condicional
-                #   HABILITADO  : firma_doc == True Y firma_secop == True Y venc == 0
-                #                 (pendientes o sin pendientes, pero sin vencidas)
-                #   BLOQUEADO   : cualquier otro caso
-                puede = firma_doc and firma_secop and (venc == 0) and _EXISTS and _BYTES
-
-                if puede:
-                    docx_pers   = _personalizar_docx(_BYTES, nombre)
-                    nombre_arch = (
-                        "Formato_SECOP_"
-                        + re.sub(r"[^A-Za-z0-9_]", "_", nombre.upper())
-                        + ".docx"
+                with st.container(border=True):
+                    # Cabecera de la tarjeta: Nombre y Badges integrados
+                    badge_corr = _badge(pend, venc, dark)
+                    badge_venc = _badge_vencer_fin_mes(vencer_fin_mes, dark)
+                    
+                    st.markdown(
+                        f"<div class='card-title'>{nombre}</div>"
+                        f"<div class='card-badges'>{badge_corr}{badge_venc}</div>",
+                        unsafe_allow_html=True
                     )
-                    c4.download_button(
-                        label="⬇️",
-                        data=docx_pers,
-                        file_name=nombre_arch,
-                        mime=(
-                            "application/vnd.openxmlformats-officedocument"
-                            ".wordprocessingml.document"
-                        ),
-                        key=f"dl_{uid}_{idx}",
-                        use_container_width=True,
-                    )
-                else:
-                    if venc > 0:
-                        tip = "Tiene correspondencias vencidas."
-                    elif not (firma_doc and firma_secop):
-                        tip = "Activa ambas firmas para habilitar la descarga."
+
+                    # Controles de firma y descarga en una fila inferior
+                    c_f1, c_f2, c_f3, c_btn = st.columns([1, 1, 1, 1.2])
+
+                    firma_doc = c_f1.checkbox("F. Corr", key=fkey_doc)
+                    firma_gd  = c_f2.checkbox("F. GD", key=fkey_gd)
+                    firma_secop = c_f3.checkbox("F. SECOP", key=fkey_secop)
+
+                    puede = firma_doc and firma_gd and firma_secop and (venc == 0) and _EXISTS and _BYTES
+
+                    if puede:
+                        docx_pers   = _personalizar_docx(_BYTES, nombre)
+                        nombre_arch = (
+                            "Formato_SECOP_"
+                            + re.sub(r"[^A-Za-z0-9_]", "_", nombre.upper())
+                            + ".docx"
+                        )
+                        c_btn.download_button(
+                            label="⬇️ Descargar",
+                            data=docx_pers,
+                            file_name=nombre_arch,
+                            mime=(
+                                "application/vnd.openxmlformats-officedocument"
+                                ".wordprocessingml.document"
+                            ),
+                            key=f"dl_{uid}_{idx}",
+                            use_container_width=True,
+                        )
                     else:
-                        tip = "Archivo no disponible."
-                    c4.button(
-                        "🔒",
-                        disabled=True,
-                        help=tip,
-                        key=f"lk_{uid}_{idx}",
-                        use_container_width=True,
-                    )
-
-                # Separador sutil entre filas
-                st.markdown(
-                    "<div style='border-bottom:1px solid rgba(128,128,128,.12);"
-                    "margin:3px 0 5px;'></div>",
-                    unsafe_allow_html=True,
-                )
+                        if venc > 0:
+                            tip = "Tiene correspondencias vencidas."
+                        elif not (firma_doc and firma_gd and firma_secop):
+                            tip = "Activa todas las firmas para habilitar."
+                        else:
+                            tip = "Archivo no disponible."
+                        c_btn.button(
+                            "🔒 Bloqueado",
+                            disabled=True,
+                            help=tip,
+                            key=f"lk_{uid}_{idx}",
+                            use_container_width=True,
+                        )
 
     # ╔══════════════════════════════════════╗
     # ║     COLUMNA DERECHA – PREVISUALIZADOR ║
