@@ -5,6 +5,17 @@ from app.core.autorizacion import validar_permiso, ValidacionAutorizacion
 from app.core.sesion import obtener_sesion
 from app.services.usuario_service import UsuarioService
 
+TIPOS_DOCUMENTO = {
+    "": "— Sin especificar —",
+    "CC": "CC — Cédula de Ciudadanía",
+    "CE": "CE — Cédula de Extranjería",
+    "TI": "TI — Tarjeta de Identidad",
+    "PA": "PA — Pasaporte",
+    "RC": "RC — Registro Civil",
+    "PEP": "PEP — Permiso Especial de Permanencia",
+    "PPT": "PPT — Permiso por Protección Temporal",
+}
+
 
 # ── MODAL DE EDICIÓN ────────────────────────────────────────────────────────────
 
@@ -72,6 +83,22 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                 "Nueva contraseña", type="password", placeholder="Dejar vacío para no cambiar"
             )
 
+        col_tdoc, col_ndoc = st.columns(2)
+        with col_tdoc:
+            tipo_doc_actual = uo.get("tipo_documento") or ""
+            tipo_documento_editado = st.selectbox(
+                "Tipo de documento",
+                options=list(TIPOS_DOCUMENTO.keys()),
+                format_func=lambda k: TIPOS_DOCUMENTO[k],
+                index=list(TIPOS_DOCUMENTO.keys()).index(tipo_doc_actual) if tipo_doc_actual in TIPOS_DOCUMENTO else 0,
+            )
+        with col_ndoc:
+            numero_documento_editado = st.text_input(
+                "Número de documento",
+                value=uo.get("numero_documento", ""),
+                placeholder="Solo letras y números",
+            )
+
         roles_sel = st.multiselect("Roles", options=roles_disponibles, default=uo.get("roles", []))
         permisos_sel = st.multiselect(
             "Permisos extra", options=permisos_disponibles, default=uo.get("permisos_extra", [])
@@ -90,6 +117,8 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                     "activo": uo.get("activo", False),
                     "roles": roles_sel,
                     "permisos_extra": permisos_sel,
+                    "tipo_documento": tipo_documento_editado.strip(),
+                    "numero_documento": numero_documento_editado.strip(),
                     "actualizado_por": sesion["usuario"],
                 },
                 permisos_usuario=permisos,
@@ -286,6 +315,19 @@ def render(sesion=None):
                     nuevo_nombre = st.text_input("Nombre completo")
                     nuevo_password = st.text_input("Contraseña", type="password")
 
+                col_tdoc, col_ndoc = st.columns(2)
+                with col_tdoc:
+                    nuevo_tipo_doc = st.selectbox(
+                        "Tipo de documento (opcional)",
+                        options=list(TIPOS_DOCUMENTO.keys()),
+                        format_func=lambda k: TIPOS_DOCUMENTO[k],
+                    )
+                with col_ndoc:
+                    nuevo_num_doc = st.text_input(
+                        "Número de documento (opcional)",
+                        placeholder="Solo letras y números",
+                    )
+
                 nuevos_roles = st.multiselect("Roles", options=roles_disponibles)
                 nuevos_permisos = st.multiselect("Permisos extra", options=permisos_disponibles)
                 enviar = st.form_submit_button("Crear usuario", use_container_width=True)
@@ -299,6 +341,8 @@ def render(sesion=None):
                             "email": nuevo_email.strip(),
                             "password": nuevo_password,
                             "activo": nuevo_activo,
+                            "tipo_documento": nuevo_tipo_doc.strip(),
+                            "numero_documento": nuevo_num_doc.strip(),
                             "roles": nuevos_roles,
                             "permisos_extra": nuevos_permisos,
                             "creado_por": sesion["usuario"],

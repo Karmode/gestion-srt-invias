@@ -17,6 +17,9 @@ class UsuarioRepositorio:
     def buscar_por_id(self, id_usuario: str):
         return self.coleccion.find_one({"_id": ObjectId(id_usuario)})
 
+    def buscar_por_numero_documento(self, numero_documento: str):
+        return self.coleccion.find_one({"numero_documento": numero_documento})
+
     def listar(self):
         return list(self.coleccion.find().sort("usuario", 1))
 

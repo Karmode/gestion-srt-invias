@@ -20,11 +20,22 @@ with col1:
     st.subheader("Datos de acceso")
     st.write(f"**Usuario:** {sesion['usuario']}")
     st.write(f"**Nombre:** {sesion.get('nombre_completo') or 'Sin registrar'}")
+    st.write(f"**Correo:** {sesion.get('email') or 'Sin registrar'}")
 
 with col2:
-    st.subheader("Acceso asignado")
-    st.write(f"**Roles:** {', '.join(sesion.get('roles', [])) or 'Sin roles'}")
-    st.write("Los permisos detallados se gestionan internamente según tu rol.")
+    st.subheader("Documento de identidad")
+    tipo_doc = sesion.get("tipo_documento") or ""
+    num_doc = sesion.get("numero_documento") or ""
+    if tipo_doc or num_doc:
+        st.write(f"**Tipo:** {tipo_doc or 'Sin registrar'}")
+        st.write(f"**Número:** {num_doc or 'Sin registrar'}")
+    else:
+        st.info("Documento no registrado. Contacta al administrador para actualizarlo.")
+
+st.divider()
+st.subheader("Acceso asignado")
+st.write(f"**Roles:** {', '.join(sesion.get('roles', [])) or 'Sin roles'}")
+st.write("Los permisos detallados se gestionan internamente según tu rol.")
 
 st.divider()
 st.subheader("Cambiar contraseña")

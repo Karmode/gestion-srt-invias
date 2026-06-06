@@ -1,3 +1,5 @@
+import re
+
 from app.core.autorizacion import ValidacionAutorizacion, validar_permiso
 from app.core.seguridad import generar_hash_password
 from app.config import configuracion
@@ -9,6 +11,16 @@ class UsuarioService:
     def __init__(self) -> None:
         self.repositorio = UsuarioRepositorio()
         self.auditoria = AuditoriaService()
+
+    @staticmethod
+    def _normalizar_numero_documento(numero: str) -> str:
+        """Valida y devuelve el número en mayúsculas; lanza ValueError si tiene caracteres inválidos."""
+        numero = numero.strip().upper()
+        if not re.fullmatch(r"[A-Z0-9]+", numero):
+            raise ValueError(
+                "El número de documento solo puede contener letras y números, sin espacios, puntos ni símbolos."
+            )
+        return numero
 
     def listar_usuarios(self):
         return self.repositorio.listar()
@@ -25,6 +37,21 @@ class UsuarioService:
                 raise ValueError(str(e))
 
         datos = datos.copy()
+
+        numero_doc = datos.get("numero_documento", "").strip()
+        if numero_doc:
+            datos["numero_documento"] = self._normalizar_numero_documento(numero_doc)
+            existente = self.repositorio.buscar_por_numero_documento(datos["numero_documento"])
+            if existente:
+                raise ValueError("Ya existe un usuario con ese número de documento")
+        else:
+            datos.pop("numero_documento", None)
+
+        if datos.get("tipo_documento"):
+            datos["tipo_documento"] = datos["tipo_documento"].strip().upper()
+        else:
+            datos.pop("tipo_documento", None)
+
         datos["password_hash"] = generar_hash_password(datos.pop("password"))
         datos.setdefault("activo", True)
         datos.setdefault("roles", [])
@@ -56,6 +83,20 @@ class UsuarioService:
             usuario_existente = self.repositorio.buscar_por_usuario(nuevo_usuario)
             if usuario_existente and str(usuario_existente["_id"]) != id_usuario:
                 raise ValueError("Ya existe un usuario con ese nombre de acceso")
+
+        numero_doc = datos.get("numero_documento", "").strip()
+        if numero_doc:
+            datos["numero_documento"] = self._normalizar_numero_documento(numero_doc)
+            existente = self.repositorio.buscar_por_numero_documento(datos["numero_documento"])
+            if existente and str(existente["_id"]) != id_usuario:
+                raise ValueError("Ya existe un usuario con ese número de documento")
+        else:
+            datos.pop("numero_documento", None)
+
+        if datos.get("tipo_documento"):
+            datos["tipo_documento"] = datos["tipo_documento"].strip().upper()
+        else:
+            datos.pop("tipo_documento", None)
 
         if datos.get("password"):
             datos["password_hash"] = generar_hash_password(datos.pop("password"))

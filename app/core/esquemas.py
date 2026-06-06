@@ -14,6 +14,12 @@ ESQUEMA_USUARIOS = {
     "properties": {
         "usuario": {"bsonType": "string", "minLength": 3},
         "nombre_completo": {"bsonType": "string"},
+        "tipo_documento": {
+            "bsonType": ["string", "null"],
+            "enum": ["CC", "CE", "TI", "PA", "RC", "PEP", "PPT", None],
+            "description": "CC=Cédula de Ciudadanía, CE=Cédula de Extranjería, TI=Tarjeta de Identidad, PA=Pasaporte, RC=Registro Civil, PEP=Permiso Especial de Permanencia, PPT=Permiso por Protección Temporal",
+        },
+        "numero_documento": {"bsonType": ["string", "null"]},
         "email": {"bsonType": "string"},
         "password_hash": {"bsonType": "string"},
         "activo": {"bsonType": "bool"},
