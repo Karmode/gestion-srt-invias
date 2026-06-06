@@ -23,165 +23,181 @@ def render(sesion=None):
         st.error("No tienes permisos para ver este módulo.")
         st.stop()
 
-    # Tracking de vistas removido
-
+    permisos = sesion.get("permisos", [])
     usuarios = servicio.listar_usuarios()
-    datos = []
-    for usuario in usuarios:
-        datos.append(
-            {
-                "usuario": usuario.get("usuario", ""),
-                "nombre_completo": usuario.get("nombre_completo", ""),
-                "email": usuario.get("email", ""),
-                "activo": usuario.get("activo", False),
-                "roles": ", ".join(usuario.get("roles", [])),
-            }
-        )
 
-    col_h1, col_h2 = st.columns([3, 1])
-    with col_h1:
-        st.subheader("Listado de usuarios")
-    with col_h2:
-        if st.button("🔄 Actualizar", width="stretch", key="refresh_usuarios"):
-            st.rerun()
+    # Determinar qué tabs mostrar según permisos
+    tabs_labels = ["👥 Usuarios"]
+    if "usuario.crear" in permisos:
+        tabs_labels.append("➕ Crear usuario")
+    if "usuario.editar" in permisos or "usuario.desactivar" in permisos:
+        tabs_labels.append("✏️ Editar usuario")
 
-    show_dataframe(pd.DataFrame(datos), hide_index=True)
+    tabs = st.tabs(tabs_labels)
+    tab_idx = 0
 
-    if not usuarios:
-        st.info("Todavía no hay usuarios registrados.")
-        st.stop()
+    # ── TAB: LISTADO ────────────────────────────────────────────────────────────
+    with tabs[tab_idx]:
+        tab_idx += 1
+        col_h1, col_h2 = st.columns([3, 1])
+        with col_h1:
+            st.subheader("Listado de usuarios")
+        with col_h2:
+            if st.button("🔄 Actualizar", width="stretch", key="refresh_usuarios"):
+                st.rerun()
 
-    # Cargar datos comunes
-    roles_disponibles = [rol.get("nombre", "") for rol in servicio.repositorio.listar_roles()]
-    permisos_disponibles = [permiso.get("clave", "") for permiso in servicio.repositorio.listar_permisos()]
+        if not usuarios:
+            st.info("Todavía no hay usuarios registrados.")
+        else:
+            datos = [
+                {
+                    "Usuario": u.get("usuario", ""),
+                    "Nombre": u.get("nombre_completo", ""),
+                    "Correo": u.get("email", ""),
+                    "Estado": "Activo" if u.get("activo", False) else "Inactivo",
+                    "Roles": ", ".join(u.get("roles", [])),
+                }
+                for u in usuarios
+            ]
+            show_dataframe(pd.DataFrame(datos), hide_index=True)
 
-    # SECCIÓN: CAMBIAR ESTADO
-    st.divider()
-    st.subheader("Cambiar estado")
+    # ── TAB: CREAR USUARIO ──────────────────────────────────────────────────────
+    if "➕ Crear usuario" in tabs_labels:
+        with tabs[tab_idx]:
+            tab_idx += 1
+            st.subheader("Nuevo usuario")
 
-    if "usuario.desactivar" not in sesion.get("permisos", []):
-        st.warning("No tienes permiso para cambiar estado de usuarios.")
-    else:
-        mapa_usuarios = {
-            f"{usuario.get('usuario', '')} - {usuario.get('nombre_completo', '')}": usuario for usuario in usuarios
-        }
-        seleccion = st.selectbox("Selecciona un usuario para cambiar estado", options=list(mapa_usuarios.keys()), key="select_estado")
-        usuario_seleccionado = mapa_usuarios[seleccion]
+            roles_disponibles = [r.get("nombre", "") for r in servicio.repositorio.listar_roles()]
+            permisos_disponibles = [p.get("clave", "") for p in servicio.repositorio.listar_permisos()]
 
-        col_estado, col_accion = st.columns(2)
-        with col_estado:
-            st.write(f"**Estado actual:** {'Activo' if usuario_seleccionado.get('activo', False) else 'Inactivo'}")
-        with col_accion:
-            if usuario_seleccionado.get('activo', False):
-                if st.button("Desactivar usuario", key=f"desactivar_usuario_{usuario_seleccionado.get('_id')}"):
-                    try:
-                        servicio.desactivar_usuario(
-                            str(usuario_seleccionado["_id"]),
-                            permisos_usuario=sesion.get("permisos", []),
-                            usuario_actual=sesion["usuario"]
-                        )
-                        st.success("Usuario desactivado")
-                        st.rerun()
-                    except ValueError as error:
-                        st.error(str(error))
+            with st.form("form_crear_usuario"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    nuevo_usuario = st.text_input("Usuario")
+                    nuevo_email = st.text_input("Correo electrónico")
+                    nuevo_activo = st.checkbox("Activo", value=True)
+                with col2:
+                    nuevo_nombre = st.text_input("Nombre completo")
+                    nuevo_password = st.text_input("Contraseña", type="password")
+
+                nuevos_roles = st.multiselect("Roles", options=roles_disponibles)
+                nuevos_permisos_extra = st.multiselect("Permisos extra", options=permisos_disponibles)
+                enviar = st.form_submit_button("Crear usuario", use_container_width=True)
+
+            if enviar:
+                try:
+                    servicio.crear_usuario(
+                        {
+                            "usuario": nuevo_usuario.strip(),
+                            "nombre_completo": nuevo_nombre.strip(),
+                            "email": nuevo_email.strip(),
+                            "password": nuevo_password,
+                            "activo": nuevo_activo,
+                            "roles": nuevos_roles,
+                            "permisos_extra": nuevos_permisos_extra,
+                            "creado_por": sesion["usuario"],
+                        },
+                        permisos_usuario=permisos,
+                    )
+                    st.success("Usuario creado correctamente.")
+                    st.rerun()
+                except ValueError as error:
+                    st.error(str(error))
+
+    # ── TAB: EDITAR USUARIO ─────────────────────────────────────────────────────
+    if "✏️ Editar usuario" in tabs_labels:
+        with tabs[tab_idx]:
+            if not usuarios:
+                st.info("Todavía no hay usuarios registrados.")
             else:
-                if st.button("Activar usuario", key=f"activar_usuario_{usuario_seleccionado.get('_id')}"):
-                    try:
-                        servicio.activar_usuario(
-                            str(usuario_seleccionado["_id"]),
-                            permisos_usuario=sesion.get("permisos", []),
-                            usuario_actual=sesion["usuario"]
+                roles_disponibles = [r.get("nombre", "") for r in servicio.repositorio.listar_roles()]
+                permisos_disponibles = [p.get("clave", "") for p in servicio.repositorio.listar_permisos()]
+
+                mapa_usuarios = {
+                    f"{u.get('usuario', '')} — {u.get('nombre_completo', '')}": u
+                    for u in usuarios
+                }
+                seleccion = st.selectbox(
+                    "Selecciona un usuario",
+                    options=list(mapa_usuarios.keys()),
+                    key="select_editar",
+                )
+                uo = mapa_usuarios[seleccion]
+
+                # Estado + acción de activar/desactivar
+                col_estado, col_toggle = st.columns([2, 1])
+                with col_estado:
+                    estado_txt = "🟢 Activo" if uo.get("activo", False) else "🔴 Inactivo"
+                    st.markdown(f"**Estado actual:** {estado_txt}")
+                with col_toggle:
+                    if "usuario.desactivar" in permisos:
+                        if uo.get("activo", False):
+                            if st.button("Desactivar", key=f"des_{uo.get('_id')}", use_container_width=True):
+                                try:
+                                    servicio.desactivar_usuario(
+                                        str(uo["_id"]),
+                                        permisos_usuario=permisos,
+                                        usuario_actual=sesion["usuario"],
+                                    )
+                                    st.success("Usuario desactivado.")
+                                    st.rerun()
+                                except ValueError as error:
+                                    st.error(str(error))
+                        else:
+                            if st.button("Activar", key=f"act_{uo.get('_id')}", use_container_width=True):
+                                try:
+                                    servicio.activar_usuario(
+                                        str(uo["_id"]),
+                                        permisos_usuario=permisos,
+                                        usuario_actual=sesion["usuario"],
+                                    )
+                                    st.success("Usuario activado.")
+                                    st.rerun()
+                                except ValueError as error:
+                                    st.error(str(error))
+
+                if "usuario.editar" not in permisos:
+                    st.warning("No tienes permiso para editar usuarios.")
+                else:
+                    st.divider()
+                    with st.form("form_editar_usuario"):
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            usuario_editado = st.text_input("Usuario", value=uo.get("usuario", ""))
+                            email_editado = st.text_input("Correo electrónico", value=uo.get("email", ""))
+                        with col2:
+                            nombre_editado = st.text_input("Nombre completo", value=uo.get("nombre_completo", ""))
+                            password_nueva = st.text_input("Nueva contraseña (dejar vacío para no cambiar)", type="password")
+
+                        roles_sel = st.multiselect(
+                            "Roles",
+                            options=roles_disponibles,
+                            default=uo.get("roles", []),
                         )
-                        st.success("Usuario activado")
-                        st.rerun()
-                    except ValueError as error:
-                        st.error(str(error))
+                        permisos_sel = st.multiselect(
+                            "Permisos extra",
+                            options=permisos_disponibles,
+                            default=uo.get("permisos_extra", []),
+                        )
+                        enviar_edicion = st.form_submit_button("Guardar cambios", use_container_width=True)
 
-    # SECCIÓN: CREAR USUARIO
-    st.divider()
-    st.subheader("Crear usuario")
-
-    if "usuario.crear" not in sesion.get("permisos", []):
-        st.warning("No tienes permiso para crear usuarios.")
-    else:
-        with st.form("form_crear_usuario"):
-            usuario = st.text_input("Usuario")
-            nombre_completo = st.text_input("Nombre completo")
-            email = st.text_input("Correo electrónico")
-            password = st.text_input("Contraseña", type="password")
-            activo = st.checkbox("Activo", value=True)
-            roles = st.multiselect("Roles", options=roles_disponibles)
-            permisos_extra = st.multiselect("Permisos extra", options=permisos_disponibles)
-            enviar = st.form_submit_button("Crear")
-
-        if enviar:
-            try:
-                servicio.crear_usuario(
-                    {
-                        "usuario": usuario.strip(),
-                        "nombre_completo": nombre_completo.strip(),
-                        "email": email.strip(),
-                        "password": password,
-                        "activo": activo,
-                        "roles": roles,
-                        "permisos_extra": permisos_extra,
-                        "creado_por": sesion["usuario"],
-                    },
-                    permisos_usuario=sesion.get("permisos", [])
-                )
-                st.success("Usuario creado correctamente")
-                st.rerun()
-            except ValueError as error:
-                st.error(str(error))
-
-    # SECCIÓN: EDITAR USUARIO
-    st.divider()
-    st.subheader("Editar usuario")
-
-    if "usuario.editar" not in sesion.get("permisos", []):
-        st.warning("No tienes permiso para editar usuarios.")
-    else:
-        mapa_usuarios = {
-            f"{usuario.get('usuario', '')} - {usuario.get('nombre_completo', '')}": usuario for usuario in usuarios
-        }
-        seleccion_editar = st.selectbox("Selecciona un usuario para editar", options=list(mapa_usuarios.keys()), key="select_editar")
-        usuario_seleccionado_editar = mapa_usuarios[seleccion_editar]
-
-        with st.form("form_editar_usuario"):
-            usuario_editado = st.text_input("Usuario", value=usuario_seleccionado_editar.get("usuario", ""))
-            nombre_editado = st.text_input("Nombre completo", value=usuario_seleccionado_editar.get("nombre_completo", ""))
-            email_editado = st.text_input("Correo electrónico", value=usuario_seleccionado_editar.get("email", ""))
-            password_nueva = st.text_input("Nueva contraseña (opcional)", type="password")
-            activo_editado = st.checkbox("Activo", value=usuario_seleccionado_editar.get("activo", False))
-            roles_seleccionados = st.multiselect(
-                "Roles",
-                options=roles_disponibles,
-                default=usuario_seleccionado_editar.get("roles", []),
-            )
-            permisos_seleccionados = st.multiselect(
-                "Permisos extra",
-                options=permisos_disponibles,
-                default=usuario_seleccionado_editar.get("permisos_extra", []),
-            )
-            enviar_edicion = st.form_submit_button("Guardar cambios")
-
-        if enviar_edicion:
-            try:
-                servicio.actualizar_usuario(
-                    str(usuario_seleccionado_editar["_id"]),
-                    {
-                        "usuario": usuario_editado.strip(),
-                        "nombre_completo": nombre_editado.strip(),
-                        "email": email_editado.strip(),
-                        "password": password_nueva,
-                        "activo": activo_editado,
-                        "roles": roles_seleccionados,
-                        "permisos_extra": permisos_seleccionados,
-                        "actualizado_por": sesion["usuario"],
-                    },
-                    permisos_usuario=sesion.get("permisos", [])
-                )
-                st.success("Usuario actualizado correctamente")
-                st.rerun()
-            except ValueError as error:
-                st.error(str(error))
+                    if enviar_edicion:
+                        try:
+                            servicio.actualizar_usuario(
+                                str(uo["_id"]),
+                                {
+                                    "usuario": usuario_editado.strip(),
+                                    "nombre_completo": nombre_editado.strip(),
+                                    "email": email_editado.strip(),
+                                    "password": password_nueva,
+                                    "activo": uo.get("activo", False),
+                                    "roles": roles_sel,
+                                    "permisos_extra": permisos_sel,
+                                    "actualizado_por": sesion["usuario"],
+                                },
+                                permisos_usuario=permisos,
+                            )
+                            st.success("Usuario actualizado correctamente.")
+                            st.rerun()
+                        except ValueError as error:
+                            st.error(str(error))
