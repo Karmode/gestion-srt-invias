@@ -12,6 +12,8 @@ PERMISOS_BASE = [
     {"clave": "correspondencia.ver", "descripcion": "Ver correspondencia", "modulo": "correspondencia"},
     {"clave": "correspondencia.crear", "descripcion": "Crear correspondencia", "modulo": "correspondencia"},
     {"clave": "correspondencia.editar", "descripcion": "Editar correspondencia", "modulo": "correspondencia"},
+    {"clave": "certificacion.ver", "descripcion": "Ver certificaciones propias", "modulo": "certificaciones"},
+    {"clave": "certificacion.aprobar", "descripcion": "Aprobar certificaciones de colaboradores", "modulo": "certificaciones"},
 ]
 
 ROLES_BASE = [
@@ -49,6 +51,17 @@ ROLES_BASE = [
         "nombre": "gestor",
         "descripcion": "Gestor de correspondencia",
         "permisos": ["correspondencia.ver"],
+        "activo": True,
+    },
+    {
+        "nombre": "supervisor",
+        "descripcion": "Supervisor de certificaciones mensuales",
+        "permisos": [
+            "certificacion.ver",
+            "certificacion.aprobar",
+            "correspondencia.ver",
+            "dashboard.ver",
+        ],
         "activo": True,
     },
 ]

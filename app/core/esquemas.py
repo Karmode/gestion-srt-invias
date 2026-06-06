@@ -99,6 +99,32 @@ ESQUEMA_OPCIONES_CONFIGURACION = {
     },
 }
 
+ESQUEMA_CERTIFICACIONES = {
+    "bsonType": "object",
+    "required": ["usuario_id", "nombre_usuario", "año", "mes", "estado", "creado_en"],
+    "properties": {
+        "usuario_id": {"bsonType": "objectId"},
+        "nombre_usuario": {"bsonType": "string"},
+        "año": {"bsonType": "int"},
+        "mes": {"bsonType": "int"},
+        "estado": {"enum": ["pendiente", "aprobado", "rechazado"]},
+        "fecha_corte": {"bsonType": ["date", "null"]},
+        "snapshot_al_dia": {"bsonType": ["bool", "null"]},
+        "observaciones": {"bsonType": ["string", "null"]},
+        "aprobado_por": {
+            "bsonType": "object",
+            "required": ["usuario_id", "nombre", "fecha"],
+            "properties": {
+                "usuario_id": {"bsonType": "objectId"},
+                "nombre": {"bsonType": "string"},
+                "fecha": {"bsonType": "date"},
+            },
+        },
+        "hash_verificacion": {"bsonType": ["string", "null"]},
+        "creado_en": {"bsonType": "date"},
+    },
+}
+
 ESQUEMA_CORRESPONDENCIA = {
     "bsonType": "object",
     "required": [
