@@ -31,6 +31,12 @@ class MongoBootstrapService:
             "usuario", unique=True, name="idx_usuarios_usuario_unico"
         )
         self.db["usuarios"].create_index("activo", name="idx_usuarios_activo")
+        self.db["usuarios"].create_index(
+            "contratos.numero",
+            unique=True,
+            sparse=True,
+            name="idx_usuarios_contratos_numero_unico",
+        )
         self.db["usuarios"].create_index("roles", name="idx_usuarios_roles")
         self.db["roles"].create_index(
             "nombre", unique=True, name="idx_roles_nombre_unico"

@@ -1,3 +1,12 @@
+TIPOS_CONTRATO = {
+    "": "— Sin especificar —",
+    "termino_indefinido": "Término indefinido",
+    "termino_fijo": "Término fijo",
+    "obra_labor": "Obra o labor",
+    "prestacion_servicios": "Prestación de servicios",
+    "aprendizaje": "Aprendizaje",
+}
+
 PERMISOS_BASE = [
     {"clave": "usuario.ver", "descripcion": "Ver usuarios", "modulo": "usuarios"},
     {"clave": "usuario.crear", "descripcion": "Crear usuarios", "modulo": "usuarios"},

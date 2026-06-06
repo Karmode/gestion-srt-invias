@@ -20,6 +20,24 @@ ESQUEMA_USUARIOS = {
             "description": "CC=Cédula de Ciudadanía, CE=Cédula de Extranjería, TI=Tarjeta de Identidad, PA=Pasaporte, RC=Registro Civil, PEP=Permiso Especial de Permanencia, PPT=Permiso por Protección Temporal",
         },
         "numero_documento": {"bsonType": ["string", "null"]},
+        "contratos": {
+            "bsonType": ["array", "null"],
+            "items": {
+                "bsonType": "object",
+                "required": ["numero"],
+                "properties": {
+                    "numero": {"bsonType": "string", "minLength": 1},
+                    "tipo": {
+                        "bsonType": ["string", "null"],
+                        "enum": ["termino_indefinido", "termino_fijo", "obra_labor", "prestacion_servicios", "aprendizaje", None],
+                    },
+                    "objeto": {"bsonType": ["string", "null"]},
+                    "valor": {"bsonType": ["int", "long", "double", "null"]},
+                    "fecha_inicio": {"bsonType": ["date", "null"]},
+                    "fecha_fin": {"bsonType": ["date", "null"]},
+                },
+            },
+        },
         "email": {"bsonType": "string"},
         "password_hash": {"bsonType": "string"},
         "activo": {"bsonType": "bool"},
