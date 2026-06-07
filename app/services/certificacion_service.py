@@ -168,6 +168,31 @@ class CertificacionService:
     # Generación de PDF
     # ──────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _contrato_vigente(contratos: list) -> dict:
+        """Devuelve el contrato activo (sin fecha_fin o con fecha_fin futura).
+        Si hay varios activos, retorna el de fecha_inicio más reciente."""
+        if not contratos:
+            return {}
+        hoy = datetime.now(ZONA_BOGOTA).date()
+        activos = []
+        for c in contratos:
+            fecha_fin = c.get("fecha_fin")
+            if fecha_fin:
+                if fecha_fin.tzinfo is None:
+                    from datetime import timezone as _tz
+                    fecha_fin = fecha_fin.replace(tzinfo=_tz.utc)
+                if fecha_fin.astimezone(ZONA_BOGOTA).date() >= hoy:
+                    activos.append(c)
+            else:
+                activos.append(c)
+        pool = activos or contratos
+        pool.sort(
+            key=lambda c: (c.get("fecha_inicio") or datetime.min.replace(tzinfo=ZONA_BOGOTA)),
+            reverse=True,
+        )
+        return pool[0]
+
     def generar_pdf(self, certificacion: Dict) -> bytes:
         """Genera el PDF del certificado con ReportLab en memoria."""
         from reportlab.lib.pagesizes import letter
@@ -182,54 +207,83 @@ class CertificacionService:
 
         NARANJA = HexColor("#FF8C00")
         CAFE = HexColor("#3D1E0A")
+        NEGRO = HexColor("#000000")
         GRIS = HexColor("#777777")
+        GRIS_TABLA = HexColor("#F5F5F5")
 
-        buf = io.BytesIO()
-        doc = SimpleDocTemplate(
-            buf,
-            pagesize=letter,
-            leftMargin=2.5 * cm,
-            rightMargin=2.5 * cm,
-            topMargin=2 * cm,
-            bottomMargin=2 * cm,
-        )
-
-        estilos = getSampleStyleSheet()
-
-        s_titulo = ParagraphStyle(
-            "titulo", parent=estilos["Heading1"],
-            fontSize=17, textColor=NARANJA, alignment=TA_CENTER,
-            spaceAfter=4, fontName="Helvetica-Bold",
-        )
-        s_inst = ParagraphStyle(
-            "inst", parent=estilos["Normal"],
-            fontSize=10, textColor=CAFE, alignment=TA_CENTER, spaceAfter=2,
-        )
-        s_cuerpo = ParagraphStyle(
-            "cuerpo", parent=estilos["Normal"],
-            fontSize=11, alignment=TA_JUSTIFY, leading=18, spaceAfter=10,
-        )
-        s_nombre = ParagraphStyle(
-            "nombre", parent=estilos["Normal"],
-            fontSize=14, fontName="Helvetica-Bold",
-            alignment=TA_CENTER, textColor=CAFE, spaceAfter=6,
-        )
-        s_pie = ParagraphStyle(
-            "pie", parent=estilos["Normal"],
-            fontSize=7, textColor=GRIS, alignment=TA_CENTER,
-        )
+        # ── datos del usuario (contrato activo, cédula) ──
+        from app.repositories.usuario_repo import UsuarioRepositorio
+        usuario_id = str(certificacion.get("usuario_id", ""))
+        usuario_data: dict = {}
+        if usuario_id:
+            try:
+                usuario_data = UsuarioRepositorio().buscar_por_id(usuario_id) or {}
+            except Exception:
+                pass
+        contratos = usuario_data.get("contratos") or []
+        contrato = self._contrato_vigente(contratos)
+        numero_contrato = contrato.get("numero") or "—"
+        cedula = usuario_data.get("numero_documento") or "—"
 
         nombre = certificacion.get("nombre_usuario", "")
         año = certificacion.get("año", "")
         mes_num = certificacion.get("mes", 1)
         mes_nombre = MESES_ES[mes_num - 1]
         hash_code = certificacion.get("hash_verificacion", "")
+        obs = certificacion.get("observaciones") or ""
+
+        fecha_corte = certificacion.get("fecha_corte")
+        if fecha_corte:
+            fc_bogota = utc_a_bogota(fecha_corte)
+            dia_expedicion = fc_bogota.strftime("%d").lstrip("0") or "1"
+            mes_expedicion = MESES_ES[fc_bogota.month - 1]
+            año_expedicion = fc_bogota.strftime("%Y")
+        else:
+            ahora = datetime.now(ZONA_BOGOTA)
+            dia_expedicion = str(ahora.day)
+            mes_expedicion = MESES_ES[ahora.month - 1]
+            año_expedicion = str(ahora.year)
+
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buf,
+            pagesize=letter,
+            leftMargin=2.3 * cm,
+            rightMargin=2.3 * cm,
+            topMargin=0.8 * cm,
+            bottomMargin=1.5 * cm,
+        )
+
+        estilos = getSampleStyleSheet()
+
+        s_inst_bold = ParagraphStyle(
+            "inst_bold", parent=estilos["Normal"],
+            fontSize=9, textColor=CAFE, alignment=TA_CENTER,
+            fontName="Helvetica-Bold", spaceAfter=1, leading=12,
+        )
+        s_titulo = ParagraphStyle(
+            "titulo", parent=estilos["Normal"],
+            fontSize=10, textColor=CAFE, alignment=TA_CENTER,
+            fontName="Helvetica-Bold", spaceAfter=2, leading=13,
+        )
+        s_cuerpo = ParagraphStyle(
+            "cuerpo", parent=estilos["Normal"],
+            fontSize=8.5, alignment=TA_JUSTIFY, leading=12, spaceAfter=5,
+        )
+        s_bullet = ParagraphStyle(
+            "bullet", parent=estilos["Normal"],
+            fontSize=8.5, alignment=TA_JUSTIFY, leading=12, spaceAfter=3,
+            leftIndent=12,
+        )
+        s_pie = ParagraphStyle(
+            "pie", parent=estilos["Normal"],
+            fontSize=7, textColor=GRIS, alignment=TA_CENTER,
+        )
 
         def _watermark(canvas_obj, _doc):
             from reportlab.lib.colors import Color
             w, h = letter
 
-            # 1. Fondo de seguridad: texto INVIAS repetido en diagonal
             canvas_obj.saveState()
             canvas_obj.setFont("Helvetica", 7.5)
             canvas_obj.setFillColor(Color(0.68, 0.68, 0.68, alpha=0.30))
@@ -240,7 +294,6 @@ class CertificacionService:
                     canvas_obj.drawCentredString(xi * 112, yi * 42, "INVIAS  SRTI")
             canvas_obj.restoreState()
 
-            # 2. Marca de agua principal: nombre + mes/año
             canvas_obj.saveState()
             canvas_obj.setFont("Helvetica-Bold", 48)
             canvas_obj.setFillColor(Color(0.58, 0.58, 0.58, alpha=0.30))
@@ -250,7 +303,6 @@ class CertificacionService:
             canvas_obj.drawCentredString(0, -32, f"{mes_nombre.upper()} {año}")
             canvas_obj.restoreState()
 
-            # 3. Doble borde institucional
             canvas_obj.saveState()
             nb = Color(1.0, 0.549, 0.0, alpha=0.55)
             canvas_obj.setStrokeColor(nb)
@@ -260,7 +312,6 @@ class CertificacionService:
             canvas_obj.rect(23, 23, w - 46, h - 46)
             canvas_obj.restoreState()
 
-            # 4. Ornamentos en esquinas (diamante + brazos en L) y marcas de registro
             canvas_obj.saveState()
             nf = Color(1.0, 0.549, 0.0, alpha=0.58)
             canvas_obj.setFillColor(nf)
@@ -288,118 +339,177 @@ class CertificacionService:
                 canvas_obj.line(mx, my - tk, mx, my + tk)
             canvas_obj.restoreState()
 
-        fecha_corte = certificacion.get("fecha_corte")
-        if fecha_corte:
-            fc_bogota = utc_a_bogota(fecha_corte)
-            dia = fc_bogota.strftime("%d")
-            mes_corte = MESES_ES[fc_bogota.month - 1].lower()
-            año_corte = fc_bogota.strftime("%Y")
-            fecha_str = f"{dia} de {mes_corte} de {año_corte}"
-        else:
-            fecha_str = "fecha no disponible"
-
-        aprobado_por = certificacion.get("aprobado_por", {})
-        supervisor = aprobado_por.get("nombre", "Supervisor SRTI")
-        obs = certificacion.get("observaciones") or ""
-
         story = []
 
-        # Logo
+        # ── Logo ──
         logo = os.path.join("app", "assets", "INVIAS_login_logo.png")
         if os.path.exists(logo):
             from reportlab.platypus import Image
-            img = Image(logo, width=5 * cm, height=2.5 * cm, kind="proportional")
+            img = Image(logo, width=4 * cm, height=2 * cm, kind="proportional")
             img.hAlign = "CENTER"
             story.append(img)
-            story.append(Spacer(1, 0.3 * cm))
+            story.append(Spacer(1, 0.2 * cm))
 
         story.append(HRFlowable(width="100%", thickness=2, color=NARANJA))
+        story.append(Spacer(1, 0.15 * cm))
+        story.append(Paragraph("INSTITUTO NACIONAL DE VÍAS – INVIAS", s_inst_bold))
+        story.append(Paragraph("SUBDIRECCIÓN DE REGLAMENTACIÓN TÉCNICA E INNOVACIÓN", s_inst_bold))
+        story.append(Paragraph("FORMATO DE CONTROL DE CORRESPONDENCIA Y PLATAFORMA SECOP II", s_titulo))
         story.append(Spacer(1, 0.25 * cm))
-        story.append(Paragraph("INSTITUTO NACIONAL DE VÍAS — INVIAS", s_inst))
-        story.append(Paragraph(
-            "Subdirección de Reglamentación Técnica e Innovación — SRTI", s_inst
-        ))
-        story.append(Spacer(1, 0.5 * cm))
-
-        story.append(Paragraph("CERTIFICADO DE CORRESPONDENCIA", s_titulo))
-        story.append(Paragraph(f"Período: {mes_nombre.upper()} {año}", s_inst))
-        story.append(Spacer(1, 0.4 * cm))
         story.append(HRFlowable(width="100%", thickness=1, color=NARANJA))
-        story.append(Spacer(1, 0.8 * cm))
+        story.append(Spacer(1, 0.3 * cm))
 
+        # ── Tabla de identificación ──
+        col_lbl = 5.2 * cm
+        col_val = doc.width - col_lbl
+        id_tabla = Table(
+            [
+                ["Número de contrato", numero_contrato],
+                ["Contratista", nombre],
+                ["Cédula del contratista", cedula],
+            ],
+            colWidths=[col_lbl, col_val],
+            rowHeights=0.6 * cm,
+        )
+        id_tabla.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+            ("FONTNAME", (1, 0), (1, -1), "Helvetica"),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("BACKGROUND", (0, 0), (0, -1), GRIS_TABLA),
+            ("TEXTCOLOR", (0, 0), (-1, -1), NEGRO),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("GRID", (0, 0), (-1, -1), 0.5, HexColor("#CCCCCC")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        story.append(id_tabla)
+        story.append(Spacer(1, 0.35 * cm))
+
+        # ── Cuerpo principal ──
         story.append(Paragraph(
-            "La Subdirección de Reglamentación Técnica e Innovación (SRTI) del "
-            "Instituto Nacional de Vías (INVIAS) <b>CERTIFICA</b> que:",
+            f"En cumplimiento y ejercicio de la función de supervisión y/o ordenación del gasto "
+            f"(según corresponda) procede la suscrita con la verificación del cumplimiento adecuado "
+            f"de las obligaciones establecidas en el Anexo del Contrato Electrónico – Clausulado "
+            f"General de Contrato de Prestación de Servicios Profesionales y/o de Apoyo a la Gestión, "
+            f"para el periodo del mes de <b>{mes_nombre}</b> de <b>{año}</b>; en consecuencia, se deja "
+            f"constancia de que, una vez efectuada la revisión correspondiente a los soportes "
+            f"documentales, matrices de seguimiento y plataforma SECOP II, el(a) contratista:",
             s_cuerpo,
         ))
-        story.append(Spacer(1, 0.2 * cm))
-        story.append(Paragraph(nombre.upper(), s_nombre))
+
+        # ── Obligaciones (bullets) ──
+        obligaciones = [
+            "Mantuvo actualizada la información relacionada con la correspondencia, oficios, "
+            "memorandos y demás asuntos a su cargo en las bases de datos y sistemas de información "
+            "dispuestos por el INVIAS, conforme a los lineamientos institucionales y a los parámetros "
+            "definidos para el seguimiento contractual. (Obligación general 5)",
+
+            "Cumplió con las actividades de gestión documental y archivo derivadas de la ejecución "
+            "contractual, de acuerdo con los lineamientos institucionales y las disposiciones aplicables "
+            "del Archivo General de la Nación – AGN. (Obligación general 21)",
+
+            "Registró / actualizó en la plataforma SECOP II la información correspondiente al "
+            "\"Plan de Pagos\", ubicada en la pestaña \"Ejecución del Contrato\", adjuntando el "
+            "informe mensual de actividades, sus soportes y la planilla de aportes al Sistema de "
+            "Seguridad Social Integral, para efectos de revisión y aprobación por parte del supervisor "
+            "del contrato. (Obligación general 32)",
+
+            "Se encuentra al día con la proyección, revisión, tramité y atención conforme los "
+            "lineamientos establecidos en la Ley, respecto las solicitudes, peticiones, quejas, "
+            "reclamos, sugerencias (PQRS), memorandos, comunicaciones internas o externas, que le "
+            "sean asignados por el supervisor del contrato y que tengan relación con el objeto "
+            "contractual y el alcance de la Subdirección de Reglamentación Técnica e Innovación "
+            "(Obligación Especifica No. 5)",
+        ]
+        for ob in obligaciones:
+            story.append(Paragraph(f"• {ob}", s_bullet))
+
         story.append(Spacer(1, 0.2 * cm))
         story.append(Paragraph(
-            f"se encuentra <b>AL DÍA</b> con la correspondencia asignada a su cargo, "
-            f"habiendo atendido oportunamente los radicados dentro de los términos "
-            f"establecidos, a la fecha del <b>{fecha_str}</b>.",
-            s_cuerpo,
-        ))
-        story.append(Paragraph(
-            f"El presente certificado se expide para efectos de <b>sustento de cuenta "
-            f"de cobro</b> correspondiente al mes de <b>{mes_nombre.upper()} de {año}</b>.",
+            "La presente constancia se expide como soporte de verificación de cumplimiento de "
+            "actividades objeto de seguimiento administrativo y documental, y constituye un insumo "
+            "para el ejercicio de supervisión contractual para efectos del trámite de pago.",
             s_cuerpo,
         ))
 
         if obs:
             story.append(Paragraph(f"<i>Observaciones: {obs}</i>", s_cuerpo))
 
-        story.append(Spacer(1, 1.5 * cm))
+        story.append(Spacer(1, 0.2 * cm))
+        story.append(Paragraph(
+            f"Se expide a los <b>{dia_expedicion}</b> días del mes de "
+            f"<b>{mes_expedicion}</b> de <b>{año_expedicion}</b>",
+            s_cuerpo,
+        ))
 
-        firma = Table(
-            [
-                ["_" * 38],
-                [supervisor.upper()],
-                ["Supervisor — SRTI"],
-                ["Instituto Nacional de Vías — INVIAS"],
-            ],
-            colWidths=[9 * cm],
-        )
-        firma.setStyle(TableStyle([
-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-            ("FONTNAME", (0, 1), (0, 1), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (0, 0), 10),
-            ("FONTSIZE", (0, 1), (0, 1), 11),
-            ("FONTSIZE", (0, 2), (-1, -1), 9),
-            ("TEXTCOLOR", (0, 1), (0, 1), CAFE),
-        ]))
-        firma.hAlign = "CENTER"
-        story.append(firma)
+        story.append(Spacer(1, 0.25 * cm))
 
-        story.append(Spacer(1, 1 * cm))
+        # ── Firma: imagen pegada a la línea en una sola tabla ──
+        ruta_firma = os.path.join("app", "assets", "firma_nestor.png")
+        if os.path.exists(ruta_firma):
+            from reportlab.platypus import Image as _Img
+            firma_img = _Img(ruta_firma, width=5.2 * cm, height=2.6 * cm, kind="proportional")
+            filas_firma = [
+                [firma_img],
+                ["Néstor Alfonso Navarro Tovar"],
+                ["Contratista Subdirección de Reglamentación Técnica e Innovación"],
+            ]
+            firma_tabla = Table(filas_firma, colWidths=[doc.width])
+            firma_tabla.setStyle(TableStyle([
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
+                ("FONTNAME", (0, 1), (0, 1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("TEXTCOLOR", (0, 1), (0, 1), CAFE),
+                # línea entre imagen y nombre — la firma la "toca"
+                ("LINEBELOW", (0, 0), (-1, 0), 0.5, HexColor("#AAAAAA")),
+                ("TOPPADDING", (0, 0), (-1, 0), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 0),
+                ("TOPPADDING", (0, 1), (-1, 1), 3),
+            ]))
+        else:
+            filas_firma = [
+                [""],
+                ["Néstor Alfonso Navarro Tovar"],
+                ["Contratista Subdirección de Reglamentación Técnica e Innovación"],
+            ]
+            firma_tabla = Table(filas_firma, colWidths=[doc.width], rowHeights=[1.5 * cm, None, None])
+            firma_tabla.setStyle(TableStyle([
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("FONTNAME", (0, 1), (0, 1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("TEXTCOLOR", (0, 1), (0, 1), CAFE),
+                ("LINEBELOW", (0, 0), (-1, 0), 0.5, HexColor("#AAAAAA")),
+                ("TOPPADDING", (0, 1), (-1, 1), 3),
+            ]))
+        story.append(firma_tabla)
 
-        # Código de verificación
+        story.append(Spacer(1, 0.4 * cm))
+
+        # ── Código de verificación ──
         if hash_code:
-            from reportlab.lib.colors import HexColor as _HC
-            from reportlab.platypus import Table as _T, TableStyle as _TS
-            cod_tabla = _T(
+            cod_tabla = Table(
                 [[f"Código de verificación: {hash_code}"]],
                 colWidths=[doc.width],
             )
-            cod_tabla.setStyle(_TS([
-                ("BACKGROUND", (0, 0), (-1, -1), _HC("#FFF3E0")),
+            cod_tabla.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1), HexColor("#FFF3E0")),
                 ("TEXTCOLOR", (0, 0), (-1, -1), CAFE),
                 ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
                 ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                 ("BOX", (0, 0), (-1, -1), 1.2, NARANJA),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
             ]))
             story.append(cod_tabla)
-            story.append(Spacer(1, 0.25 * cm))
+            story.append(Spacer(1, 0.2 * cm))
 
         story.append(HRFlowable(width="100%", thickness=1, color=NARANJA))
-        story.append(Spacer(1, 0.15 * cm))
+        story.append(Spacer(1, 0.1 * cm))
         story.append(Paragraph(
             f"Documento generado automáticamente por el Sistema de Gestión de "
-            f"Correspondencia SRTI-INVIAS · {fecha_str}",
+            f"Correspondencia SRTI-INVIAS · {dia_expedicion} de {mes_expedicion} de {año_expedicion}",
             s_pie,
         ))
 
