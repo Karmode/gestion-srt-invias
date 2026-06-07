@@ -173,16 +173,11 @@ def render(sesion=None):
     roles = sesion.get("roles", [])
     es_admin = any(r in {"admin", "administrador"} for r in roles)
 
-    # Determinar el tipo de firma del usuario actual.
-    # Los permisos de firma ya no están en el rol admin por defecto;
-    # solo los tiene si fue designado explícitamente como firmante.
-    tipo_mi_firma: str | None = None
-    for tipo in TIPOS_FIRMA:
-        if _META_FIRMA[tipo][2] in permisos:
-            tipo_mi_firma = tipo
-            break
+    # Recopilar todos los tipos de firma que tiene este usuario.
+    # Un mismo usuario puede tener más de un permiso de firma (ej. corr + gd).
+    mis_tipos_firma = [t for t in TIPOS_FIRMA if _META_FIRMA[t][2] in permisos]
 
-    if not es_admin and tipo_mi_firma is None:
+    if not es_admin and not mis_tipos_firma:
         st.error("No tienes permiso para acceder a esta sección.")
         st.stop()
 
@@ -199,6 +194,21 @@ def render(sesion=None):
             f"(ventana disponible hasta el día 24 del mes en curso)."
         )
 
+    # Selector de rol cuando el usuario tiene más de un permiso de firma
+    if len(mis_tipos_firma) > 1:
+        opciones_firma = {t: _META_FIRMA[t][1] for t in mis_tipos_firma}
+        tipo_mi_firma = st.radio(
+            "Estás actuando como firmante de:",
+            options=list(opciones_firma.keys()),
+            format_func=lambda t: f"✍️ {opciones_firma[t]}",
+            horizontal=True,
+            key="sel_tipo_firma_activo",
+        )
+    elif mis_tipos_firma:
+        tipo_mi_firma = mis_tipos_firma[0]
+    else:
+        tipo_mi_firma = None
+
     # Banner de rol
     if es_admin and tipo_mi_firma is None:
         st.info(
@@ -207,7 +217,12 @@ def render(sesion=None):
         )
     elif tipo_mi_firma:
         _, label_largo, _ = _META_FIRMA[tipo_mi_firma]
-        st.info(f"✍️ **Tu rol:** Firma de {label_largo}. Puedes aprobar o revocar tu aprobación para cada contratista.")
+        roles_txt = (
+            " · ".join(_META_FIRMA[t][1] for t in mis_tipos_firma)
+            if len(mis_tipos_firma) > 1
+            else label_largo
+        )
+        st.info(f"✍️ **Actuando como:** Firma de {label_largo}  ·  Tienes permiso para: {roles_txt}")
 
     # Configuración de firmantes (solo admin con gestionar_firmantes)
     _seccion_config_firmantes(servicio, sesion)
@@ -231,7 +246,7 @@ def render(sesion=None):
     if tipo_mi_firma:
         mis_pendientes = sum(
             1 for e in empleados
-            if not e.get("firmas", {}).get(tipo_mi_firma) and e["al_dia"]
+            if not e.get("firmas", {}).get(tipo_mi_firma)
         )
         mis_aprobados = sum(
             1 for e in empleados
