@@ -230,6 +230,35 @@ class CertificacionService:
         año, mes = self.periodo_certificable()
         return self.repo.revocar_firma(empleado_id, año, mes, tipo)
 
+    def recuperar_auto_cert(self, empleado_id: str, cert: dict) -> bool:
+        """Certifica retroactivamente si el cert ya tiene las 3 firmas + contrato activo
+        pero quedó en 'pendiente' por un fallo anterior en _intentar_auto_certificar.
+        Retorna True si se certificó ahora."""
+        from app.repositories.usuario_repo import UsuarioRepositorio
+
+        if not cert or cert.get("estado") == "aprobado":
+            return False
+
+        firmas = cert.get("firmas", {})
+        if not all(firmas.get(t) for t in ("corr", "gd", "secop")):
+            return False
+
+        usuario = UsuarioRepositorio().buscar_por_id(empleado_id)
+        contratos = (usuario.get("contratos") or []) if usuario else []
+        if not self._contrato_vigente(contratos).get("numero"):
+            return False
+
+        # Usar la última firma como firmante registrado en el certificado
+        ultima_firma = next(
+            (firmas[t] for t in ("secop", "gd", "corr") if firmas.get(t)), None
+        )
+        firmante_id = str(ultima_firma.get("firmante_id", "")) if ultima_firma else ""
+        firmante_nombre = ultima_firma.get("firmante_nombre", "") if ultima_firma else ""
+        nombre_empleado = cert.get("nombre_usuario", "")
+
+        self.certificar_empleado(empleado_id, nombre_empleado, firmante_id, firmante_nombre)
+        return True
+
     # ──────────────────────────────────────────────────────────────
     # Acción de certificar
     # ──────────────────────────────────────────────────────────────
@@ -307,8 +336,11 @@ class CertificacionService:
             else:
                 activos.append(c)
         pool = activos or contratos
+        # Usar datetime.min (naive) como fallback para que la comparación sea homogénea:
+        # PyMongo devuelve datetimes naive; datetime.min.replace(tzinfo=...) sería aware y
+        # lanzaría TypeError cuando se mezclan contratos con y sin fecha_inicio.
         pool.sort(
-            key=lambda c: (c.get("fecha_inicio") or datetime.min.replace(tzinfo=ZONA_BOGOTA)),
+            key=lambda c: c.get("fecha_inicio") or datetime.min,
             reverse=True,
         )
         return pool[0]

@@ -8,6 +8,7 @@ y el contratista cumple: sin vencidas + contrato activo.
 import base64
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from app.core.sesion import obtener_sesion
 from app.core.zona_horaria import formato_fecha_bogota
@@ -97,11 +98,23 @@ def _dialog_preview(servicio: CertificacionService) -> None:
     b64 = base64.b64encode(pdf_bytes).decode()
 
     st.caption(f"{nombre} — {nombre_mes} {año}")
-    st.html(
-        f'<embed src="data:application/pdf;base64,{b64}" '
-        f'type="application/pdf" width="100%" height="640px" '
-        f'style="border:1px solid #444;border-radius:4px;" />'
-    )
+    components.html(f"""<!DOCTYPE html>
+<html><body style="margin:0;padding:0;overflow:hidden;">
+<script>
+(function() {{
+    var b64 = '{b64}';
+    var raw = atob(b64);
+    var arr = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+    var blob = new Blob([arr], {{type:'application/pdf'}});
+    var url = URL.createObjectURL(blob);
+    var f = document.createElement('iframe');
+    f.src = url;
+    f.style.cssText = 'width:100%;height:614px;border:1px solid #444;border-radius:4px;display:block;';
+    document.body.appendChild(f);
+}})();
+</script>
+</body></html>""", height=620)
     st.download_button(
         "⬇️ Descargar PDF",
         data=pdf_bytes,
