@@ -23,13 +23,29 @@ PERMISOS_BASE = [
     {"clave": "correspondencia.editar", "descripcion": "Editar correspondencia", "modulo": "correspondencia"},
     {"clave": "certificacion.ver", "descripcion": "Ver certificaciones propias", "modulo": "certificaciones"},
     {"clave": "certificacion.aprobar", "descripcion": "Aprobar certificaciones de colaboradores", "modulo": "certificaciones"},
+    {"clave": "certificacion.firmar_corr", "descripcion": "Firmar aprobación de Correspondencia", "modulo": "certificaciones"},
+    {"clave": "certificacion.firmar_gd", "descripcion": "Firmar aprobación de Gestión Documental", "modulo": "certificaciones"},
+    {"clave": "certificacion.firmar_secop", "descripcion": "Firmar aprobación de SECOP II", "modulo": "certificaciones"},
+    {"clave": "certificacion.gestionar_firmantes", "descripcion": "Configurar firmantes designados de certificaciones", "modulo": "certificaciones"},
 ]
+
+_PERMISOS_SOLO_FIRMANTES = {
+    "certificacion.firmar_corr",
+    "certificacion.firmar_gd",
+    "certificacion.firmar_secop",
+}
 
 ROLES_BASE = [
     {
         "nombre": "admin",
         "descripcion": "Administrador del sistema",
-        "permisos": [permiso["clave"] for permiso in PERMISOS_BASE],
+        "permisos": [p["clave"] for p in PERMISOS_BASE if p["clave"] not in _PERMISOS_SOLO_FIRMANTES],
+        "activo": True,
+    },
+    {
+        "nombre": "firmante_certificacion",
+        "descripcion": "Firmante designado para aprobación de certificaciones",
+        "permisos": ["certificacion.ver"],
         "activo": True,
     },
     {

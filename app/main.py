@@ -1432,16 +1432,19 @@ else:
         admin_pages.append(st.Page("pages/5_dashboard.py", title="Dashboard", icon="📊"))
     if "reporte.ver" in permisos_sesion:
         admin_pages.append(st.Page("pages/4_reportes.py", title="Reportes y Evidencias", icon="📄"))
-    if "certificacion.aprobar" in permisos_sesion:
-        admin_pages.append(st.Page("pages/7_admin_certif.py", title="Certificar Colaboradores", icon="✅"))
-    if "dashboard.ver" in permisos_sesion:
-        admin_pages.append(st.Page("pages/6_gestion_formatos.py", title="Gestión Formatos", icon="📋"))
+# Páginas de Supervisión / Certificaciones
+    _perms_firma = {"certificacion.firmar_corr", "certificacion.firmar_gd", "certificacion.firmar_secop"}
+    es_admin_main = any(r in {"admin", "administrador"} for r in sesion.get("roles", []))
+    es_firmante_o_supervisor = bool(_perms_firma & set(permisos_sesion)) or es_admin_main or "certificacion.aprobar" in permisos_sesion
 
-    # Páginas de supervisión (visibles a todos los usuarios autenticados)
     supervision_pages = [
         st.Page("pages/6_certificaciones.py", title="Mis Certificados", icon="🏅"),
         st.Page("pages/8_verificar_cert.py", title="Verificar Certificado", icon="🔍"),
     ]
+    if es_firmante_o_supervisor:
+        supervision_pages.append(st.Page("pages/9_firmantes_certif.py", title="Aprobar Certificaciones", icon="✍️"))
+    if "certificacion.aprobar" in permisos_sesion:
+        supervision_pages.append(st.Page("pages/7_admin_certif.py", title="Certificar Colaboradores", icon="✅"))
 
     # Agrupar páginas
     menu_dict = {

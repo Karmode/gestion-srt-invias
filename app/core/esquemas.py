@@ -96,14 +96,14 @@ ESQUEMA_SESIONES = {
 
 ESQUEMA_OPCIONES_CONFIGURACION = {
     "bsonType": "object",
-    "required": ["categoria", "opciones"],
+    "required": ["categoria"],
     "properties": {
         "categoria": {
-            "enum": ["tipo", "grupo", "clase_correspondencia", "estados"],
-            "description": "Define a qué desplegable pertenece",
+            "bsonType": "string",
+            "description": "Categoría del documento de configuración",
         },
         "opciones": {
-            "bsonType": "array",
+            "bsonType": ["array", "null"],
             "items": {
                 "bsonType": "object",
                 "required": ["clave", "etiqueta", "activo"],
@@ -142,6 +142,39 @@ ESQUEMA_CERTIFICACIONES = {
                 "usuario_id": {"bsonType": "objectId"},
                 "nombre": {"bsonType": "string"},
                 "fecha": {"bsonType": "date"},
+            },
+        },
+        "firmas": {
+            "bsonType": ["object", "null"],
+            "description": "Aprobaciones de los 3 firmantes designados (corr, gd, secop)",
+            "properties": {
+                "corr":  {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                    },
+                },
+                "gd":    {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                    },
+                },
+                "secop": {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                    },
+                },
             },
         },
         "hash_verificacion": {"bsonType": ["string", "null"]},

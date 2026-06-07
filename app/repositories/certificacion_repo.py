@@ -1,6 +1,10 @@
+from datetime import datetime, timezone
+
 from bson import ObjectId
 
 from app.db.mongo import obtener_coleccion
+
+TIPOS_FIRMA = ("corr", "gd", "secop")
 
 
 class CertificacionRepositorio:
@@ -34,3 +38,41 @@ class CertificacionRepositorio:
             {"_id": ObjectId(id_cert)},
             {"$set": campos},
         )
+
+    def registrar_firma(
+        self,
+        usuario_id: str,
+        nombre_usuario: str,
+        año: int,
+        mes: int,
+        tipo: str,
+        firmante_id: str,
+        firmante_nombre: str,
+    ) -> bool:
+        ahora = datetime.now(timezone.utc)
+        self.coleccion.update_one(
+            {"usuario_id": ObjectId(usuario_id), "año": año, "mes": mes},
+            {
+                "$set": {
+                    f"firmas.{tipo}": {
+                        "firmante_id": ObjectId(firmante_id),
+                        "firmante_nombre": firmante_nombre,
+                        "fecha": ahora,
+                    }
+                },
+                "$setOnInsert": {
+                    "nombre_usuario": nombre_usuario,
+                    "estado": "pendiente",
+                    "creado_en": ahora,
+                },
+            },
+            upsert=True,
+        )
+        return True
+
+    def revocar_firma(self, usuario_id: str, año: int, mes: int, tipo: str) -> bool:
+        self.coleccion.update_one(
+            {"usuario_id": ObjectId(usuario_id), "año": año, "mes": mes},
+            {"$unset": {f"firmas.{tipo}": ""}},
+        )
+        return True

@@ -93,15 +93,14 @@ class MongoBootstrapService:
                 validationLevel="moderate",
                 validationAction="error",
             )
+            print(f"  Colección '{nombre}' creada con validador.")
             return
 
-        try:
-            self.db.command(
-                "collMod",
-                nombre,
-                validator={"$jsonSchema": esquema},
-                validationLevel="moderate",
-                validationAction="error",
-            )
-        except OperationFailure:
-            pass
+        self.db.command(
+            "collMod",
+            nombre,
+            validator={"$jsonSchema": esquema},
+            validationLevel="moderate",
+            validationAction="error",
+        )
+        print(f"  Validador de '{nombre}' actualizado.")

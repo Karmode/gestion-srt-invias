@@ -85,15 +85,16 @@ class CertificacionService:
         return self.repo.buscar_por_hash(codigo_normalizado)
 
     def obtener_empleados_para_certificar(self) -> List[Dict]:
-        """Lista todos los colaboradores con su estado de correspondencia
-        y el estado de su certificación en el período actual."""
+        """Lista todos los colaboradores con correspondencia, estado de firmas y contrato activo."""
         from app.services.correspondencia_service import CorrespondenciaService
+        from app.repositories.usuario_repo import UsuarioRepositorio
 
         corr_service = CorrespondenciaService()
+        usuario_repo = UsuarioRepositorio()
         año, mes = self.periodo_certificable()
 
         estado_formatos = corr_service.obtener_estado_formatos()
-
+        todos_usuarios = {str(u["_id"]): u for u in usuario_repo.listar()}
         certs_mes = {
             str(c["usuario_id"]): c
             for c in self.repo.listar_por_periodo(año, mes)
@@ -102,16 +103,132 @@ class CertificacionService:
         resultados = []
         for estado in estado_formatos:
             uid = estado["usuario_id"]
+            cert = certs_mes.get(uid)
+            firmas = cert.get("firmas", {}) if cert else {}
+
+            usuario_data = todos_usuarios.get(uid, {})
+            contratos = usuario_data.get("contratos") or []
+            contrato = self._contrato_vigente(contratos)
+            tiene_contrato = bool(contrato.get("numero"))
+
             resultados.append({
                 "usuario_id": uid,
                 "nombre": estado["responsable"],
                 "cantidad_pendientes": estado["cantidad_pendientes"],
                 "cantidad_vencidas": estado["cantidad_vencidas"],
                 "al_dia": estado["cantidad_vencidas"] == 0,
-                "certificacion": certs_mes.get(uid),
+                "certificacion": cert,
+                "firmas": firmas,
+                "tiene_contrato": tiene_contrato,
+                "numero_contrato": contrato.get("numero"),
             })
 
         return resultados
+
+    # ──────────────────────────────────────────────────────────────
+    # Configuración de firmantes designados
+    # ──────────────────────────────────────────────────────────────
+
+    def obtener_firmantes_config(self) -> Dict:
+        """Devuelve los 3 firmantes designados desde opciones_configuracion."""
+        from app.repositories.opciones_repo import ConfiguracionRepositorio
+        doc = ConfiguracionRepositorio().obtener("firmantes_certificacion")
+        vacio = {"corr": None, "gd": None, "secop": None}
+        return doc.get("firmantes", vacio) if doc else vacio
+
+    def guardar_firmante(self, tipo: str, usuario_id: Optional[str], nombre: Optional[str]) -> bool:
+        """Admin designa quién es el firmante de un tipo dado.
+        Sincroniza el permiso certificacion.firmar_<tipo> en permisos_extra del usuario.
+        """
+        from app.repositories.opciones_repo import ConfiguracionRepositorio
+        from app.repositories.usuario_repo import UsuarioRepositorio
+
+        perm = f"certificacion.firmar_{tipo}"
+        config = self.obtener_firmantes_config()
+        repo_conf = ConfiguracionRepositorio()
+        repo_usr = UsuarioRepositorio()
+
+        old = config.get(tipo) or {}
+        old_uid = str(old.get("usuario_id", "")) if old and old.get("usuario_id") else None
+
+        # Remover permiso del firmante anterior si cambia
+        if old_uid and old_uid != usuario_id:
+            old_user = repo_usr.buscar_por_id(old_uid)
+            if old_user:
+                permisos_limpios = [p for p in old_user.get("permisos_extra", []) if p != perm]
+                repo_usr.actualizar(old_uid, {"permisos_extra": permisos_limpios})
+
+        # Asignar permiso al nuevo firmante
+        if usuario_id:
+            new_user = repo_usr.buscar_por_id(usuario_id)
+            if new_user:
+                permisos_new = list(set(new_user.get("permisos_extra", []) + [perm]))
+                repo_usr.actualizar(usuario_id, {"permisos_extra": permisos_new})
+
+        valor = {"usuario_id": usuario_id, "nombre": nombre} if usuario_id else None
+        repo_conf.upsert(
+            "firmantes_certificacion",
+            {
+                "categoria": "firmantes_certificacion",
+                f"firmantes.{tipo}": valor,
+            },
+        )
+        return True
+
+    # ──────────────────────────────────────────────────────────────
+    # Registro de firmas por período
+    # ──────────────────────────────────────────────────────────────
+
+    def registrar_firma(
+        self,
+        empleado_id: str,
+        empleado_nombre: str,
+        tipo: str,
+        firmante_id: str,
+        firmante_nombre: str,
+    ) -> bool:
+        """Registra la aprobación del firmante. Si con esta firma se completan
+        las 3 y el contratista cumple requisitos, se certifica automáticamente."""
+        año, mes = self.periodo_certificable()
+        self.repo.registrar_firma(
+            empleado_id, empleado_nombre, año, mes, tipo, firmante_id, firmante_nombre
+        )
+        self._intentar_auto_certificar(
+            empleado_id, empleado_nombre, firmante_id, firmante_nombre, año, mes
+        )
+        return True
+
+    def _intentar_auto_certificar(
+        self,
+        empleado_id: str,
+        empleado_nombre: str,
+        firmante_id: str,
+        firmante_nombre: str,
+        año: int,
+        mes: int,
+    ) -> None:
+        """Auto-certifica cuando hay 3 firmas + contrato activo (sin importar estado de correspondencia)."""
+        from app.repositories.usuario_repo import UsuarioRepositorio
+
+        cert = self.repo.buscar_por_usuario_periodo(empleado_id, año, mes)
+        if not cert or cert.get("estado") == "aprobado":
+            return
+
+        firmas = cert.get("firmas", {})
+        if not all(firmas.get(t) for t in ("corr", "gd", "secop")):
+            return
+
+        usuario = UsuarioRepositorio().buscar_por_id(empleado_id)
+        contratos = (usuario.get("contratos") or []) if usuario else []
+        if not self._contrato_vigente(contratos).get("numero"):
+            return
+
+        self.certificar_empleado(empleado_id, empleado_nombre, firmante_id, firmante_nombre)
+
+    def revocar_firma(self, empleado_id: str, tipo: str) -> bool:
+        """Revoca una firma previamente registrada."""
+        año, mes = self.periodo_certificable()
+        return self.repo.revocar_firma(empleado_id, año, mes, tipo)
 
     # ──────────────────────────────────────────────────────────────
     # Acción de certificar
@@ -125,12 +242,19 @@ class CertificacionService:
         supervisor_nombre: str,
         observaciones: str = "",
     ) -> bool:
-        """El supervisor certifica que un colaborador está al día.
-        Si ya existe una certificación para el período, la sobreescribe."""
+        """Certifica al colaborador para el período actual.
+        Si ya existe un hash previo, lo preserva para que los PDFs ya entregados
+        sigan siendo verificables con el código original."""
         año, mes = self.periodo_certificable()
         ahora_utc = datetime.now(timezone.utc)
-        hash_code = self._generar_hash(
-            usuario_id_empleado, año, mes, supervisor_id, ahora_utc.isoformat()
+
+        cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id_empleado, año, mes)
+
+        # Preservar el hash si ya existe — un PDF descargado debe seguir siendo válido
+        hash_code = (
+            cert_existente["hash_verificacion"]
+            if cert_existente and cert_existente.get("hash_verificacion")
+            else self._generar_hash(usuario_id_empleado, año, mes, supervisor_id, ahora_utc.isoformat())
         )
 
         campos = {
@@ -145,10 +269,6 @@ class CertificacionService:
                 "fecha": ahora_utc,
             },
         }
-
-        cert_existente = self.repo.buscar_por_usuario_periodo(
-            usuario_id_empleado, año, mes
-        )
 
         if cert_existente:
             self.repo.actualizar(str(cert_existente["_id"]), campos)
