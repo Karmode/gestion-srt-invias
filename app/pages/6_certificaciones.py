@@ -4,12 +4,10 @@ Cada usuario ve el estado de su certificación del mes actual
 y el historial de certificados anteriores con opción de descarga PDF.
 """
 
-import base64
-
 import streamlit as st
-import streamlit.components.v1 as components
 
 from app.core.sesion import obtener_sesion
+from app.core.ui_certificado import render_preview_cert
 from app.core.zona_horaria import formato_fecha_bogota
 from app.services.certificacion_service import CertificacionService, MESES_ES
 
@@ -27,36 +25,14 @@ def _dialog_preview_cert(servicio: CertificacionService) -> None:
         return
 
     pdf_bytes = servicio.generar_pdf(data["cert"])
-    b64 = base64.b64encode(pdf_bytes).decode()
     mes_nombre = data["mes_nombre"]
     año = data["año"]
 
-    st.caption(f"{mes_nombre} {año}")
-    components.html(f"""<!DOCTYPE html>
-<html><body style="margin:0;padding:0;overflow:hidden;">
-<script>
-(function() {{
-    var b64 = '{b64}';
-    var raw = atob(b64);
-    var arr = new Uint8Array(raw.length);
-    for (var i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
-    var blob = new Blob([arr], {{type:'application/pdf'}});
-    var url = URL.createObjectURL(blob);
-    var f = document.createElement('iframe');
-    f.src = url;
-    f.style.cssText = 'width:100%;height:614px;border:1px solid #444;border-radius:4px;display:block;';
-    document.body.appendChild(f);
-}})();
-</script>
-</body></html>""", height=620)
-    st.download_button(
-        "⬇️ Descargar PDF",
-        data=pdf_bytes,
+    render_preview_cert(
+        pdf_bytes=pdf_bytes,
+        caption=f"{mes_nombre} {año}",
         file_name=f"Certificado_correspondencia_{mes_nombre}_{año}.pdf",
-        mime="application/pdf",
-        type="primary",
-        use_container_width=True,
-        key="_dl_preview_user",
+        dl_key="_dl_preview_user",
     )
 
 
