@@ -107,58 +107,6 @@ def _dialog_confirmar_firma_corr(
             st.rerun()
 
 
-# ── Sección de configuración (solo admin) ────────────────────────
-
-def _seccion_config_firmantes(servicio: CertificacionService, sesion: dict) -> None:
-    permisos = sesion.get("permisos", [])
-    if "certificacion.gestionar_firmantes" not in permisos:
-        return
-
-    from app.repositories.usuario_repo import UsuarioRepositorio
-
-    with st.expander("⚙️ Configurar firmantes designados", expanded=False):
-        st.caption(
-            "Designa qué usuario ejerce cada rol de aprobación. "
-            "Al guardar se asigna automáticamente el permiso correspondiente. "
-            "El cambio toma efecto la próxima vez que el firmante inicie sesión."
-        )
-
-        config = servicio.obtener_firmantes_config()
-        usuarios_activos = [u for u in UsuarioRepositorio().listar() if u.get("activo", True)]
-        id_a_nombre = {str(u["_id"]): u["nombre_completo"] for u in usuarios_activos}
-        opciones_lista = ["(ninguno)"] + sorted(id_a_nombre.values())
-        nombre_a_id = {v: k for k, v in id_a_nombre.items()}
-
-        for tipo in TIPOS_FIRMA:
-            _, label_largo, _ = _META_FIRMA[tipo]
-            actual = config.get(tipo) or {}
-            actual_nombre = actual.get("nombre") if actual else None
-            idx_actual = 0
-            if actual_nombre and actual_nombre in opciones_lista:
-                idx_actual = opciones_lista.index(actual_nombre)
-
-            c1, c2 = st.columns([5, 1])
-            with c1:
-                seleccionado = st.selectbox(
-                    f"Firmante · {label_largo}",
-                    options=opciones_lista,
-                    index=idx_actual,
-                    key=f"sel_firmante_{tipo}",
-                )
-            with c2:
-                st.write("")
-                if st.button("Guardar", key=f"btn_firmante_{tipo}", use_container_width=True):
-                    if seleccionado == "(ninguno)":
-                        servicio.guardar_firmante(tipo, None, None)
-                        st.success(f"Firmante de {label_largo} eliminado.")
-                    else:
-                        uid = nombre_a_id.get(seleccionado)
-                        if uid:
-                            servicio.guardar_firmante(tipo, uid, seleccionado)
-                            st.success(f"Firmante de {label_largo}: **{seleccionado}**")
-                    st.rerun()
-
-
 # ── Render principal ─────────────────────────────────────────────
 
 def render(sesion=None):
@@ -213,7 +161,7 @@ def render(sesion=None):
     if es_admin and tipo_mi_firma is None:
         st.info(
             "🛡️ **Administrador** — Vista de solo lectura. "
-            "Configura los firmantes en el panel de abajo. No puedes firmar aprobaciones."
+            "Para configurar los firmantes ve a **Seguimiento de Certificaciones**."
         )
     elif tipo_mi_firma:
         _, label_largo, _ = _META_FIRMA[tipo_mi_firma]
@@ -223,9 +171,6 @@ def render(sesion=None):
             else label_largo
         )
         st.info(f"✍️ **Actuando como:** Firma de {label_largo}  ·  Tienes permiso para: {roles_txt}")
-
-    # Configuración de firmantes (solo admin con gestionar_firmantes)
-    _seccion_config_firmantes(servicio, sesion)
 
     st.divider()
 
