@@ -86,7 +86,8 @@ with tab_contrato:
                     format_func=lambda k: TIPOS_CONTRATO[k],
                 )
             with _nc2:
-                _n_valor = st.number_input("Valor del contrato (COP)", min_value=0, step=100000, format="%d")
+                # _n_valor = st.number_input("Valor del contrato (COP)", min_value=0, step=100000, format="%d")
+                _n_valor = 0  # campo oculto temporalmente
             _nc3, _nc4 = st.columns(2)
             with _nc3:
                 _n_fi = st.date_input("Fecha de inicio", value=None, format="DD/MM/YYYY")

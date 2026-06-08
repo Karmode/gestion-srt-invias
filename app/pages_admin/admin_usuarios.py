@@ -171,7 +171,8 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                         _e_tipo_idx = list(TIPOS_CONTRATO.keys()).index(_c.get("tipo") or "") if (_c.get("tipo") or "") in TIPOS_CONTRATO else 0
                         _e_tipo = st.selectbox("Tipo", options=list(TIPOS_CONTRATO.keys()), format_func=lambda k: TIPOS_CONTRATO[k], index=_e_tipo_idx, key=f"e_tipo_{_c_num}")
                     with _ec2:
-                        _e_valor = st.number_input("Valor (COP)", min_value=0, value=int(_c.get("valor") or 0), step=100000, format="%d", key=f"e_val_{_c_num}")
+                        # _e_valor = st.number_input("Valor (COP)", min_value=0, value=int(_c.get("valor") or 0), step=100000, format="%d", key=f"e_val_{_c_num}")
+                        _e_valor = int(_c.get("valor") or 0)  # campo oculto, preserva valor existente
                     _ec3, _ec4 = st.columns(2)
                     with _ec3:
                         _e_fi = st.date_input("Inicio", value=_fi_ed, format="DD/MM/YYYY", key=f"e_fi_{_c_num}")
@@ -202,7 +203,8 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                 _n_num = st.text_input("Número de contrato *")
                 _n_tipo = st.selectbox("Tipo", options=list(TIPOS_CONTRATO.keys()), format_func=lambda k: TIPOS_CONTRATO[k])
             with _nc2:
-                _n_valor = st.number_input("Valor (COP)", min_value=0, step=100000, format="%d")
+                # _n_valor = st.number_input("Valor (COP)", min_value=0, step=100000, format="%d")
+                _n_valor = 0  # campo oculto temporalmente
             _nc3, _nc4 = st.columns(2)
             with _nc3:
                 _n_fi = st.date_input("Fecha inicio", value=None, format="DD/MM/YYYY")
