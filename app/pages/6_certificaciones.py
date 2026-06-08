@@ -20,7 +20,7 @@ def _badge_estado(estado: str | None) -> str:
 
 @st.dialog("Vista previa del certificado", width="large")
 def _dialog_preview_cert(servicio: CertificacionService) -> None:
-    data = st.session_state.get("_preview_cert_user")
+    data = st.session_state.pop("_preview_cert_user", None)
     if not data:
         return
 

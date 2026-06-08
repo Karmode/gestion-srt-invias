@@ -83,7 +83,7 @@ def _badge_contrato(tiene: bool) -> str:
 
 @st.dialog("Vista previa del certificado", width="large")
 def _dialog_preview(servicio: CertificacionService) -> None:
-    data = st.session_state.get("_preview_cert")
+    data = st.session_state.pop("_preview_cert", None)
     if not data:
         return
 
