@@ -217,6 +217,20 @@ def render(sesion=None):
         st.info("No hay colaboradores con correspondencia registrada.")
         return
 
+    # Recuperación: certificar empleados con 3 firmas + contrato que quedaron en pendiente
+    recobrados = sum(
+        1 for emp in empleados
+        if (
+            emp.get("certificacion")
+            and emp["certificacion"].get("estado") != "aprobado"
+            and all(emp.get("firmas", {}).get(t) for t in TIPOS_FIRMA)
+            and emp.get("tiene_contrato")
+            and servicio.recuperar_auto_cert(emp["usuario_id"], emp["certificacion"])
+        )
+    )
+    if recobrados:
+        empleados = servicio.obtener_empleados_para_certificar()
+
     # Resumen rápido
     total = len(empleados)
     certificados = sum(
