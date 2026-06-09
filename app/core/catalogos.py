@@ -1,3 +1,12 @@
+TIPOS_CONTRATO = {
+    "": "— Sin especificar —",
+    "termino_indefinido": "Término indefinido",
+    "termino_fijo": "Término fijo",
+    "obra_labor": "Obra o labor",
+    "prestacion_servicios": "Prestación de servicios",
+    "aprendizaje": "Aprendizaje",
+}
+
 PERMISOS_BASE = [
     {"clave": "usuario.ver", "descripcion": "Ver usuarios", "modulo": "usuarios"},
     {"clave": "usuario.crear", "descripcion": "Crear usuarios", "modulo": "usuarios"},
@@ -12,13 +21,31 @@ PERMISOS_BASE = [
     {"clave": "correspondencia.ver", "descripcion": "Ver correspondencia", "modulo": "correspondencia"},
     {"clave": "correspondencia.crear", "descripcion": "Crear correspondencia", "modulo": "correspondencia"},
     {"clave": "correspondencia.editar", "descripcion": "Editar correspondencia", "modulo": "correspondencia"},
+    {"clave": "certificacion.ver", "descripcion": "Ver certificaciones propias", "modulo": "certificaciones"},
+    {"clave": "certificacion.aprobar", "descripcion": "Aprobar certificaciones de colaboradores", "modulo": "certificaciones"},
+    {"clave": "certificacion.firmar_corr", "descripcion": "Firmar aprobación de Correspondencia", "modulo": "certificaciones"},
+    {"clave": "certificacion.firmar_gd", "descripcion": "Firmar aprobación de Gestión Documental", "modulo": "certificaciones"},
+    {"clave": "certificacion.firmar_secop", "descripcion": "Firmar aprobación de SECOP II", "modulo": "certificaciones"},
+    {"clave": "certificacion.gestionar_firmantes", "descripcion": "Configurar firmantes designados de certificaciones", "modulo": "certificaciones"},
 ]
+
+_PERMISOS_SOLO_FIRMANTES = {
+    "certificacion.firmar_corr",
+    "certificacion.firmar_gd",
+    "certificacion.firmar_secop",
+}
 
 ROLES_BASE = [
     {
         "nombre": "admin",
         "descripcion": "Administrador del sistema",
-        "permisos": [permiso["clave"] for permiso in PERMISOS_BASE],
+        "permisos": [p["clave"] for p in PERMISOS_BASE if p["clave"] not in _PERMISOS_SOLO_FIRMANTES],
+        "activo": True,
+    },
+    {
+        "nombre": "firmante_certificacion",
+        "descripcion": "Firmante designado para aprobación de certificaciones",
+        "permisos": ["certificacion.ver"],
         "activo": True,
     },
     {
@@ -49,6 +76,17 @@ ROLES_BASE = [
         "nombre": "gestor",
         "descripcion": "Gestor de correspondencia",
         "permisos": ["correspondencia.ver"],
+        "activo": True,
+    },
+    {
+        "nombre": "supervisor",
+        "descripcion": "Supervisor de certificaciones mensuales",
+        "permisos": [
+            "certificacion.ver",
+            "certificacion.aprobar",
+            "correspondencia.ver",
+            "dashboard.ver",
+        ],
         "activo": True,
     },
 ]

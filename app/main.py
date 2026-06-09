@@ -1420,25 +1420,38 @@ else:
     page_correspondencia = st.Page("pages/2_correspondencia.py", title="Correspondencia", icon="📬")
     page_instructivos = st.Page("pages/3_instructivos.py", title="Instructivos", icon="📚")
     
+    permisos_sesion = sesion.get("permisos", [])
+
     # Páginas de administración
     admin_pages = []
-    if "usuario.ver" in sesion.get("permisos", []):
+    if "usuario.ver" in permisos_sesion:
         admin_pages.append(st.Page("pages/1_admin_usuarios.py", title="Usuarios", icon="👥"))
-    if "rol.ver" in sesion.get("permisos", []):
+    if "rol.ver" in permisos_sesion:
         admin_pages.append(st.Page("pages/3_admin_roles.py", title="Roles", icon="🔐"))
-    if "dashboard.ver" in sesion.get("permisos", []):
+    if "dashboard.ver" in permisos_sesion:
         admin_pages.append(st.Page("pages/5_dashboard.py", title="Dashboard", icon="📊"))
-    if "reporte.ver" in sesion.get("permisos", []):
+    if "reporte.ver" in permisos_sesion:
         admin_pages.append(st.Page("pages/4_reportes.py", title="Reportes y Evidencias", icon="📄"))
-    if "admin" in sesion.get("roles", []):
-        admin_pages.append(st.Page("pages/6_gestion_formatos.py", title="Gestión Formatos", icon="📋"))
-    
+# Páginas de Supervisión / Certificaciones
+    _perms_firma = {"certificacion.firmar_corr", "certificacion.firmar_gd", "certificacion.firmar_secop"}
+    es_admin_main = any(r in {"admin", "administrador"} for r in sesion.get("roles", []))
+    es_firmante_o_supervisor = bool(_perms_firma & set(permisos_sesion)) or es_admin_main or "certificacion.aprobar" in permisos_sesion
+
+    supervision_pages = [
+        st.Page("pages/6_certificaciones.py", title="Mis Certificados", icon="🏅"),
+        st.Page("pages/8_verificar_cert.py", title="Verificar Certificado", icon="🔍"),
+    ]
+    if es_firmante_o_supervisor:
+        supervision_pages.append(st.Page("pages/9_firmantes_certif.py", title="Aprobar Certificaciones", icon="✍️"))
+    if "certificacion.aprobar" in permisos_sesion:
+        supervision_pages.append(st.Page("pages/7_admin_certif.py", title="Seguimiento de Certificaciones", icon="📊"))
+
     # Agrupar páginas
     menu_dict = {
         "Principal": [page_dashboard, page_correspondencia, page_perfil, page_instructivos],
+        "Supervisión": supervision_pages,
     }
 
-    
     if admin_pages:
         menu_dict["Administración"] = admin_pages
         
