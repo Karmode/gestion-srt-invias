@@ -4,11 +4,10 @@ Cada usuario ve el estado de su certificación del mes actual
 y el historial de certificados anteriores con opción de descarga PDF.
 """
 
-import base64
-
 import streamlit as st
 
 from app.core.sesion import obtener_sesion
+from app.core.ui_certificado import render_preview_cert
 from app.core.zona_horaria import formato_fecha_bogota
 from app.services.certificacion_service import CertificacionService, MESES_ES
 
@@ -21,29 +20,19 @@ def _badge_estado(estado: str | None) -> str:
 
 @st.dialog("Vista previa del certificado", width="large")
 def _dialog_preview_cert(servicio: CertificacionService) -> None:
-    data = st.session_state.get("_preview_cert_user")
+    data = st.session_state.pop("_preview_cert_user", None)
     if not data:
         return
 
     pdf_bytes = servicio.generar_pdf(data["cert"])
-    b64 = base64.b64encode(pdf_bytes).decode()
     mes_nombre = data["mes_nombre"]
     año = data["año"]
 
-    st.caption(f"{mes_nombre} {año}")
-    st.html(
-        f'<embed src="data:application/pdf;base64,{b64}" '
-        f'type="application/pdf" width="100%" height="640px" '
-        f'style="border:1px solid #444;border-radius:4px;" />'
-    )
-    st.download_button(
-        "⬇️ Descargar PDF",
-        data=pdf_bytes,
+    render_preview_cert(
+        pdf_bytes=pdf_bytes,
+        caption=f"{mes_nombre} {año}",
         file_name=f"Certificado_correspondencia_{mes_nombre}_{año}.pdf",
-        mime="application/pdf",
-        type="primary",
-        use_container_width=True,
-        key="_dl_preview_user",
+        dl_key="_dl_preview_user",
     )
 
 
@@ -69,6 +58,13 @@ def _mostrar_avance(usuario_id: str, cert_actual) -> None:
 
     avance_extra = "" if tiene_contrato else " · ❌ Sin contrato"
     st.markdown(f"##### Avance: {n_firmas}/{total} aprobaciones{avance_extra}")
+
+    if n_firmas == total and not tiene_contrato:
+        st.warning(
+            "✅ Tienes las **3 aprobaciones** del período, pero el certificado no pudo "
+            "generarse porque **no tienes un contrato activo** registrado. "
+            "Ve a **Mi Perfil** y registra tu contrato para completar el proceso."
+        )
 
     col_firmas, col_contrato = st.columns([3, 2])
 
@@ -129,6 +125,12 @@ def render(sesion=None):
 
     cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id)
 
+    # Recuperación: si tiene 3 firmas + contrato pero quedó en "pendiente" por
+    # un fallo previo en auto-cert, certificar ahora y recargar.
+    if cert_actual and cert_actual.get("estado") != "aprobado":
+        if servicio.recuperar_auto_cert(usuario_id, cert_actual):
+            cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id)
+
     if cert_actual and cert_actual.get("estado") == "aprobado":
         aprobado_por = cert_actual.get("aprobado_por", {})
         fecha_corte = aprobado_por.get("fecha")
@@ -142,26 +144,32 @@ def render(sesion=None):
         if cert_actual.get("observaciones"):
             st.info(f"Observación del supervisor: {cert_actual['observaciones']}")
 
-        pdf_bytes = servicio.generar_pdf(cert_actual)
-        nombre_archivo = f"Certificado_correspondencia_{nombre_mes_cert}_{año_cert}.pdf"
-        c_dl, c_prev = st.columns(2)
-        with c_dl:
-            st.download_button(
-                "⬇️ Descargar PDF",
-                data=pdf_bytes,
-                file_name=nombre_archivo,
-                mime="application/pdf",
-                type="primary",
-                use_container_width=True,
-            )
-        with c_prev:
-            if st.button("👁️ Ver certificado", use_container_width=True):
-                st.session_state["_preview_cert_user"] = {
-                    "cert": cert_actual,
-                    "mes_nombre": nombre_mes_cert,
-                    "año": año_cert,
-                }
-                st.rerun()
+        try:
+            pdf_bytes = servicio.generar_pdf(cert_actual)
+        except Exception as e:
+            st.error(f"No se pudo generar el PDF del certificado: {e}")
+            pdf_bytes = None
+
+        if pdf_bytes:
+            nombre_archivo = f"Certificado_correspondencia_{nombre_mes_cert}_{año_cert}.pdf"
+            c_dl, c_prev = st.columns(2)
+            with c_dl:
+                st.download_button(
+                    "⬇️ Descargar PDF",
+                    data=pdf_bytes,
+                    file_name=nombre_archivo,
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True,
+                )
+            with c_prev:
+                if st.button("👁️ Ver certificado", use_container_width=True):
+                    st.session_state["_preview_cert_user"] = {
+                        "cert": cert_actual,
+                        "mes_nombre": nombre_mes_cert,
+                        "año": año_cert,
+                    }
+                    st.rerun()
     else:
         st.warning(f"Tu certificado de **{nombre_mes_cert} {año_cert}** aún está en proceso.")
         _mostrar_avance(usuario_id, cert_actual)

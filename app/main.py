@@ -1444,7 +1444,7 @@ else:
     if es_firmante_o_supervisor:
         supervision_pages.append(st.Page("pages/9_firmantes_certif.py", title="Aprobar Certificaciones", icon="✍️"))
     if "certificacion.aprobar" in permisos_sesion:
-        supervision_pages.append(st.Page("pages/7_admin_certif.py", title="Certificar Colaboradores", icon="✅"))
+        supervision_pages.append(st.Page("pages/7_admin_certif.py", title="Seguimiento de Certificaciones", icon="📊"))
 
     # Agrupar páginas
     menu_dict = {

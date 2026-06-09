@@ -5,11 +5,10 @@ La certificación ocurre automáticamente cuando se registran las 3 firmas
 y el contratista cumple: sin vencidas + contrato activo.
 """
 
-import base64
-
 import streamlit as st
 
 from app.core.sesion import obtener_sesion
+from app.core.ui_certificado import render_preview_cert
 from app.core.zona_horaria import formato_fecha_bogota
 from app.services.certificacion_service import CertificacionService, MESES_ES
 
@@ -21,6 +20,56 @@ _META_FIRMA = {
     "secop": ("F. SECOP", "SECOP II"),
 }
 
+
+# ── Configuración de firmantes (solo admin con gestionar_firmantes) ──
+
+def _seccion_config_firmantes(servicio: CertificacionService, sesion: dict) -> None:
+    if "certificacion.gestionar_firmantes" not in sesion.get("permisos", []):
+        return
+
+    from app.repositories.usuario_repo import UsuarioRepositorio
+
+    with st.expander("⚙️ Configurar firmantes designados", expanded=False):
+        st.caption(
+            "Designa qué usuario ejerce cada rol de aprobación. "
+            "Al guardar se asigna automáticamente el permiso correspondiente. "
+            "El cambio toma efecto la próxima vez que el firmante inicie sesión."
+        )
+
+        config = servicio.obtener_firmantes_config()
+        usuarios_activos = [u for u in UsuarioRepositorio().listar() if u.get("activo", True)]
+        id_a_nombre = {str(u["_id"]): u["nombre_completo"] for u in usuarios_activos}
+        opciones_lista = ["(ninguno)"] + sorted(id_a_nombre.values())
+        nombre_a_id = {v: k for k, v in id_a_nombre.items()}
+
+        for tipo in TIPOS_FIRMA:
+            label_largo = _META_FIRMA[tipo][1]
+            actual = config.get(tipo) or {}
+            actual_nombre = actual.get("nombre") if actual else None
+            idx_actual = 0
+            if actual_nombre and actual_nombre in opciones_lista:
+                idx_actual = opciones_lista.index(actual_nombre)
+
+            c1, c2 = st.columns([5, 1])
+            with c1:
+                seleccionado = st.selectbox(
+                    f"Firmante · {label_largo}",
+                    options=opciones_lista,
+                    index=idx_actual,
+                    key=f"sel_firmante_{tipo}",
+                )
+            with c2:
+                st.write("")
+                if st.button("Guardar", key=f"btn_firmante_{tipo}", use_container_width=True):
+                    if seleccionado == "(ninguno)":
+                        servicio.guardar_firmante(tipo, None, None)
+                        st.success(f"Firmante de {label_largo} eliminado.")
+                    else:
+                        uid = nombre_a_id.get(seleccionado)
+                        if uid:
+                            servicio.guardar_firmante(tipo, uid, seleccionado)
+                            st.success(f"Firmante de {label_largo}: **{seleccionado}**")
+                    st.rerun()
 
 # ── Badges ───────────────────────────────────────────────────────
 
@@ -84,7 +133,7 @@ def _badge_contrato(tiene: bool) -> str:
 
 @st.dialog("Vista previa del certificado", width="large")
 def _dialog_preview(servicio: CertificacionService) -> None:
-    data = st.session_state.get("_preview_cert")
+    data = st.session_state.pop("_preview_cert", None)
     if not data:
         return
 
@@ -94,22 +143,11 @@ def _dialog_preview(servicio: CertificacionService) -> None:
     nombre_mes = data["nombre_mes"]
 
     pdf_bytes = servicio.generar_pdf(cert)
-    b64 = base64.b64encode(pdf_bytes).decode()
-
-    st.caption(f"{nombre} — {nombre_mes} {año}")
-    st.html(
-        f'<embed src="data:application/pdf;base64,{b64}" '
-        f'type="application/pdf" width="100%" height="640px" '
-        f'style="border:1px solid #444;border-radius:4px;" />'
-    )
-    st.download_button(
-        "⬇️ Descargar PDF",
-        data=pdf_bytes,
+    render_preview_cert(
+        pdf_bytes=pdf_bytes,
+        caption=f"{nombre} — {nombre_mes} {año}",
         file_name=f"Certificado_{nombre.replace(' ', '_')}_{nombre_mes}_{año}.pdf",
-        mime="application/pdf",
-        type="primary",
-        use_container_width=True,
-        key="_dl_preview_cert",
+        dl_key="_dl_preview_cert",
     )
 
 
@@ -157,8 +195,8 @@ def render(sesion=None):
         if not firmantes_ok:
             st.warning(
                 "Aún no están configurados los 3 firmantes. "
-                "Sin los 3 firmantes no se podrán aprobar certificaciones. "
-                "Ve al módulo **Aprobaciones de Certificaciones** para configurarlos."
+                "Sin los 3 firmantes no se podrán emitir certificaciones. "
+                "Configúralos en el panel ⚙️ que aparece más abajo."
             )
         for tipo in TIPOS_FIRMA:
             dato = config_firmantes.get(tipo)
@@ -168,6 +206,8 @@ def render(sesion=None):
             else:
                 st.markdown(f"- ❌ **{label_largo}:** *(sin designar)*")
 
+    _seccion_config_firmantes(servicio, sesion)
+
     st.divider()
 
     with st.spinner("Consultando estado de correspondencia…"):
@@ -176,6 +216,20 @@ def render(sesion=None):
     if not empleados:
         st.info("No hay colaboradores con correspondencia registrada.")
         return
+
+    # Recuperación: certificar empleados con 3 firmas + contrato que quedaron en pendiente
+    recobrados = sum(
+        1 for emp in empleados
+        if (
+            emp.get("certificacion")
+            and emp["certificacion"].get("estado") != "aprobado"
+            and all(emp.get("firmas", {}).get(t) for t in TIPOS_FIRMA)
+            and emp.get("tiene_contrato")
+            and servicio.recuperar_auto_cert(emp["usuario_id"], emp["certificacion"])
+        )
+    )
+    if recobrados:
+        empleados = servicio.obtener_empleados_para_certificar()
 
     # Resumen rápido
     total = len(empleados)
