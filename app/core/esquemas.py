@@ -14,6 +14,30 @@ ESQUEMA_USUARIOS = {
     "properties": {
         "usuario": {"bsonType": "string", "minLength": 3},
         "nombre_completo": {"bsonType": "string"},
+        "tipo_documento": {
+            "bsonType": ["string", "null"],
+            "enum": ["CC", "CE", "TI", "PA", "RC", "PEP", "PPT", None],
+            "description": "CC=Cédula de Ciudadanía, CE=Cédula de Extranjería, TI=Tarjeta de Identidad, PA=Pasaporte, RC=Registro Civil, PEP=Permiso Especial de Permanencia, PPT=Permiso por Protección Temporal",
+        },
+        "numero_documento": {"bsonType": ["string", "null"]},
+        "contratos": {
+            "bsonType": ["array", "null"],
+            "items": {
+                "bsonType": "object",
+                "required": ["numero"],
+                "properties": {
+                    "numero": {"bsonType": "string", "minLength": 1},
+                    "tipo": {
+                        "bsonType": ["string", "null"],
+                        "enum": ["termino_indefinido", "termino_fijo", "obra_labor", "prestacion_servicios", "aprendizaje", None],
+                    },
+                    "objeto": {"bsonType": ["string", "null"]},
+                    "valor": {"bsonType": ["int", "long", "double", "null"]},
+                    "fecha_inicio": {"bsonType": ["date", "null"]},
+                    "fecha_fin": {"bsonType": ["date", "null"]},
+                },
+            },
+        },
         "email": {"bsonType": "string"},
         "password_hash": {"bsonType": "string"},
         "activo": {"bsonType": "bool"},
@@ -72,14 +96,14 @@ ESQUEMA_SESIONES = {
 
 ESQUEMA_OPCIONES_CONFIGURACION = {
     "bsonType": "object",
-    "required": ["categoria", "opciones"],
+    "required": ["categoria"],
     "properties": {
         "categoria": {
-            "enum": ["tipo", "grupo", "clase_correspondencia", "estados"],
-            "description": "Define a qué desplegable pertenece",
+            "bsonType": "string",
+            "description": "Categoría del documento de configuración",
         },
         "opciones": {
-            "bsonType": "array",
+            "bsonType": ["array", "null"],
             "items": {
                 "bsonType": "object",
                 "required": ["clave", "etiqueta", "activo"],
@@ -96,6 +120,65 @@ ESQUEMA_OPCIONES_CONFIGURACION = {
                 },
             },
         },
+    },
+}
+
+ESQUEMA_CERTIFICACIONES = {
+    "bsonType": "object",
+    "required": ["usuario_id", "nombre_usuario", "año", "mes", "estado", "creado_en"],
+    "properties": {
+        "usuario_id": {"bsonType": "objectId"},
+        "nombre_usuario": {"bsonType": "string"},
+        "año": {"bsonType": "int"},
+        "mes": {"bsonType": "int"},
+        "estado": {"enum": ["pendiente", "aprobado", "rechazado"]},
+        "fecha_corte": {"bsonType": ["date", "null"]},
+        "snapshot_al_dia": {"bsonType": ["bool", "null"]},
+        "observaciones": {"bsonType": ["string", "null"]},
+        "aprobado_por": {
+            "bsonType": "object",
+            "required": ["usuario_id", "nombre", "fecha"],
+            "properties": {
+                "usuario_id": {"bsonType": "objectId"},
+                "nombre": {"bsonType": "string"},
+                "fecha": {"bsonType": "date"},
+            },
+        },
+        "firmas": {
+            "bsonType": ["object", "null"],
+            "description": "Aprobaciones de los 3 firmantes designados (corr, gd, secop)",
+            "properties": {
+                "corr":  {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                    },
+                },
+                "gd":    {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                    },
+                },
+                "secop": {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                    },
+                },
+            },
+        },
+        "hash_verificacion": {"bsonType": ["string", "null"]},
+        "creado_en": {"bsonType": "date"},
     },
 }
 

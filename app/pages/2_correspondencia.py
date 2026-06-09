@@ -1,6 +1,9 @@
 import streamlit as st
 import pandas as pd
+import json
 from datetime import datetime, timezone, timedelta
+import holidays
+import streamlit.components.v1 as components
 
 from app.core.sesion import obtener_sesion
 from app.services.correspondencia_service import CorrespondenciaService
@@ -125,7 +128,24 @@ def modal_gestion_correspondencia(corr_actual):
     estado_actual = corr_actual.get('estado_actual', 'pendiente')
     
     # 1. Cabecera principal
-    st.markdown(f"## 📄 Radicado: `{numero_radicado}`")
+    radicado_js = json.dumps(str(numero_radicado))
+    components.html(
+        f"""
+        <div style="display:inline-flex;align-items:center;gap:8px;margin:0 0 6px 0;">
+          <span style="font-size:30px;line-height:1;">📄</span>
+          <span style="font-size:38px;font-weight:700;line-height:1;">Radicado:</span>
+          <code style="font-size:36px;padding:2px 8px;border-radius:8px;background:#ECFDF3;color:#15803D;">{numero_radicado}</code>
+          <button
+            id="copy-radicado-btn"
+            onclick='navigator.clipboard.writeText({radicado_js}).then(() => {{ this.innerText = "✅"; setTimeout(() => this.innerText = "📋", 1200); }})'
+            style="border:1px solid #d1d5db;border-radius:8px;width:30px;height:30px;background:#fff;cursor:pointer;font-size:15px;line-height:1;"
+            title="Copiar número de radicado"
+            aria-label="Copiar número de radicado"
+          >📋</button>
+        </div>
+        """,
+        height=48,
+    )
     
     # 2. Calcular días de vencimiento
     fecha_venc_dt = corr_actual.get('fecha_vencimiento')
@@ -198,7 +218,7 @@ def modal_gestion_correspondencia(corr_actual):
         # Acción 1: Editar (Solo Asignación)
         if is_asignacion:
             with col_acc1:
-                with st.popover("✏️ Editar Detalles", use_container_width=True):
+                with st.popover("✏️ Editar Detalles", width="stretch"):
                     st.write("Editar Radicado")
                     with st.form(f"form_editar_{id_seleccionado}"):
                         ed_asunto = st.text_area("Asunto", value=corr_actual.get("asunto", ""))
@@ -228,7 +248,7 @@ def modal_gestion_correspondencia(corr_actual):
 
         if puedo_reasignar:
             with col_acc2 if is_asignacion else col_acc1:
-                with st.popover("👥 Asignar / Reasignar", use_container_width=True):
+                with st.popover("👥 Asignar / Reasignar", width="stretch"):
 
                     st.write("Asignar a un usuario")
                     usuarios = usuario_service.listar_usuarios()
@@ -256,7 +276,7 @@ def modal_gestion_correspondencia(corr_actual):
         if is_gestor and not is_asignacion:
             with col_acc2:
                 tooltip_gestor = "Solo reasignar en caso de que el radicado no te pertenezca, será revisado"
-                with st.popover("👥 Asignar / Reasignar", use_container_width=True):
+                with st.popover("👥 Asignar / Reasignar", width="stretch"):
                     st.markdown(
                         '<p style="color:#FFFFFF; font-weight:bold; font-size:1.05em; margin-bottom:4px;">⚠️ Reasignación restringida</p>',
                         unsafe_allow_html=True
@@ -308,13 +328,13 @@ def modal_gestion_correspondencia(corr_actual):
         if es_responsable or is_asignacion:
 
             with col_acc3 if is_asignacion else (col_acc2 if can_assign else col_acc1):
-                with st.popover("✅ Responder / Cerrar", use_container_width=True):
+                with st.popover("✅ Responder / Tramitar", width="stretch"):
                     if estado_actual not in ["respondido", "archivado", "traslado_competencia"]:
                         st.write("Cargar Respuesta")
                         # Se quita st.form para validar en tiempo real el campo y habilitar/deshabilitar el botón
                         col_resp1, col_resp2 = st.columns(2)
                         with col_resp1:
-                            num_oficio = st.text_input("Número de Oficio *", key=f"num_oficio_{id_seleccionado}")
+                            num_oficio = st.text_input("Numero de radicado Salida *", key=f"num_oficio_{id_seleccionado}")
                         with col_resp2:
                             fecha_resp = st.date_input("Fecha de Respuesta", value=datetime.now(timezone.utc), key=f"fecha_resp_{id_seleccionado}")
                             
@@ -330,7 +350,7 @@ def modal_gestion_correspondencia(corr_actual):
                             else:
                                 st.warning("Formato invalido, no es una respuesta")
                         
-                        if st.button("Marcar como Respondido", disabled=not es_valido, key=f"btn_marcar_resp_{id_seleccionado}"):
+                        if st.button("Responder", type="primary", disabled=not es_valido, key=f"btn_marcar_resp_{id_seleccionado}"):
                             # Convertir fecha de date a datetime
                             f_resp_dt = datetime.combine(fecha_resp, datetime.min.time()).replace(tzinfo=timezone.utc)
                             service.dar_respuesta(
@@ -347,19 +367,18 @@ def modal_gestion_correspondencia(corr_actual):
                     
                     if estado_actual not in ["archivado", "traslado_competencia"]:
                         st.markdown('Archivar Radicado <span title="Solo archivar radicados que no necesiten respuesta y se encuentren debidamente en una Carpeta de Archivados o Archivo en AZ, de lo contrario contará como abierto y generará reporte de retraso (Se realiza revisión semanal de archivados)">ℹ️</span>', unsafe_allow_html=True)
-                        with st.form(f"form_archivar_{id_seleccionado}"):
-                            comentario_arch = st.text_input("Comentario (Opcional)", value="Cierre del caso")
-                            if st.form_submit_button("Archivar", type="primary"):
-                                service.archivar(
-                                    id_seleccionado,
-                                    nombre_usuario_actual,
-                                    comentario_arch,
-                                    usuario_ejecutor_id=id_usuario_actual
-                                )
-                                st.success("Archivado")
-                                st.rerun()
+                        comentario_arch = st.text_input("Comentario *", value="", key=f"comentario_arch_{id_seleccionado}")
+                        if st.button("Archivar", type="primary", disabled=not bool(comentario_arch.strip()), key=f"btn_archivar_{id_seleccionado}"):
+                            service.archivar(
+                                id_seleccionado,
+                                nombre_usuario_actual,
+                                comentario_arch,
+                                usuario_ejecutor_id=id_usuario_actual
+                            )
+                            st.success("Archivado")
+                            st.rerun()
                                 
-                    if estado_actual not in ["archivado", "traslado_competencia"]:
+                    if estado_actual not in ["archivado", "traslado_competencia"] and (is_admin or is_asignacion or is_coordinador or is_lider):
                         st.write("Traslado por Competencia")
                         with st.form(f"form_traslado_comp_{id_seleccionado}"):
                             comentario_tc = st.text_input("Comentario", value="No es competencia de la entidad")
@@ -456,30 +475,48 @@ if is_asignacion:
         with st.container(border=True):
             col1, col2 = st.columns(2)
             with col1:
-                raw_radicado = st.text_input(
-                    "Número de Radicado *", 
-                    key=f"form_numero_radicado_{form_key}", 
-                    on_change=on_radicado_change
+                PATRON_RADICADO = (
+                    r"^\d{4}[A-Za-z]-"
+                    r"(VANT|VATL|VBOG|VBOL|VBOY|VCAL|VCAQ|VCAS|VCAU|VCES|VCHO|VCOR|VCUN|"
+                    r"VGUA|VHUI|VMAG|VMET|VNAR|VNSA|VOCA|VPUT|VQUI|VRIS|VSAN|VSUC|VTOL|"
+                    r"VUVRAZ|VUVR|VVAL)"
+                    r"-[A-Za-z0-9]+$"
                 )
-                
-                # Sanitizar el valor para almacenamiento e indicador de existencia
+
+                raw_radicado = st.text_input(
+                    "Número de Radicado *",
+                    key=f"form_numero_radicado_{form_key}",
+                    on_change=on_radicado_change,
+                    placeholder="Ej: 2026E-VUVRAZ-051829"
+                )
+
                 numero_radicado = raw_radicado.replace(" ", "").upper()
-                
-                radicado_valido = True
-                if raw_radicado:
-                    # Validar caracteres permitidos
-                    if not re.match(r"^[A-Za-z0-9\-_.]+$", raw_radicado.replace(" ", "")):
-                        st.error("❌ **Error de formato:** Solo se permiten letras, números, guiones (`-`), guiones bajos (`_`) y puntos (`.`).")
-                        radicado_valido = False
-                    
-                    # Alerta si contiene espacios
-                    if " " in raw_radicado:
-                        st.warning("⚠️ **Aviso:** Se eliminarán los espacios automáticamente.")
-                    
-                    # Alerta de duplicados (búsqueda insensible a mayúsculas/minúsculas)
-                    if radicado_valido:
-                        if service.existe_radicado(numero_radicado):
-                            st.warning("⚠️ **Aviso:** Este número de radicado ya está registrado en el sistema (incluso con diferente combinación de mayúsculas/minúsculas).")
+
+                if " " in raw_radicado:
+                    st.warning("⚠️ Se eliminarán los espacios automáticamente.")
+
+                radicado_cumple_formato = (
+                    bool(re.match(PATRON_RADICADO, numero_radicado, re.IGNORECASE))
+                    if numero_radicado else True
+                )
+
+                if numero_radicado and service.existe_radicado(numero_radicado):
+                    st.warning("⚠️ Este número de radicado ya está registrado en el sistema.")
+
+                contingencia_radicado = st.checkbox(
+                    "⚠️ Contingencia: omitir validación de formato",
+                    key=f"form_contingencia_radicado_{form_key}",
+                    help="Activar solo si el radicado no sigue el formato estándar (AAAA[L]-CÓDIGO-número). Quedará registrado en el sistema como radicado irregular."
+                )
+
+                radicado_valido = radicado_cumple_formato or contingencia_radicado
+
+                if numero_radicado and not radicado_cumple_formato:
+                    if contingencia_radicado:
+                        st.warning("⚠️ Formato no estándar. Se guardará con marca de **contingencia** en el sistema.")
+                    else:
+                        st.error("❌ Formato inválido. Debe ser: `AAAA[L]-CÓDIGO-número` — Ej: `2026E-VUVRAZ-051829`")
+
                 peticionario = st.text_input("Peticionario *", key=f"form_peticionario_{form_key}")
                 fecha_radicacion = st.date_input("Fecha de Radicación *", key=f"form_fecha_radicacion_{form_key}")
             with col2:
@@ -510,25 +547,27 @@ if is_asignacion:
             if not is_traslado:
                 asignado_a = st.selectbox("Asignar a *", options=list(usuarios_opts.keys()), format_func=lambda x: usuarios_opts[x], key=f"form_asignado_a_{form_key}")
             
-            submit_btn = st.button("Crear Correspondencia", type="primary", use_container_width=True)
+            submit_btn = st.button("Crear Correspondencia", type="primary", width="stretch")
             
             if submit_btn:
-                # Usar los valores de session_state o variables locales
                 if not numero_radicado or not asunto or not peticionario or not tipo:
                     st.error("Los campos marcados con * son obligatorios. Asegúrese de que el tipo de correspondencia esté definido.")
-                elif not re.match(r"^[A-Z0-9\-_.]+$", numero_radicado):
-                    st.error("❌ **Error de formato:** El número de radicado contiene caracteres no válidos. Solo se permiten letras, números, guiones (`-`), guiones bajos (`_`) y puntos (`.`).")
+                elif not radicado_valido:
+                    st.error("❌ El número de radicado no cumple el formato estándar. Activa la Contingencia si es un caso excepcional.")
                 else:
-                    # Función para limpiar el formulario (reseteando el key de los widgets)
                     def limpiar_formulario():
                         st.session_state["form_key_idx"] = st.session_state.get("form_key_idx", 0) + 1
                         st.session_state.pop("inicio_creacion_radicado", None)
 
-                    # Calcular tiempo de diligenciamiento
                     tiempo_final = datetime.now(timezone.utc)
                     inicio = st.session_state.get("inicio_creacion_radicado", tiempo_final)
                     duracion_seg = (tiempo_final - inicio).total_seconds()
-                    
+
+                    metadatos = {"tiempo_creacion_seg": round(duracion_seg, 2)}
+                    if contingencia_radicado and not radicado_cumple_formato:
+                        metadatos["radicado_contingencia"] = True
+                        metadatos["radicado_contingencia_usuario"] = nombre_usuario_actual
+
                     datos = {
                         "numero_radicado": numero_radicado,
                         "asunto": asunto,
@@ -538,9 +577,7 @@ if is_asignacion:
                         "grupo": grupo,
                         "clase": clase,
                         "observaciones_generales": observaciones,
-                        "metadatos": {
-                            "tiempo_creacion_seg": round(duracion_seg, 2)
-                        }
+                        "metadatos": metadatos
                     }
                     try:
                         id_nuevo = service.crear_correspondencia(datos, nombre_usuario_actual, id_usuario_actual)
@@ -582,7 +619,7 @@ with tab_gestion:
     with col_header1:
         st.subheader("Listado de Correspondencia")
     with col_header2:
-        if st.button("🔄 Actualizar Datos", use_container_width=True, help="Recarga la lista de correspondencia"):
+        if st.button("🔄 Actualizar Datos", width="stretch", help="Recarga la lista de correspondencia"):
             st.rerun()
 
     
@@ -663,38 +700,6 @@ with tab_gestion:
             help="Si se marca, solo verás la correspondencia donde tú eres el responsable."
         )
     
-    # --- Botón de Herramientas (Cargue Masivo) ---
-    col_tools, _ = st.columns([1, 3])
-    with col_tools:
-        with st.popover("🛠️ Herramientas", use_container_width=True):
-            st.markdown(
-                '<p style="color:#FFFFFF; font-size:1.05em; font-weight:bold; margin-bottom:6px;">📥 Cargue Masivo de Respuestas</p>',
-                unsafe_allow_html=True
-            )
-            st.markdown(
-                '• <a href="https://invias-my.sharepoint.com/:x:/g/personal/srti_invias_gov_co/IQAe8YhYctV2QIJ07mIXCt0dAZ3X5DSmKKTEboUTE4X-5Tw?e=AA7iIW" '
-                'target="_blank" style="color:#1D6F42; font-weight:bold; text-decoration:underline; font-size:0.97em;">'
-                '📗 Descargar formato de Cargue Masivo de Respuestas</a>',
-                unsafe_allow_html=True
-            )
-            st.markdown('<hr style="border-color: rgba(255,255,255,0.2); margin: 10px 0;" />', unsafe_allow_html=True)
-            st.markdown(
-                '<p style="color:#FFFFFF; font-size:0.95em; margin-bottom:4px;">• <b>Cargar formato diligenciado:</b></p>',
-                unsafe_allow_html=True
-            )
-            st.file_uploader(
-                "Seleccionar archivo",
-                type=["xlsx"],
-                disabled=True,
-                key="uploader_masivo_disabled",
-                help="Solo se permite el archivo con el nombre exacto del formato descargado.",
-                label_visibility="collapsed"
-            )
-            st.markdown(
-                '<p style="color:rgba(255,255,255,0.6); font-size:0.82em; margin-top:4px;">⏳ Trabajo en proceso</p>',
-                unsafe_allow_html=True
-            )
-
     st.divider()
 
     # --- Estilo CSS para forzar el centrado de cabeceras ---
@@ -704,10 +709,14 @@ with tab_gestion:
             [data-testid="stDataFrame"] div[class*="StyledDataGridHeaderCell"] {
                 justify-content: center !important;
                 text-align: center !important;
+                border-right: 1px solid rgba(255,255,255,0.16) !important;
+                border-bottom: 1px solid rgba(255,255,255,0.20) !important;
             }
             [data-testid="stDataFrame"] div[role="columnheader"] > div {
                 justify-content: center !important;
                 text-align: center !important;
+                border-right: 1px solid rgba(255,255,255,0.16) !important;
+                border-bottom: 1px solid rgba(255,255,255,0.20) !important;
             }
             /* Refuerzo para el texto dentro de la cabecera */
             [data-testid="stDataFrame"] div[role="columnheader"] span {
@@ -724,7 +733,8 @@ with tab_gestion:
         
     page_size = 50
 
-    current_page = st.session_state["page_correspondencia"]
+    current_page = max(1, st.session_state["page_correspondencia"])
+    st.session_state["page_correspondencia"] = current_page
     skip = (current_page - 1) * page_size
     
     datos_corr, total_docs = cargar_datos(skip=skip, limit=page_size, filtros=filtros)
@@ -775,16 +785,38 @@ with tab_gestion:
                     fecha_venc_utc = fecha_venc_dt.astimezone(timezone.utc)
                     colombia_tz = timezone(timedelta(hours=-5))
                     hoy = datetime.now(colombia_tz)
-                    dias_restantes = (fecha_venc_utc.date() - hoy.date()).days
-                    dias_restantes_val = dias_restantes
-                    if dias_restantes < 0:
-                        tiempo_restante = f"🛑 {-dias_restantes} d. atraso"
-                    elif dias_restantes == 0:
+                    dias_calendario = (fecha_venc_utc.date() - hoy.date()).days
+                    dias_restantes_val = dias_calendario
+                    
+                    if dias_calendario < 0:
+                        inicio = fecha_venc_utc.date()
+                        fin = hoy.date()
+                        dias_habiles = 0
+                        actual = inicio + timedelta(days=1)
+                        co_holidays = holidays.CO()
+                        while actual <= fin:
+                            if actual.weekday() < 5 and actual not in co_holidays:
+                                dias_habiles += 1
+                            actual += timedelta(days=1)
+                        tiempo_restante = f"🛑 {dias_habiles} d. atraso"
+                        dias_restantes_val = -dias_habiles
+                    elif dias_calendario == 0:
                         tiempo_restante = "⚠️ Vence hoy"
-                    elif dias_restantes <= 5:
-                        tiempo_restante = f"⚠️ {dias_restantes} d. restantes"
-                    else:
-                        tiempo_restante = f"⏳ {dias_restantes} d. restantes"
+                    elif dias_calendario > 0:
+                        inicio = hoy.date()
+                        fin = fecha_venc_utc.date()
+                        dias_habiles = 0
+                        actual = inicio + timedelta(days=1)
+                        co_holidays = holidays.CO()
+                        while actual <= fin:
+                            if actual.weekday() < 5 and actual not in co_holidays:
+                                dias_habiles += 1
+                            actual += timedelta(days=1)
+                        if dias_habiles <= 5:
+                            tiempo_restante = f"⚠️ {dias_habiles} d. restantes"
+                        else:
+                            tiempo_restante = f"⏳ {dias_habiles} d. restantes"
+                        dias_restantes_val = dias_habiles
             elif not fecha_venc_dt and not es_finalizado:
                 tiempo_restante = "N/A"
 
@@ -825,15 +857,31 @@ with tab_gestion:
         }
 
         # Función para aplicar colores según el tiempo restante y el estado
+        dark_mode = st.session_state.get("dark_mode", False)
+
         def style_rows(row):
-            styles = [""] * len(row)
+            # Base: en modo oscuro pintamos toda la fila oscura; en claro dejamos estilo por defecto.
+            base_style = (
+                "background-color: #22223A; color: #F0F0FF; "
+                "border-right: 1px solid rgba(255,255,255,0.10); "
+                "border-bottom: 1px solid rgba(255,255,255,0.11);"
+            ) if dark_mode else ""
+            styles = [base_style] * len(row)
             
             # --- PALETA DE COLORES TENUES ---
-            ROJO_TENUE = "background-color: #FFEBEE; color: #B71C1C;"
-            NARANJA_TENUE = "background-color: #FFF3E0; color: #E65100;"
-            AMARILLO_TENUE = "background-color: #FFFDE7; color: #F57F17;"
-            VERDE_TENUE = "background-color: #E8F5E9; color: #1B5E20;"
-            GRIS_TENUE = "background-color: #F5F5F5; color: #616161;"
+            if dark_mode:
+                BORDE_DARK = "border-right: 1px solid rgba(255,255,255,0.12); border-bottom: 1px solid rgba(255,255,255,0.12);"
+                ROJO_TENUE = f"background-color: #5A1F24; color: #FFDDE0; font-weight: 600; {BORDE_DARK}"
+                NARANJA_TENUE = f"background-color: #5B3311; color: #FFD8A8; font-weight: 600; {BORDE_DARK}"
+                AMARILLO_TENUE = f"background-color: #4D430F; color: #FFF2A6; font-weight: 600; {BORDE_DARK}"
+                VERDE_TENUE = f"background-color: #1F4A35; color: #D8FFE8; font-weight: 600; {BORDE_DARK}"
+                GRIS_TENUE = f"background-color: #3A3A4F; color: #E2E2F5; font-weight: 600; {BORDE_DARK}"
+            else:
+                ROJO_TENUE = "background-color: #FFEBEE; color: #B71C1C;"
+                NARANJA_TENUE = "background-color: #FFF3E0; color: #E65100;"
+                AMARILLO_TENUE = "background-color: #FFFDE7; color: #F57F17;"
+                VERDE_TENUE = "background-color: #E8F5E9; color: #1B5E20;"
+                GRIS_TENUE = "background-color: #F5F5F5; color: #616161;"
 
             # --- Estilo para columna TIEMPO ---
             dias = row["_dias_num"]
@@ -868,11 +916,19 @@ with tab_gestion:
         # Aplicar el estilo al dataframe (excluyendo _id para visualización pero manteniéndolo en df original para selección)
         df_display = df.drop(columns=["_id"])
         styled_df = df_display.style.apply(style_rows, axis=1)
+        if dark_mode:
+            # Refuerzo visual del encabezado en modo oscuro.
+            styled_df = styled_df.set_table_styles(
+                [
+                    {"selector": "th", "props": [("background-color", "#2C2C4A"), ("color", "#FFFFFF"), ("border-color", "rgba(255,255,255,0.18)")]},
+                    {"selector": "td", "props": [("border-color", "rgba(255,255,255,0.10)")]},
+                ]
+            )
 
         # Renderizar dataframe interactivo
         event = st.dataframe(
             styled_df, 
-            use_container_width=True, 
+            width="stretch", 
             hide_index=True,
             on_select="rerun",
             selection_mode="single-row",

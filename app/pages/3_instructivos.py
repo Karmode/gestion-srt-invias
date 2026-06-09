@@ -1,59 +1,67 @@
 import streamlit as st
-from pathlib import Path
 
-# URLs for resources
-PDF_URL = "https://drive.google.com/file/d/1NXb90nmDl5347ZQeo0MMdN4ID17p8zJn/view?usp=drive_link"
-VIDEO_URL = "https://www.youtube.com/watch?v=rbJHvDWeEvY"
+from app.config import configuracion
 
-def get_drive_embed(url: str) -> str:
-    """Convert a normal Google Drive share link to an embed URL for preview."""
-    import re
-    m = re.search(r"/d/([^/]+)/", url)
-    file_id = m.group(1) if m else ""
-    return f"https://drive.google.com/file/d/{file_id}/preview"
+st.set_page_config(
+    page_title="Instructivos",
+    page_icon="app/assets/invias_fav_ico_3.ico",
+    layout="wide"
+)
 
-# Track which preview is currently active
-if "preview" not in st.session_state:
-    st.session_state.preview = None  # values: "pdf", "video", None
+if "recurso_activo" not in st.session_state:
+    st.session_state.recurso_activo = None
 
-st.set_page_config(page_title="Instructivos", page_icon="app/assets/invias_fav_ico_3.ico", layout="wide")
+
+def _embed_url(share_url: str) -> str:
+    """Convierte URL /view de Google Drive a /preview para embedding en iframe."""
+    return share_url.split("?")[0].replace("/view", "/preview")
+
+
+RECURSOS = {
+    "pdf": {
+        "label": "📄 Instructivo Matriz de correspondencia SRTI",
+        "share_url": configuracion.instructivo_pdf_url,
+        "embed_height": 850,
+    },
+    "video": {
+        "label": "▶️ Capacitación Matriz de correspondencia SRTI",
+        "share_url": configuracion.instructivo_video_url,
+        "embed_height": 540,
+    },
+}
 
 st.title("📚 Instructivos")
 st.caption("Recursos de capacitación y documentación oficial.")
 
-# Layout: left side shows preview, right side holds buttons
-col_preview, col_controls = st.columns([2, 1])
+col_controles, col_vista = st.columns([1, 3])
 
-with col_controls:
-    st.subheader("Acciones")
-    if st.button("📄 Instructivo Matriz de correspondencia SRTI", key="btn_pdf"):
-        st.session_state.preview = "pdf"
-    if st.button("▶️ Capacitación Matriz de correspondencia SRTI", key="btn_video"):
-        st.session_state.preview = "video"
-    
+with col_controles:
+    st.subheader("Recursos")
 
-with col_preview:
-    if st.session_state.preview == "pdf":
-        embed_url = get_drive_embed(PDF_URL)
-        st.subheader("Vista previa del PDF")
-        st.components.v1.html(
-            f"<iframe src='{embed_url}' width='100%' height='800px' style='border:none;'></iframe>",
-            height=800,
-        )
-    elif st.session_state.preview == "video":
-        st.subheader("Capacitación en video")
-        st.video(VIDEO_URL)
+    for key, recurso in RECURSOS.items():
+        if st.button(recurso["label"], width="stretch", key=f"btn_{key}"):
+            st.session_state.recurso_activo = key
+
+    if st.session_state.recurso_activo is not None:
+        st.divider()
+        if st.button("✖ Cerrar vista previa", width="stretch"):
+            st.session_state.recurso_activo = None
+
+with col_vista:
+    activo = st.session_state.recurso_activo
+
+    if activo is None:
+        st.info("Selecciona un recurso del panel izquierdo para visualizarlo aquí.")
+
     else:
-        st.info("Selecciona una opción del panel derecho para visualizar el recurso.")
+        recurso = RECURSOS[activo]
+        share_url = recurso["share_url"]
 
-# Small CSS transition for smoother switches
-st.markdown(
-    """
-    <style>
-    .stApp .css-1v0mbdj {{
-        transition: all 0.4s ease-in-out;
-    }}
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+        st.subheader(recurso["label"])
+
+        if not share_url:
+            st.warning("URL no configurada. Agrega la variable correspondiente en el archivo `.env`.")
+        else:
+            embed_url = _embed_url(share_url)
+            st.iframe(embed_url, height=recurso["embed_height"] + 10)
+            st.link_button("🔗 Abrir en Google Drive", share_url)

@@ -41,7 +41,7 @@ class PDFReportService:
             return 0
             
         dias = 0
-        actual = fecha_inicio_date
+        actual = fecha_inicio_date + timedelta(days=1)
         while actual < fecha_fin_date:
             if actual.weekday() < 5 and actual not in self.co_holidays:
                 dias += 1
@@ -64,12 +64,15 @@ class PDFReportService:
     def _obtener_datos_activos(self) -> list:
         return self.repo.listar({"estado_actual": {"$in": ["pendiente", "en_tramite", "en_revision"]}}, limit=10000)
 
-    def _construir_tabla_resumen(self, df_reporte, col_usuario):
+    def _construir_tabla_resumen(self, df_reporte, col_usuario, col_valor_nombre="Atrasados"):
         if df_reporte.empty:
             return None
         
         resumen = df_reporte[col_usuario].value_counts().reset_index()
-        resumen.columns = ["Usuario Responsable", "Atrasados"]
+        resumen.columns = ["Usuario Responsable", col_valor_nombre]
+        
+        total_valores = resumen[col_valor_nombre].sum()
+        resumen.loc[len(resumen)] = ["Total", total_valores]
         
         data_resumen = [resumen.columns.tolist()] + resumen.astype(str).values.tolist()
         tabla = Table(data_resumen, repeatRows=1)
@@ -80,6 +83,9 @@ class PDFReportService:
             ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
             ("ALIGN", (1, 1), (-1, -1), "CENTER"),
+            ("BACKGROUND", (0, -1), (-1, -1), colors.orange),
+            ("TEXTCOLOR", (0, -1), (-1, -1), colors.white),
+            ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
         ]))
         return tabla
 
@@ -95,7 +101,6 @@ class PDFReportService:
         query = {
             "estado_actual": {"$in": ["pendiente", "en_tramite", "en_revision"]},
             "tipo": {"$regex": "pqrd", "$options": "i"},
-            "fecha_vencimiento": {"$lt": hoy_utc},
             "responsable_actual.nombre": {"$ne": "Gladys Gutierrez Buitrago", "$exists": True}
         }
         
@@ -104,22 +109,25 @@ class PDFReportService:
         
         for doc in datos:
             responsable = doc.get("responsable_actual", {}).get("nombre", "Sin Asignar")
-            f_vencimiento = doc.get("fecha_vencimiento")
-            if not f_vencimiento:
+            
+            if doc.get("respuesta", {}).get("numero_oficio"):
+                continue
+                
+            f_radicacion = doc.get("fecha_radicacion")
+            if not f_radicacion:
                 continue
             
-            if isinstance(f_vencimiento, datetime):
-                if f_vencimiento.tzinfo is None:
-                    f_vencimiento = f_vencimiento.replace(tzinfo=timezone.utc)
-                f_vencimiento_utc = f_vencimiento.astimezone(timezone.utc)
+            if isinstance(f_radicacion, datetime):
+                if f_radicacion.tzinfo is None:
+                    f_radicacion = f_radicacion.replace(tzinfo=timezone.utc)
+                f_radicacion_utc = f_radicacion.astimezone(timezone.utc)
             
-            # Calcular días de atraso en días completos/calendario
-            dias_retraso = (hoy.date() - f_vencimiento_utc.date()).days
-            if dias_retraso > 0:
+            dias_correspondencia = self._calcular_dias_habiles(f_radicacion_utc, hoy_utc)
+            if dias_correspondencia >= 10:
                 filas.append({
                     "NO. RADICADO": doc.get("numero_radicado", "S/N"),
                     "Usuario Responsable": responsable,
-                    "Días sin respuesta": dias_retraso
+                    "Días sin respuesta": dias_correspondencia
                 })
                 
         df_reporte = pd.DataFrame(filas)
@@ -163,16 +171,7 @@ class PDFReportService:
             
             col_index = 2
             for i, fila in enumerate(data_reporte[1:], start=1):
-                try:
-                    dias = int(fila[col_index])
-                    if dias <= 14:
-                        estilos.append(("BACKGROUND", (col_index, i), (col_index, i), HexColor("#C6EFCE")))
-                    elif 15 <= dias <= 20:
-                        estilos.append(("BACKGROUND", (col_index, i), (col_index, i), HexColor("#FFF2CC")))
-                    elif dias > 20:
-                        estilos.append(("BACKGROUND", (col_index, i), (col_index, i), HexColor("#F8CBAD")))
-                except:
-                    pass
+                estilos.append(("BACKGROUND", (col_index, i), (col_index, i), HexColor("#FFCCCC")))
                     
             tabla_reporte.setStyle(TableStyle(estilos))
             elementos.append(tabla_reporte)
@@ -195,7 +194,6 @@ class PDFReportService:
         # Filtro optimizado a nivel de base de datos (MongoDB)
         query = {
             "estado_actual": {"$in": ["pendiente", "en_tramite", "en_revision"]},
-            "fecha_vencimiento": {"$lt": hoy_utc},
             "responsable_actual.nombre": {"$ne": "Gladys Gutierrez Buitrago", "$exists": True}
         }
         
@@ -204,22 +202,25 @@ class PDFReportService:
         
         for doc in datos:
             responsable = doc.get("responsable_actual", {}).get("nombre", "Sin Asignar")
-            f_vencimiento = doc.get("fecha_vencimiento")
-            if not f_vencimiento:
+            
+            if doc.get("respuesta", {}).get("numero_oficio"):
+                continue
+                
+            f_radicacion = doc.get("fecha_radicacion")
+            if not f_radicacion:
                 continue
             
-            if isinstance(f_vencimiento, datetime):
-                if f_vencimiento.tzinfo is None:
-                    f_vencimiento = f_vencimiento.replace(tzinfo=timezone.utc)
-                f_vencimiento_utc = f_vencimiento.astimezone(timezone.utc)
+            if isinstance(f_radicacion, datetime):
+                if f_radicacion.tzinfo is None:
+                    f_radicacion = f_radicacion.replace(tzinfo=timezone.utc)
+                f_radicacion_utc = f_radicacion.astimezone(timezone.utc)
             
-            # Calcular días de atraso en días completos/calendario
-            dias_retraso = (hoy.date() - f_vencimiento_utc.date()).days
-            if dias_retraso > 0:
+            dias_correspondencia = self._calcular_dias_habiles(f_radicacion_utc, hoy_utc)
+            if dias_correspondencia >= 10:
                 filas.append({
                     "No. Radicado": doc.get("numero_radicado", "S/N"),
                     "Usuario Responsable": responsable,
-                    "Días sin respuesta": dias_retraso
+                    "Días sin respuesta": dias_correspondencia
                 })
                 
         df_reporte = pd.DataFrame(filas)
@@ -242,6 +243,111 @@ class PDFReportService:
             elementos.append(Paragraph("No hay radicados activos atrasados.", styles["Normal"]))
         elementos.append(Spacer(1, 30))
         
+        elementos.append(PageBreak())
+        elementos.append(Paragraph("<b>2. Reporte Detallado</b>", styles["Heading2"]))
+        elementos.append(Spacer(1, 10))
+        
+        if df_reporte.empty:
+            elementos.append(Paragraph("No hay datos para el reporte detallado.", styles["Normal"]))
+        else:
+            usuarios = df_reporte["Usuario Responsable"].unique()
+            for usuario in sorted(usuarios):
+                df_usuario = df_reporte[df_reporte["Usuario Responsable"] == usuario]
+                df_usuario = df_usuario.sort_values(by="Días sin respuesta", ascending=False)
+                
+                subtitulo = Paragraph(f"<b>Nombre: {usuario}</b>", styles["Heading3"])
+                
+                data = [df_usuario.columns.tolist()] + df_usuario.astype(str).values.tolist()
+                tabla = Table(data)
+                
+                estilos = [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.orange),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("ALIGN", (2, 1), (2, -1), "CENTER"),
+                ]
+                
+                for i, fila in enumerate(data[1:], start=1):
+                    estilos.append(("BACKGROUND", (2, i), (2, i), HexColor("#FFCCCC")))
+                
+                tabla.setStyle(TableStyle(estilos))
+                
+                bloque = KeepTogether([
+                    subtitulo,
+                    Spacer(1, 10),
+                    tabla,
+                    Spacer(1, 30)
+                ])
+                elementos.append(bloque)
+                
+        pdf = SimpleDocTemplate(buffer, pagesize=letter)
+        pdf.build(elementos, onFirstPage=self._fondo_pdf, onLaterPages=self._fondo_pdf)
+        
+        buffer.seek(0)
+        return buffer
+
+    def generar_pdf_total_sin_tramite(self) -> io.BytesIO:
+        from reportlab.platypus import PageBreak
+        buffer = io.BytesIO()
+        colombia_tz = timezone(timedelta(hours=-5))
+        hoy = datetime.now(colombia_tz)
+        fecha_hoy = hoy.strftime("%Y-%m-%d")
+        
+        hoy_utc = hoy.astimezone(timezone.utc)
+        
+        query = {
+            "estado_actual": {"$in": ["pendiente", "en_tramite", "en_revision"]},
+            "responsable_actual.nombre": {"$ne": "Gladys Gutierrez Buitrago", "$exists": True}
+        }
+        
+        datos = self.repo.listar(query, limit=10000)
+        filas = []
+        
+        for doc in datos:
+            responsable = doc.get("responsable_actual", {}).get("nombre", "Sin Asignar")
+            
+            if doc.get("respuesta", {}).get("numero_oficio"):
+                continue
+                
+            f_radicacion = doc.get("fecha_radicacion")
+            if not f_radicacion:
+                continue
+            
+            if isinstance(f_radicacion, datetime):
+                if f_radicacion.tzinfo is None:
+                    f_radicacion = f_radicacion.replace(tzinfo=timezone.utc)
+                f_radicacion_utc = f_radicacion.astimezone(timezone.utc)
+            
+            dias_correspondencia = self._calcular_dias_habiles(f_radicacion_utc, hoy_utc)
+            # No se filtra >= 10, muestra todos los pendientes
+            filas.append({
+                "No. Radicado": doc.get("numero_radicado", "S/N"),
+                "Usuario Responsable": responsable,
+                "Días sin respuesta": dias_correspondencia
+            })
+                
+        df_reporte = pd.DataFrame(filas)
+        
+        styles = getSampleStyleSheet()
+        elementos = []
+        
+        self._agregar_logo(elementos)
+        
+        titulo = Paragraph(f"<b>Reporte Total sin trámite ({fecha_hoy}) SRTI</b>", styles["Title"])
+        elementos.append(titulo)
+        elementos.append(Spacer(1, 25))
+        
+        elementos.append(Paragraph("<b>1. Resumen</b>", styles["Heading2"]))
+        elementos.append(Spacer(1, 10))
+        tabla_resumen = self._construir_tabla_resumen(df_reporte, "Usuario Responsable", "Pendientes")
+        if tabla_resumen:
+            elementos.append(tabla_resumen)
+        else:
+            elementos.append(Paragraph("No hay radicados activos.", styles["Normal"]))
+        elementos.append(Spacer(1, 30))
+        
+        elementos.append(PageBreak())
         elementos.append(Paragraph("<b>2. Reporte Detallado</b>", styles["Heading2"]))
         elementos.append(Spacer(1, 10))
         
@@ -268,14 +374,12 @@ class PDFReportService:
                 
                 for i, fila in enumerate(data[1:], start=1):
                     try:
-                        dias = int(fila[2])
-                        if 10 <= dias <= 14:
-                            estilos.append(("BACKGROUND", (2, i), (2, i), HexColor("#C6EFCE")))
-                        elif 15 <= dias <= 20:
-                            estilos.append(("BACKGROUND", (2, i), (2, i), HexColor("#FFF2CC")))
-                        elif dias > 20:
-                            estilos.append(("BACKGROUND", (2, i), (2, i), HexColor("#F8CBAD")))
-                    except:
+                        dias = int(float(fila[2]))
+                        if dias >= 10:
+                            estilos.append(("BACKGROUND", (2, i), (2, i), HexColor("#FFCCCC")))
+                        else:
+                            estilos.append(("BACKGROUND", (2, i), (2, i), colors.yellow))
+                    except ValueError:
                         pass
                 
                 tabla.setStyle(TableStyle(estilos))

@@ -83,3 +83,15 @@ class CatalogoService:
                 {"$set": opcion},
                 upsert=True,
             )
+
+        # Configuración inicial de firmantes designados para certificaciones
+        self.coleccion_opciones.update_one(
+            {"categoria": "firmantes_certificacion"},
+            {
+                "$setOnInsert": {
+                    "categoria": "firmantes_certificacion",
+                    "firmantes": {"corr": None, "gd": None, "secop": None},
+                }
+            },
+            upsert=True,
+        )

@@ -32,6 +32,8 @@ class AuthService:
             "email": registro.get("email", ""),
             "roles": registro.get("roles", []),
             "permisos": permisos,
+            "tipo_documento": registro.get("tipo_documento", ""),
+            "numero_documento": registro.get("numero_documento", ""),
         }
         sesion["id_sesion"] = self.sesion_service.abrir_sesion(sesion)
         return sesion, None

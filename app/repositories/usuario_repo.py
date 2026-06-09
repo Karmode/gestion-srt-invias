@@ -17,6 +17,35 @@ class UsuarioRepositorio:
     def buscar_por_id(self, id_usuario: str):
         return self.coleccion.find_one({"_id": ObjectId(id_usuario)})
 
+    def buscar_por_numero_documento(self, numero_documento: str):
+        return self.coleccion.find_one({"numero_documento": numero_documento})
+
+    def buscar_por_numero_contrato(self, numero: str, excluir_id: str = None):
+        query = {"contratos.numero": numero}
+        if excluir_id:
+            query["_id"] = {"$ne": ObjectId(excluir_id)}
+        return self.coleccion.find_one(query)
+
+    def agregar_contrato_a_usuario(self, id_usuario: str, contrato: dict):
+        self.coleccion.update_one(
+            {"_id": ObjectId(id_usuario)},
+            {
+                "$push": {"contratos": contrato},
+                "$set": {"fecha_actualizacion": datetime.now(timezone.utc)},
+            },
+        )
+
+    def editar_contrato_en_usuario(self, id_usuario: str, numero_contrato: str, nuevo_contrato: dict):
+        self.coleccion.update_one(
+            {"_id": ObjectId(id_usuario), "contratos.numero": numero_contrato},
+            {
+                "$set": {
+                    "contratos.$": nuevo_contrato,
+                    "fecha_actualizacion": datetime.now(timezone.utc),
+                }
+            },
+        )
+
     def listar(self):
         return list(self.coleccion.find().sort("usuario", 1))
 

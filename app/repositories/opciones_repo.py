@@ -58,3 +58,21 @@ def obtener_opciones_activas(categoria: str) -> list:
 def limpiar_cache_opciones():
     """Limpia el caché de opciones."""
     obtener_opciones_cache.cache_clear()
+
+
+class ConfiguracionRepositorio:
+    """Repositorio para documentos de configuración arbitraria en opciones_configuracion."""
+
+    def __init__(self) -> None:
+        self.coleccion = obtener_coleccion("opciones_configuracion")
+
+    def obtener(self, categoria: str) -> Optional[dict]:
+        return self.coleccion.find_one({"categoria": categoria})
+
+    def upsert(self, categoria: str, campos: dict) -> None:
+        """Actualiza campos en un doc de configuración; lo crea si no existe."""
+        self.coleccion.update_one(
+            {"categoria": categoria},
+            {"$set": campos},
+            upsert=True,
+        )

@@ -7,6 +7,7 @@ from app.core.esquemas import (
     ESQUEMA_USUARIOS,
     ESQUEMA_OPCIONES_CONFIGURACION,
     ESQUEMA_CORRESPONDENCIA,
+    ESQUEMA_CERTIFICACIONES,
 )
 from app.db.mongo import obtener_base_datos
 
@@ -24,11 +25,18 @@ class MongoBootstrapService:
             "opciones_configuracion", ESQUEMA_OPCIONES_CONFIGURACION
         )
         self._asegurar_coleccion("correspondencia", ESQUEMA_CORRESPONDENCIA)
+        self._asegurar_coleccion("certificaciones", ESQUEMA_CERTIFICACIONES)
 
         self.db["usuarios"].create_index(
             "usuario", unique=True, name="idx_usuarios_usuario_unico"
         )
         self.db["usuarios"].create_index("activo", name="idx_usuarios_activo")
+        self.db["usuarios"].create_index(
+            "contratos.numero",
+            unique=True,
+            sparse=True,
+            name="idx_usuarios_contratos_numero_unico",
+        )
         self.db["usuarios"].create_index("roles", name="idx_usuarios_roles")
         self.db["roles"].create_index(
             "nombre", unique=True, name="idx_roles_nombre_unico"
@@ -62,6 +70,20 @@ class MongoBootstrapService:
         self.db["correspondencia"].create_index(
             "responsable_actual.usuario_id", name="idx_correspondencia_responsable"
         )
+        self.db["certificaciones"].create_index(
+            [("usuario_id", 1), ("año", -1), ("mes", -1)],
+            name="idx_cert_usuario_periodo",
+        )
+        self.db["certificaciones"].create_index(
+            [("año", -1), ("mes", -1)],
+            name="idx_cert_periodo",
+        )
+        self.db["certificaciones"].create_index(
+            "hash_verificacion",
+            unique=True,
+            sparse=True,
+            name="idx_cert_hash_unico",
+        )
 
     def _asegurar_coleccion(self, nombre: str, esquema: dict) -> None:
         if nombre not in self.db.list_collection_names():
@@ -71,15 +93,14 @@ class MongoBootstrapService:
                 validationLevel="moderate",
                 validationAction="error",
             )
+            print(f"  Colección '{nombre}' creada con validador.")
             return
 
-        try:
-            self.db.command(
-                "collMod",
-                nombre,
-                validator={"$jsonSchema": esquema},
-                validationLevel="moderate",
-                validationAction="error",
-            )
-        except OperationFailure:
-            pass
+        self.db.command(
+            "collMod",
+            nombre,
+            validator={"$jsonSchema": esquema},
+            validationLevel="moderate",
+            validationAction="error",
+        )
+        print(f"  Validador de '{nombre}' actualizado.")

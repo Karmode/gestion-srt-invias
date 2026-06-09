@@ -329,3 +329,112 @@ class CorrespondenciaService:
             "recientes": self.repo.contar(query_recientes)
         }
 
+    def obtener_estado_formatos(self) -> List[Dict]:
+        """Obtiene el estado de correspondencia pendiente de todos los responsables activos."""
+        from app.services.usuario_service import UsuarioService
+        from app.core.zona_horaria import utc_a_bogota, ZONA_BOGOTA
+        
+        usuario_service = UsuarioService()
+        
+        # 1. Obtener todos los usuarios activos
+        usuarios = usuario_service.listar_usuarios()
+        usuarios_activos = [u for u in usuarios if u.get("activo", True)]
+        
+        # 2. Obtener todas las correspondencias en estado activo
+        query_activos = {"estado_actual": {"$in": ["pendiente", "en_tramite", "en_revision"]}}
+        # Usamos listar con un límite alto para traer todos los documentos activos
+        correspondencias_activas = self.repo.listar(query_activos, limit=100000)
+        
+        # 3. Agrupar por responsable
+        from collections import defaultdict
+        corr_por_responsable = defaultdict(list)
+        for corr in correspondencias_activas:
+            resp_info = corr.get("responsable_actual")
+            if resp_info and "usuario_id" in resp_info:
+                id_resp = str(resp_info["usuario_id"])
+                corr_por_responsable[id_resp].append(corr)
+                
+        # 4. Determinar fecha actual en Bogotá
+        hoy_colombia = datetime.now(ZONA_BOGOTA)
+        
+        resultados = []
+        for u in usuarios_activos:
+            id_usuario = str(u["_id"])
+            nombre_completo = u.get("nombre_completo") or u.get("usuario")
+            
+            corrs_usuario = corr_por_responsable.get(id_usuario, [])
+            
+            cantidad_pendientes = len(corrs_usuario)
+            cantidad_vencidas = 0
+            cantidad_vencer_fin_mes = 0
+            
+            # Obtener los últimos 3 días hábiles del mes actual
+            ultimo_dia_mes = (hoy_colombia.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+            ultimos_dias_habiles = set()
+            dia_actual = ultimo_dia_mes.date()
+            while len(ultimos_dias_habiles) < 3:
+                if dia_actual.weekday() < 5 and dia_actual not in self.festivos_co:
+                    ultimos_dias_habiles.add(dia_actual)
+                dia_actual -= timedelta(days=1)
+            
+            for corr in corrs_usuario:
+                fecha_venc = corr.get("fecha_vencimiento")
+                if fecha_venc:
+                    fecha_venc_bogota = utc_a_bogota(fecha_venc)
+                    if fecha_venc_bogota.date() < hoy_colombia.date():
+                        cantidad_vencidas += 1
+                    if fecha_venc_bogota.date() in ultimos_dias_habiles:
+                        cantidad_vencer_fin_mes += 1
+                        
+            if cantidad_pendientes == 0:
+                estado_pendiente = "gris"
+            elif cantidad_vencidas > 0:
+                estado_pendiente = "rojo"
+            else:
+                estado_pendiente = "verde"
+                
+            resultados.append({
+                "usuario_id": id_usuario,
+                "responsable": nombre_completo,
+                "estado_pendiente": estado_pendiente,
+                "cantidad_pendientes": cantidad_pendientes,
+                "cantidad_vencidas": cantidad_vencidas,
+                "cantidad_vencer_fin_mes": cantidad_vencer_fin_mes
+            })
+            
+        # Ordenar por nombre del responsable
+        resultados.sort(key=lambda x: x["responsable"].lower())
+        return resultados
+
+    def obtener_correspondencia_del_periodo(self, usuario_id: str, año: int, mes: int) -> dict:
+        """Conteos de correspondencia cuyo vencimiento cae dentro del mes certificado.
+
+        Solo cuenta ítems aún abiertos (pendiente/en_tramite/en_revision) cuya
+        fecha_vencimiento está en el mes (año, mes). Si el mes ya pasó, todos
+        los abiertos de ese mes se consideran vencidos.
+        """
+        from calendar import monthrange
+        from app.core.zona_horaria import ZONA_BOGOTA
+
+        _, ultimo_dia = monthrange(año, mes)
+        inicio = datetime(año, mes, 1, tzinfo=timezone.utc)
+        fin = datetime(año, mes, ultimo_dia, 23, 59, 59, 999999, tzinfo=timezone.utc)
+
+        query = {
+            "responsable_actual.usuario_id": ObjectId(usuario_id),
+            "estado_actual": {"$in": ["pendiente", "en_tramite", "en_revision"]},
+            "fecha_vencimiento": {"$gte": inicio, "$lte": fin},
+        }
+        items = self.repo.listar(query, limit=10000)
+
+        ahora = datetime.now(timezone.utc)
+        referencia = fin if ahora > fin else ahora
+        # PyMongo devuelve datetimes sin tzinfo; comparar en UTC naive
+        referencia_naive = referencia.replace(tzinfo=None)
+        vencidas = sum(
+            1 for i in items
+            if i.get("fecha_vencimiento")
+            and i["fecha_vencimiento"].replace(tzinfo=None) < referencia_naive
+        )
+        return {"pendientes": len(items), "vencidas": vencidas}
+

@@ -23,224 +23,1008 @@ st.set_page_config(
 )
 
 def aplicar_tema():
+    dark_mode = st.session_state.get("dark_mode", False)
     st.markdown("""
         <style>
-        /* ===== Tipografía General ===== */
-        .stApp, .stMarkdown, .stText, p, h1, h2, h3, h4, h5, h6, label, li, 
-        [data-testid="stWidgetLabel"] p, [data-testid="stMarkdownContainer"] p {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
-            color: #FAFAFA !important;
-        }
 
-        /* ===== Fondo Principal (Más profundidad, mezcla de naranjas y cafés vivos) ===== */
+        /* =====================================================
+           BORDE NARANJA GLOBAL SUPERIOR
+        ===================================================== */
+
         .stApp {
-            background: linear-gradient(135deg, #E87A1E 0%, #A65012 50%, #3D1E0A 100%) !important;
-            background-attachment: fixed !important;
-            overflow-x: hidden;
-            z-index: 1;
+
+            border-top: 2px solid #FF8C00;
         }
 
-        /* ===== Geometrías Adaptables Superpuestas ===== */
-        /* Círculo difuso iluminado (blanco pastel / naranja claro) */
-        .stApp::before {
-            content: ""; position: fixed; width: 650px; height: 650px;
-            background: radial-gradient(circle, rgba(255, 230, 180, 0.25) 0%, transparent 60%);
-            top: -150px; left: -150px; border-radius: 50%; z-index: 0;
-            box-shadow: 800px 500px 0 150px rgba(255, 160, 40, 0.15); /* Clon disperso */
-            pointer-events: none;
-        }
+        /* =====================================================
+           SIDEBAR BASE
+        ===================================================== */
 
-        /* Cuadrado redondeado rotado (Naranja fuerte) */
-        .stApp::after {
-            content: ""; position: fixed; width: 450px; height: 450px;
-            background: linear-gradient(135deg, rgba(255, 140, 0, 0.4) 0%, rgba(200, 80, 10, 0.1) 100%);
-            bottom: 5%; right: -100px; 
-            border-radius: 60px; 
-            transform: rotate(35deg);
-            z-index: 0;
-            box-shadow: -800px -300px 0 80px rgba(100, 45, 15, 0.3); /* Clon oscuro a la izquierda */
-            pointer-events: none;
-        }
-
-        /* ===== Estilizar Contenedores y Formularios ===== */
-        div[data-testid="stForm"], div[data-testid="stVerticalBlockBorderWrapper"] {
-            background-color: rgba(35, 20, 12, 0.9) !important; /* Modo oscuro pero con base café/naranja profundo */
-            border: 1px solid rgba(255, 150, 50, 0.3) !important; /* Borde naranja vibrante pero sutil */
-            border-radius: 20px !important;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4), inset 0 0 10px rgba(255, 140, 0, 0.05) !important;
-            backdrop-filter: blur(15px) !important;
-            -webkit-backdrop-filter: blur(15px) !important;
-            position: relative;
-            z-index: 10;
-        }
-
-        /* ===== Sidebar (Café oscuro del contenedor de login) ===== */
         [data-testid="stSidebar"] {
-            background-color: rgba(35, 20, 12, 1) !important; /* Café oscuro */
-            border-right: 1px solid rgba(255, 140, 0, 0.3) !important;
+
+            background:
+
+                radial-gradient(
+                    circle at 90% 8%,
+                    rgba(255,140,0,0.08) 0%,
+                    transparent 18%
+                ),
+
+                linear-gradient(
+                    180deg,
+                    #26160D 0%,
+                    #1A1008 100%
+                ) !important;
+
+            border-right: 1px solid rgba(255,140,0,0.35) !important;
+
+            box-shadow:
+                inset -1px 0 0 rgba(255,140,0,0.10);
+
+            overflow: hidden;
         }
+
+        /* =====================================================
+           HEADER SUPERIOR
+        ===================================================== */
+
         [data-testid="stHeader"] {
-            background-color: rgba(35, 20, 12, 0.8) !important;
-            border-bottom: 2px solid #FF8C00 !important;
+
+            background: rgba(35,20,12,0.96) !important;
+
+            border-bottom: 1px solid rgba(255,140,0,0.55) !important;
+
+            box-shadow:
+                0 1px 0 rgba(255,140,0,0.15);
         }
 
-        /* Navegación lateral */
-        div[data-testid="stSidebarNavItems"] a:hover {
-            background-color: rgba(255, 140, 0, 0.2) !important;
-            color: #FF8C00 !important;
-        }
-        div[data-testid="stSidebarNavItems"] a[aria-current="page"] {
-            background-color: rgba(255, 140, 0, 0.3) !important;
-            border-left: 4px solid #FF8C00 !important;
-        }
-        div[data-testid="stSidebarNavItems"] a[aria-current="page"] span {
-            color: #FF8C00 !important;
-            font-weight: bold !important;
+        /* =====================================================
+           CONTENIDO PRINCIPAL
+        ===================================================== */
+
+        .main .block-container {
+
+            border-top: 1px solid rgba(255,140,0,0.18);
+
+            padding-top: 2rem !important;
         }
 
-        /* ===== Entradas de Datos (Inputs blancos con letra oscura) ===== */
-        div[data-baseweb="input"], div[data-baseweb="select"] > div, .stApp textarea {
-            background-color: #FFFFFF !important;
-            border: 1px solid rgba(255, 140, 0, 0.5) !important; 
-            border-radius: 8px !important;
-        }
-        div[data-baseweb="input"]:focus-within, div[data-baseweb="select"] > div:focus-within, .stApp textarea:focus {
-            border-color: #FF8C00 !important; 
-            box-shadow: 0 0 0 1px #FF8C00 !important;
-            background-color: #FFFFFF !important;
-        }
-        
-        /* Ajuste de color texto interno para selectores y inputs */
-        .stApp input, .stApp textarea, div[data-baseweb="select"] span {
-            color: #3D1E0A !important; /* Café muy oscuro / casi negro */
-            background-color: transparent !important;
-        }
-        
-        /* Listas desplegables y Tooltips (Naranja claro con texto oscuro) */
-        div[data-baseweb="popover"], div[role="listbox"], div[data-testid="stTooltipContent"] {
-            background-color: #FFF3E0 !important;
-            border: 1px solid #FF8C00 !important;
-            color: #000000 !important;
-        }
-        div[data-baseweb="popover"] *, div[role="listbox"] *, div[data-testid="stTooltipContent"] * {
-            color: #000000 !important;
-        }
-        div[role="option"]:hover, li[role="option"]:hover {
-            background-color: #FFE0B2 !important;
+        .main {
+
+            box-shadow:
+                inset 0 1px 0 rgba(255,140,0,0.10);
         }
 
-        /* ===== Todos los Botones (Naranja Oscurecido tirando a rojo) ===== */
-        .stApp button, div[data-testid="stPopover"] > button, div[data-testid="stForm"] button, button[kind="secondary"], button[kind="primary"] {
-            background-color: #BA4A00 !important;
-            color: #FFFFFF !important;
-            border: none !important;
-            border-radius: 8px !important;
-            font-weight: bold !important;
-            transition: all 0.3s ease !important;
-        }
-        .stApp button:hover, div[data-testid="stPopover"] > button:hover, div[data-testid="stForm"] button:hover {
-            background-color: #8C3800 !important;
-            transform: translateY(-2px) !important;
-            box-shadow: 0 8px 20px rgba(186, 74, 0, 0.5) !important;
-            color: #FFFFFF !important;
-            border: none !important;
-        }
-        .stApp button p, .stApp button span:not(.material-symbols-rounded) {
-            color: #FFFFFF !important;
+        /* =====================================================
+           TEXTO GENERAL
+        ===================================================== */
+
+        [data-testid="stSidebar"] * {
+
+            color: #F4F4F4 !important;
         }
 
-        /* ===== Pestañas (Tabs) ===== */
-        button[data-baseweb="tab"] {
-            background-color: rgba(35, 20, 12, 0.9) !important;
-            border: 1px solid rgba(255, 140, 0, 0.3) !important;
-            border-bottom: none !important;
-            border-radius: 8px 8px 0 0 !important;
-            margin-right: 5px !important;
-        }
-        button[data-baseweb="tab"] p {
-            color: #FAFAFA !important;
-            font-weight: bold !important;
-        }
-        button[data-baseweb="tab"][aria-selected="true"] {
-            background-color: #BA4A00 !important;
-            border: 1px solid #BA4A00 !important;
-            border-bottom: none !important;
-        }
-        button[data-baseweb="tab"][aria-selected="true"] p {
-            color: #FFFFFF !important;
+        /* =====================================================
+           CONTENEDOR DEL MENÚ
+           MÁS NARANJA / CÁLIDO
+        ===================================================== */
+
+        div[data-testid="stSidebarNav"] {
+
+            background:
+
+                radial-gradient(
+                    circle at top right,
+                    rgba(255,170,0,0.055) 0%,
+                    transparent 28%
+                ),
+
+                radial-gradient(
+                    circle at bottom left,
+                    rgba(255,140,0,0.040) 0%,
+                    transparent 30%
+                ),
+
+                linear-gradient(
+                    180deg,
+                    rgba(68,32,10,0.96) 0%,
+                    rgba(48,22,8,0.98) 100%
+                ) !important;
+
+            border: 1px solid rgba(255,140,0,0.14);
+
+            border-radius: 16px;
+
+            padding: 8px 7px;
+
+            margin-top: 8px;
+
+            box-shadow:
+                inset 0 0 18px rgba(255,140,0,0.03),
+                0 0 18px rgba(255,140,0,0.025);
+
+            position: relative;
+
+            overflow: hidden;
         }
 
-        /* ===== Diálogos y Popovers (Fondos) ===== */
-        div[data-testid="stDialog"] > div:first-child {
-            background-color: rgba(0, 0, 0, 0.7) !important;
+        /* =====================================================
+           ITEMS MENÚ
+        ===================================================== */
+
+        div[data-testid="stSidebarNav"] ul {
+
+            gap: 0px !important;
+
+            padding-top: 0px !important;
+
+            padding-bottom: 0px !important;
+
+            position: relative;
         }
-        div[role="dialog"], div[data-testid="stPopoverBody"], div[data-baseweb="popover"] > div, div[data-baseweb="modal"] > div {
-            background-color: rgba(35, 20, 12, 1) !important;
-            border: 1px solid #FF8C00 !important;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.8) !important;
-            border-radius: 12px !important;
-        }
-        /* Eliminar contorno interno naranja de los formularios dentro de popovers */
-        div[role="dialog"] div[data-testid="stVerticalBlockBorderWrapper"], 
-        div[data-testid="stPopoverBody"] div[data-testid="stVerticalBlockBorderWrapper"],
-        div[role="dialog"] div[data-testid="stForm"], 
-        div[data-testid="stPopoverBody"] div[data-testid="stForm"] {
-            background-color: transparent !important;
-            border: none !important;
+
+        /* ITEM */
+
+        div[data-testid="stSidebarNav"] a {
+
+            border-radius: 7px !important;
+
+            transition: all 0.12s ease !important;
+
+            background: transparent !important;
+
+            min-height: 27px !important;
+
+            height: 27px !important;
+
+            padding-top: 0px !important;
+            padding-bottom: 0px !important;
+
+            padding-left: 7px !important;
+            padding-right: 6px !important;
+
+            margin-bottom: 1px !important;
+
+            display: flex !important;
+
+            align-items: center !important;
+
+            border-left: none !important;
+
             box-shadow: none !important;
         }
-        /* Restaurar textos de dialogos a blanco ya que los inputs son blancos */
-        div[role="dialog"] p:not([data-testid="stWidgetLabel"] p), div[data-testid="stPopoverBody"] p:not([data-testid="stWidgetLabel"] p), [data-testid="stWidgetLabel"] p, [data-testid="stWidgetLabel"] label {
-            color: #FAFAFA !important;
+
+        /* CONTENEDOR INTERNO */
+
+        div[data-testid="stSidebarNav"] a > div {
+
+            padding-top: 0px !important;
+            padding-bottom: 0px !important;
+
+            gap: 6px !important;
+
+            align-items: center !important;
         }
-        
-        /* Hacer la tarjeta de perfil del menú lateral más compacta */
-        [data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"] {
-            padding: 0px !important;
-            margin-bottom: -25px !important;
+
+        /* ICONOS */
+
+        div[data-testid="stSidebarNav"] a svg {
+
+            width: 13px !important;
+            height: 13px !important;
+
+            min-width: 13px !important;
         }
-        /* Logo completamente estático - sin interacción ni expansión */
-        [data-testid="stSidebar"] .logo-static-container img {
-            pointer-events: none !important;
-            cursor: default !important;
-            user-select: none !important;
-            -webkit-user-drag: none !important;
-            border-radius: 8px !important;
-            width: 100% !important;
-            display: block !important;
-            margin-top: 16px !important;
-            margin-bottom: 8px !important;
+
+        /* =====================================================
+           TEXTO OPCIONES
+        ===================================================== */
+
+        div[data-testid="stSidebarNav"] a span {
+
+            color: #F4F4F4 !important;
+
+            font-weight: 300 !important;
+
+            font-size: 13.5px !important;
+
+            letter-spacing: 0px !important;
+
+            line-height: 1 !important;
+
+            opacity: 0.95 !important;
         }
-        [data-testid="stSidebar"] .logo-static-container a,
-        [data-testid="stSidebar"] .logo-static-container button {
-            pointer-events: none !important;
-            cursor: default !important;
+
+        /* HOVER */
+
+        div[data-testid="stSidebarNav"] a:hover {
+
+            background: rgba(255,255,255,0.03) !important;
+
+            transform: translateX(1px);
         }
-        /* Barra lateral completamente adaptable a la altura de pantalla */
-        [data-testid="stSidebar"] > div:first-child {
-            display: flex !important;
-            flex-direction: column !important;
-            height: 100vh !important;
-            overflow-y: auto !important;
-            overflow-x: hidden !important;
+
+        /* =====================================================
+           ITEM ACTIVO
+        ===================================================== */
+
+        div[data-testid="stSidebarNav"] a[aria-current="page"] {
+
+            background:
+                rgba(255,140,0,0.08) !important;
+
+            border-left: none !important;
+
+            box-shadow: none !important;
         }
-        [data-testid="stSidebar"] [data-testid="stSidebarContent"] {
-            display: flex !important;
-            flex-direction: column !important;
-            flex: 1 !important;
-            overflow-y: auto !important;
-            min-height: 0 !important;
+
+        /* TEXTO ITEM ACTIVO */
+
+        div[data-testid="stSidebarNav"] a[aria-current="page"] span {
+
+            color: #FFFFFF !important;
+
+            font-weight: 400 !important;
         }
-        /* Ocultar el botón de expandir/fullscreen de imágenes en sidebar */
-        [data-testid="stSidebar"] [data-testid="stFullScreenFrame"] > button,
-        [data-testid="stSidebar"] button[title="View fullscreen"],
-        [data-testid="stSidebar"] [data-testid="stImage"] + div button {
-            display: none !important;
+
+        /* =====================================================
+           SOLO TÍTULOS DE SECCIÓN
+        ===================================================== */
+
+        div[data-testid="stSidebarNav"] > div > div > p {
+
+            color: #FF9800 !important;
+
+            font-weight: 700 !important;
+
+            font-size: 12px !important;
+
+            margin-top: 7px !important;
+
+            margin-bottom: 6px !important;
+
+            opacity: 1 !important;
+
+            letter-spacing: 0.3px;
         }
+
+        /* =====================================================
+           SEPARADORES
+        ===================================================== */
+
+        [data-testid="stSidebar"] hr {
+
+            border: none !important;
+
+            border-top: 1px solid rgba(255,140,0,0.10) !important;
+        }
+
+        /* =====================================================
+           TARJETA PERFIL
+        ===================================================== */
+
+        .menu-card-premium {
+
+            background:
+
+                radial-gradient(
+                    circle at top right,
+                    rgba(255,170,0,0.08) 0%,
+                    transparent 40%
+                ),
+
+                linear-gradient(
+                    135deg,
+                    #552A0B 0%,
+                    #442008 50%,
+                    #321606 100%
+                ) !important;
+
+            border: 2px solid #FF9800 !important;
+
+            border-radius: 18px !important;
+
+            box-shadow:
+                0 6px 18px rgba(0,0,0,0.40),
+                inset 0 0 14px rgba(255,170,0,0.03);
+
+            overflow: hidden !important;
+
+            position: relative;
+
+            padding: 18px !important;
+        }
+
+        /* Glow tarjeta */
+
+        .menu-card-premium::before {
+
+            content: "";
+
+            position: absolute;
+
+            top: -60px;
+            right: -60px;
+
+            width: 160px;
+            height: 160px;
+
+            border-radius: 50%;
+
+            background:
+                radial-gradient(
+                    circle,
+                    rgba(255,180,0,0.15) 0%,
+                    transparent 70%
+                );
+
+            pointer-events: none;
+        }
+
+        /* =====================================================
+           BADGES / ROLES
+        ===================================================== */
+
+        [data-testid="stSidebar"] span[style*="border-radius: 12px"] {
+
+            background:
+                linear-gradient(
+                    180deg,
+                    rgba(120,60,0,0.72) 0%,
+                    rgba(90,40,0,0.90) 100%
+                ) !important;
+
+            color: #FFD27A !important;
+
+            border: 1px solid rgba(255,170,0,0.45) !important;
+
+            box-shadow:
+                inset 0 0 8px rgba(255,180,0,0.05),
+                0 0 10px rgba(255,140,0,0.08);
+
+            font-weight: 500 !important;
+
+            padding: 2px 8px !important;
+        }
+
+        /* =====================================================
+           BOTÓN
+        ===================================================== */
+
+        [data-testid="stSidebar"] button {
+
+            background: #FF9800 !important;
+
+            color: white !important;
+
+            border: none !important;
+
+            border-radius: 999px !important;
+
+            font-weight: 500 !important;
+
+            min-height: 40px !important;
+
+            box-shadow:
+                0 5px 14px rgba(255,145,0,0.16);
+        }
+
+        [data-testid="stSidebar"] button:hover {
+
+            background: #F08C00 !important;
+
+            transform: translateY(-1px);
+        }
+
+        /* =====================================================
+           FORMAS DECORATIVAS PREMIUM
+        ===================================================== */
+
+        /* CÍRCULO SUPERIOR DERECHO GRANDE */
+
+        [data-testid="stSidebar"]::before {
+
+            content: "";
+
+            position: fixed;
+
+            top: -140px;
+            right: -140px;
+
+            width: 340px;
+            height: 340px;
+
+            border-radius: 50%;
+
+            border: 38px solid rgba(255,140,0,0.045);
+
+            pointer-events: none;
+        }
+
+        /* ROMBO INFERIOR IZQUIERDO */
+
+        [data-testid="stSidebar"]::after {
+
+            content: "";
+
+            position: fixed;
+
+            bottom: 60px;
+            left: -110px;
+
+            width: 210px;
+            height: 210px;
+
+            transform: rotate(45deg);
+
+            background:
+                linear-gradient(
+                    135deg,
+                    rgba(255,140,0,0.028),
+                    transparent
+                );
+
+            border: 1px solid rgba(255,140,0,0.040);
+
+            border-radius: 34px;
+
+            pointer-events: none;
+        }
+
+        /* POLÍGONO SUPERIOR DERECHO */
+
+        [data-testid="stSidebar"] > div:first-child::before {
+
+            content: "";
+
+            position: absolute;
+
+            top: 120px;
+            right: -55px;
+
+            width: 160px;
+            height: 160px;
+
+            clip-path: polygon(
+                25% 6%,
+                75% 6%,
+                100% 50%,
+                75% 94%,
+                25% 94%,
+                0% 50%
+            );
+
+            background:
+                linear-gradient(
+                    135deg,
+                    rgba(255,170,0,0.028),
+                    transparent
+                );
+
+            border: 1px solid rgba(255,140,0,0.030);
+
+            transform: rotate(14deg);
+
+            pointer-events: none;
+        }
+
+        /* POLÍGONO CENTRAL IZQUIERDO */
+
+        [data-testid="stSidebar"] > div:first-child::after {
+
+            content: "";
+
+            position: absolute;
+
+            left: -60px;
+
+            top: 42%;
+
+            width: 170px;
+            height: 170px;
+
+            clip-path: polygon(
+                50% 0%,
+                100% 38%,
+                82% 100%,
+                18% 100%,
+                0% 38%
+            );
+
+            background:
+                linear-gradient(
+                    135deg,
+                    rgba(255,140,0,0.018),
+                    transparent
+                );
+
+            border: 1px solid rgba(255,140,0,0.022);
+
+            transform: rotate(-10deg);
+
+            pointer-events: none;
+        }
+
+        /* FIGURA CIRCULAR SUPERIOR MENU */
+
+        div[data-testid="stSidebarNav"]::after {
+
+            content: "";
+
+            position: absolute;
+
+            top: -45px;
+            left: -35px;
+
+            width: 130px;
+            height: 130px;
+
+            border-radius: 50%;
+
+            border: 18px solid rgba(255,170,0,0.028);
+
+            pointer-events: none;
+        }
+
+        /* HEXÁGONO CENTRAL MENU */
+
+        div[data-testid="stSidebarNav"]::before {
+
+            content: "";
+
+            position: absolute;
+
+            right: -55px;
+            top: 36%;
+
+            width: 150px;
+            height: 150px;
+
+            background:
+                linear-gradient(
+                    135deg,
+                    rgba(255,140,0,0.022),
+                    transparent
+                );
+
+            clip-path: polygon(
+                25% 6%,
+                75% 6%,
+                100% 50%,
+                75% 94%,
+                25% 94%,
+                0% 50%
+            );
+
+            border: 1px solid rgba(255,140,0,0.028);
+
+            pointer-events: none;
+
+            transform: rotate(12deg);
+        }
+
+        /* TRIÁNGULO SUPERIOR */
+
+        div[data-testid="stSidebarNav"] ul::before {
+
+            content: "";
+
+            position: absolute;
+
+            top: 120px;
+            left: -70px;
+
+            width: 140px;
+            height: 140px;
+
+            background:
+                linear-gradient(
+                    135deg,
+                    rgba(255,180,0,0.018),
+                    transparent
+                );
+
+            clip-path: polygon(
+                50% 0%,
+                0% 100%,
+                100% 100%
+            );
+
+            transform: rotate(-14deg);
+
+            pointer-events: none;
+        }
+
+        /* ROMBO CENTRAL MENU */
+
+        div[data-testid="stSidebarNav"] ul::after {
+
+            content: "";
+
+            position: absolute;
+
+            bottom: 120px;
+            right: -60px;
+
+            width: 120px;
+            height: 120px;
+
+            border-radius: 24px;
+
+            transform: rotate(45deg);
+
+            border: 1px solid rgba(255,140,0,0.022);
+
+            background:
+                linear-gradient(
+                    135deg,
+                    rgba(255,140,0,0.015),
+                    transparent
+                );
+
+            pointer-events: none;
+        }
+
+        /* LINEAS DIFUSAS */
+
+        [data-testid="stSidebarNav"] span::after {
+
+            content: "";
+
+            position: absolute;
+
+            bottom: -180px;
+            right: -130px;
+
+            width: 260px;
+            height: 260px;
+
+            border-radius: 48px;
+
+            border: 1px solid rgba(255,140,0,0.015);
+
+            transform: rotate(45deg);
+
+            pointer-events: none;
+        }
+
+        /* GLOW DIFUSO IZQUIERDO */
+
+        .logo-static-container::before {
+
+            content: "";
+
+            position: absolute;
+
+            left: -90px;
+
+            bottom: -60px;
+
+            width: 200px;
+            height: 200px;
+
+            border-radius: 50%;
+
+            background:
+                radial-gradient(
+                    circle,
+                    rgba(255,160,0,0.035) 0%,
+                    transparent 70%
+                );
+
+            pointer-events: none;
+        }
+
+        /* GLOW SUPERIOR SUAVE */
+
+        .logo-static-container::after {
+
+            content: "";
+
+            position: absolute;
+
+            top: -50px;
+
+            right: -70px;
+
+            width: 160px;
+            height: 160px;
+
+            border-radius: 50%;
+
+            background:
+                radial-gradient(
+                    circle,
+                    rgba(255,180,0,0.025) 0%,
+                    transparent 72%
+                );
+
+            pointer-events: none;
+        }
+
+        /* =====================================================
+           TOGGLE MODO OSCURO EN SIDEBAR
+        ===================================================== */
+
+        [data-testid="stSidebar"] [data-testid="stCheckbox"] {
+            padding: 4px 0 2px 0;
+        }
+
+        [data-testid="stSidebar"] [data-testid="stCheckbox"] label {
+            font-size: 12.5px !important;
+            color: rgba(244,244,244,0.78) !important;
+            letter-spacing: 0.2px;
+            font-weight: 400 !important;
+            gap: 8px;
+            cursor: pointer;
+        }
+
+        [data-testid="stSidebar"] [data-testid="stCheckbox"] label:hover {
+            color: #F4F4F4 !important;
+            opacity: 1 !important;
+        }
+
+        [data-testid="stSidebar"] [data-testid="stCheckbox"] label p {
+            font-size: 12.5px !important;
+            color: rgba(244,244,244,0.78) !important;
+            font-weight: 400 !important;
+        }
+
         </style>
     """, unsafe_allow_html=True)
 
-# aplicar_tema()
+    if dark_mode:
+        st.markdown("""
+            <style>
+            /* =====================================================
+               MODO OSCURO — SOLO ÁREA DE CONTENIDO PRINCIPAL
+               La barra lateral NO se ve afectada gracias a sus
+               propios estilos con !important
+            ===================================================== */
+
+            /* Fondos */
+            .stApp {
+                background-color: #1A1A2A !important;
+            }
+
+            .main, [data-testid="stMain"] {
+                background-color: #1A1A2A !important;
+            }
+
+            .main .block-container,
+            [data-testid="block-container"] {
+                background-color: #1A1A2A !important;
+            }
+
+            /* ── TEXTO NUCLEAR: igual que hace el sidebar con su propio selector ── */
+            :is(.main, [data-testid="stMain"]) * {
+                color: #FFFFFF !important;
+            }
+
+            /* Texto secundario / labels (sobrescriben el blanco puro) */
+            :is(.main, [data-testid="stMain"]) [data-testid="stWidgetLabel"] *,
+            :is(.main, [data-testid="stMain"]) [data-testid="stMetricLabel"] * {
+                color: #D8D8F0 !important;
+            }
+
+            /* Captions */
+            :is(.main, [data-testid="stMain"]) [data-testid="stCaptionContainer"] *,
+            :is(.main, [data-testid="stMain"]) small {
+                color: #B0B0CC !important;
+            }
+
+            /* Métricas — valores grandes en blanco puro y resaltados */
+            :is(.main, [data-testid="stMain"]) [data-testid="stMetricValue"] * {
+                color: #FFFFFF !important;
+                font-weight: 700 !important;
+            }
+
+            /* Contenedores con borde */
+            :is(.main, [data-testid="stMain"]) [data-testid="stVerticalBlockBorderWrapper"] {
+                background-color: #22223A !important;
+                border-color: rgba(255,140,0,0.30) !important;
+            }
+
+            /* Formularios */
+            :is(.main, [data-testid="stMain"]) [data-testid="stForm"] {
+                background-color: #22223A !important;
+                border-color: rgba(255,140,0,0.30) !important;
+            }
+
+            /* Inputs de texto */
+            :is(.main, [data-testid="stMain"]) input[type="text"],
+            :is(.main, [data-testid="stMain"]) input[type="password"],
+            :is(.main, [data-testid="stMain"]) input[type="number"],
+            :is(.main, [data-testid="stMain"]) textarea {
+                background-color: #2C2C4A !important;
+                color: #FFFFFF !important;
+                border-color: rgba(255,255,255,0.25) !important;
+            }
+
+            :is(.main, [data-testid="stMain"]) input::placeholder,
+            :is(.main, [data-testid="stMain"]) textarea::placeholder {
+                color: #7070A0 !important;
+            }
+
+            /* Expanders */
+            :is(.main, [data-testid="stMain"]) [data-testid="stExpander"] {
+                background-color: #22223A !important;
+                border-color: rgba(255,255,255,0.12) !important;
+            }
+
+            :is(.main, [data-testid="stMain"]) [data-testid="stExpander"] summary p,
+            :is(.main, [data-testid="stMain"]) [data-testid="stExpander"] summary span {
+                color: #FFFFFF !important;
+            }
+
+            /* Info / Warning / Error / Success */
+            :is(.main, [data-testid="stMain"]) [data-testid="stAlert"] {
+                background-color: #22223A !important;
+            }
+
+            :is(.main, [data-testid="stMain"]) [data-testid="stAlert"] p,
+            :is(.main, [data-testid="stMain"]) [data-testid="stAlert"] span {
+                color: #FFFFFF !important;
+            }
+
+            /* DataFrames / Data Editor */
+            :is(.main, [data-testid="stMain"], section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) [data-testid="stDataFrameResizable"],
+            :is(.main, [data-testid="stMain"], section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) [data-testid="stDataFrame"],
+            :is(.main, [data-testid="stMain"], section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) [data-testid="stDataEditor"] {
+                background-color: #22223A !important;
+                border: 1px solid rgba(255,140,0,0.38) !important;
+                border-radius: 10px !important;
+                overflow: hidden !important;
+                box-shadow: inset 0 0 0 1px rgba(255,140,0,0.16), 0 6px 16px rgba(0,0,0,0.28) !important;
+            }
+
+            :is(.main, [data-testid="stMain"], section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) [data-testid="stDataFrame"],
+            :is(.main, [data-testid="stMain"], section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) [data-testid="stDataEditor"] {
+                --gdg-accent-color: #FF9800;
+                --gdg-accent-fg: #FFFFFF;
+                --gdg-accent-light: rgba(255,152,0,0.22);
+                --gdg-text-dark: #F0F0FF;
+                --gdg-text-medium: #C9C9E8;
+                --gdg-text-light: #9D9DC0;
+                --gdg-text-header: #FFFFFF;
+                --gdg-bg-cell: #22223A;
+                --gdg-bg-cell-medium: #2C2C4A;
+                --gdg-bg-header: #2C2C4A;
+                --gdg-bg-header-hovered: #363658;
+                --gdg-bg-header-has: #3D3D63;
+                --gdg-bg-bubble: #2C2C4A;
+                --gdg-bg-bubble-selected: #3D3D63;
+                --gdg-bg-search-result: rgba(255,152,0,0.18);
+                --gdg-border-color: rgba(255,255,255,0.14);
+                --gdg-horizontal-border-color: rgba(255,255,255,0.11);
+                --gdg-link-color: #FFB74D;
+            }
+
+            :is(.main, [data-testid="stMain"], section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) [data-testid="stDataFrame"] canvas,
+            :is(.main, [data-testid="stMain"], section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) [data-testid="stDataEditor"] canvas {
+                background-color: #22223A !important;
+            }
+
+            /* Tablas HTML */
+            :is(.main, [data-testid="stMain"], section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) table {
+                background-color: #22223A !important;
+            }
+
+            :is(.main, [data-testid="stMain"], section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) th {
+                background-color: #2C2C4A !important;
+                color: #FFFFFF !important;
+                border-color: rgba(255,255,255,0.12) !important;
+            }
+
+            :is(.main, [data-testid="stMain"], section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) td {
+                color: #F0F0FF !important;
+                border-color: rgba(255,255,255,0.08) !important;
+            }
+
+            /* Separadores */
+            :is(.main, [data-testid="stMain"]) hr {
+                border-color: rgba(255,255,255,0.12) !important;
+            }
+
+            /* Selectbox / dropdown */
+            :is(.main, [data-testid="stMain"]) [data-baseweb="select"] > div:first-child {
+                background-color: #2C2C4A !important;
+                border-color: rgba(255,255,255,0.25) !important;
+                color: #FFFFFF !important;
+            }
+
+            /* Tabs */
+            :is(.main, [data-testid="stMain"]) [data-baseweb="tab-panel"] {
+                background-color: #22223A !important;
+            }
+
+            :is(.main, [data-testid="stMain"]) [data-baseweb="tab"] {
+                color: #B0B0D0 !important;
+            }
+
+            :is(.main, [data-testid="stMain"]) [data-baseweb="tab"][aria-selected="true"] {
+                color: #FF9800 !important;
+            }
+
+            /* Botones secundarios en el área principal (ej. "Ver mi Perfil", "Actualizar") */
+            :is(.main, [data-testid="stMain"]) button[kind="secondary"],
+            :is(.main, [data-testid="stMain"]) [data-testid="stBaseButton-secondary"] {
+                background-color: #2C2C4A !important;
+                color: #FFFFFF !important;
+                border-color: rgba(255,255,255,0.22) !important;
+            }
+
+            :is(.main, [data-testid="stMain"]) button[kind="secondary"]:hover,
+            :is(.main, [data-testid="stMain"]) [data-testid="stBaseButton-secondary"]:hover {
+                background-color: #363658 !important;
+                border-color: rgba(255,140,0,0.5) !important;
+            }
+
+            /* Tooltips */
+            :is(.main, [data-testid="stMain"]) [data-testid="stTooltipIcon"] {
+                color: #7070A0 !important;
+            }
+
+            /* Dialogs (st.dialog) montados fuera de .main */
+            :is(section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) {
+                background-color: #1A1A2A !important;
+                color: #FFFFFF !important;
+            }
+
+            :is(section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) * {
+                color: #FFFFFF !important;
+            }
+
+            :is(section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) [data-testid="stWidgetLabel"] *,
+            :is(section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) [data-testid="stMetricLabel"] * {
+                color: #D8D8F0 !important;
+            }
+
+            :is(section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) [data-testid="stCaptionContainer"] *,
+            :is(section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) small {
+                color: #B0B0CC !important;
+            }
+
+            :is(section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) [data-testid="stVerticalBlockBorderWrapper"],
+            :is(section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) [data-testid="stForm"] {
+                background-color: #22223A !important;
+                border-color: rgba(255,140,0,0.30) !important;
+            }
+
+            :is(section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) input[type="text"],
+            :is(section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) input[type="password"],
+            :is(section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) input[type="number"],
+            :is(section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) textarea {
+                background-color: #2C2C4A !important;
+                color: #FFFFFF !important;
+                border-color: rgba(255,255,255,0.25) !important;
+            }
+
+            :is(section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) input::placeholder,
+            :is(section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) textarea::placeholder {
+                color: #7070A0 !important;
+            }
+
+            :is(section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) [data-baseweb="select"] > div:first-child {
+                background-color: #2C2C4A !important;
+                border-color: rgba(255,255,255,0.25) !important;
+                color: #FFFFFF !important;
+            }
+
+            :is(section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) button[kind="secondary"],
+            :is(section[data-testid="stDialog"], [data-testid="stDialog"], [role="dialog"]) [data-testid="stBaseButton-secondary"] {
+                background-color: #2C2C4A !important;
+                color: #FFFFFF !important;
+                border-color: rgba(255,255,255,0.22) !important;
+            }
+
+            /* Header */
+            [data-testid="stHeader"] {
+                background: rgba(26,26,42,0.97) !important;
+            }
+
+            </style>
+        """, unsafe_allow_html=True)
 
 
 def pantalla_login() -> None:
@@ -480,10 +1264,10 @@ def pantalla_login() -> None:
                 # Aumentamos el tamaño relativo
                 c_logo1, c_logo2, c_logo3 = st.columns([1, 2.8, 1])
                 with c_logo2:
-                    st.image(logo_path, use_container_width=True)
+                    st.image(logo_path, width="stretch")
             
             # Subir el título para acercarlo más al logo
-            st.markdown("<h2 style='text-align: center; margin-top: -25px; margin-bottom: 0px;'>Gestiones Digitales SRTI</h2>", unsafe_allow_html=True)
+            st.markdown("<h2 style='text-align: center; margin-top: -25px; margin-bottom: 0px;'>Gestiones correspondencia SRTI</h2>", unsafe_allow_html=True)
             st.markdown("<h4 style='text-align: center; font-weight: normal; margin-top: 5px; color: #F0E6DD;'>Inicio de sesión</h4>", unsafe_allow_html=True)
             
             st.write("") # Espaciador
@@ -496,7 +1280,7 @@ def pantalla_login() -> None:
             # Reducir el ancho específico del botón usando columnas internas
             c_btn1, c_btn2, c_btn3 = st.columns([1, 3, 1])
             with c_btn2:
-                enviar = st.form_submit_button("Ingresar", use_container_width=True, type="primary")
+                enviar = st.form_submit_button("Ingresar", width="stretch", type="primary")
 
         if enviar:
             servicio = AuthService()
@@ -537,7 +1321,7 @@ def pantalla_dashboard() -> None:
     st.title("Gestión de Correspondencia")
     st.subheader(f"Bienvenido(a), {sesion.get('nombre_completo') or sesion['usuario']}.")
     
-    st.markdown("**Vista actual:** `Personal (Mis asignaciones)`")
+    st.markdown("**Vista actual:** Personal (Mis asignaciones)")
 
 
     # Métricas de Valor
@@ -576,10 +1360,10 @@ def pantalla_dashboard() -> None:
         
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("📂 Ir a Correspondencia", use_container_width=True, type="primary"):
+            if st.button("📂 Ir a Correspondencia", width="stretch", type="primary"):
                 st.switch_page("pages/2_correspondencia.py")
         with c2:
-            if st.button("👤 Ver mi Perfil", use_container_width=True):
+            if st.button("👤 Ver mi Perfil", width="stretch"):
                 st.switch_page("pages/2_mi_perfil.py")
         
         st.write("")
@@ -628,29 +1412,46 @@ if not sesion_activa():
     pantalla_login()
 else:
     sesion = obtener_sesion()
-    
+    aplicar_tema()
+
     # Definición de páginas
     page_dashboard = st.Page(pantalla_dashboard, title="Inicio", icon="🏠", default=True)
     page_perfil = st.Page("pages/2_mi_perfil.py", title="Mi Perfil", icon="👤")
     page_correspondencia = st.Page("pages/2_correspondencia.py", title="Correspondencia", icon="📬")
     page_instructivos = st.Page("pages/3_instructivos.py", title="Instructivos", icon="📚")
     
+    permisos_sesion = sesion.get("permisos", [])
+
     # Páginas de administración
     admin_pages = []
-    if "usuario.ver" in sesion.get("permisos", []):
+    if "usuario.ver" in permisos_sesion:
         admin_pages.append(st.Page("pages/1_admin_usuarios.py", title="Usuarios", icon="👥"))
-    if "rol.ver" in sesion.get("permisos", []):
+    if "rol.ver" in permisos_sesion:
         admin_pages.append(st.Page("pages/3_admin_roles.py", title="Roles", icon="🔐"))
-    if "reporte.ver" in sesion.get("permisos", []):
+    if "dashboard.ver" in permisos_sesion:
         admin_pages.append(st.Page("pages/5_dashboard.py", title="Dashboard", icon="📊"))
+    if "reporte.ver" in permisos_sesion:
         admin_pages.append(st.Page("pages/4_reportes.py", title="Reportes y Evidencias", icon="📄"))
-    
+# Páginas de Supervisión / Certificaciones
+    _perms_firma = {"certificacion.firmar_corr", "certificacion.firmar_gd", "certificacion.firmar_secop"}
+    es_admin_main = any(r in {"admin", "administrador"} for r in sesion.get("roles", []))
+    es_firmante_o_supervisor = bool(_perms_firma & set(permisos_sesion)) or es_admin_main or "certificacion.aprobar" in permisos_sesion
+
+    supervision_pages = [
+        st.Page("pages/6_certificaciones.py", title="Mis Certificados", icon="🏅"),
+        st.Page("pages/8_verificar_cert.py", title="Verificar Certificado", icon="🔍"),
+    ]
+    if es_firmante_o_supervisor:
+        supervision_pages.append(st.Page("pages/9_firmantes_certif.py", title="Aprobar Certificaciones", icon="✍️"))
+    if "certificacion.aprobar" in permisos_sesion:
+        supervision_pages.append(st.Page("pages/7_admin_certif.py", title="Seguimiento de Certificaciones", icon="📊"))
+
     # Agrupar páginas
     menu_dict = {
         "Principal": [page_dashboard, page_correspondencia, page_perfil, page_instructivos],
+        "Supervisión": supervision_pages,
     }
 
-    
     if admin_pages:
         menu_dict["Administración"] = admin_pages
         
@@ -660,40 +1461,48 @@ else:
     st.sidebar.title("Menú")
     
     with st.sidebar:
-        # Tarjeta de Perfil de Usuario Premium
-        with st.container(border=True):
-            nombre = sesion.get("nombre_completo") or "Usuario"
-            username = sesion.get("usuario")
-            email = sesion.get("email") or ""
-            roles_lista = sesion.get("roles", [])
+        # Tarjeta de Perfil de Usuario Premium (HTML puro para garantizar el diseño exacto)
+        nombre = sesion.get("nombre_completo") or "Usuario"
+        username = sesion.get("usuario")
+        email = sesion.get("email") or ""
+        roles_lista = sesion.get("roles", [])
+        
+        # Icono según rol
+        if "admin" in roles_lista:
+            avatar = "🛡️"
+        elif "direccion" in roles_lista:
+            avatar = "👩‍💼"
+        else:
+            avatar = "👤"
             
-            # Icono según rol
-            if "admin" in roles_lista:
-                avatar = "🛡️"
-            elif "direccion" in roles_lista:
-                avatar = "👩‍💼"
-            else:
-                avatar = "👤"
+        roles_html = ""
+        for r in roles_lista:
+            roles_html += f"<span style='background-color: rgba(0, 128, 255, 0.15); color: #0080ff; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; font-weight: bold; display: inline-block;'>{r.title()}</span>"
             
-            c_avatar, c_info = st.columns([1, 3])
-            with c_avatar:
-                st.markdown(f"<div style='font-size: 2.3em; text-align: center; margin-top: 3px;'>{avatar}</div>", unsafe_allow_html=True)
-            with c_info:
-                st.markdown(f"**{nombre}**")
-                st.markdown(f"<div style='color: gray; font-size: 0.85em; margin-top: -5px;'>@{username}</div>", unsafe_allow_html=True)
-                if email:
-                    st.markdown(f"<div style='color: gray; font-size: 0.75em; word-break: break-all; margin-top: 2px;'>{email}</div>", unsafe_allow_html=True)
-            
-            # Mostrar badges elegantes para cada rol
-            roles_html = ""
-            for r in roles_lista:
-                roles_html += f"<span style='background-color: rgba(0, 128, 255, 0.15); color: #0080ff; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; font-weight: bold; margin-right: 4px; display: inline-block;'>{r.title()}</span>"
-            if roles_html:
-                st.write("")
-                st.markdown(roles_html, unsafe_allow_html=True)
-        if st.button("🚪 Cerrar sesión", key="logout_btn", use_container_width=True):
+        email_html = f"<div style='color: gray; font-size: 0.75em; word-break: break-all; margin-top: 2px;'>{email}</div>" if email else ""
+        
+        html_tarjeta = f"""
+        <div class="menu-card-premium" style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 15px; box-sizing: border-box; width: 100%;">
+            <div style="display: flex; align-items: center; gap: 14px;">
+                <div style="font-size: 2.6em; display: flex; align-items: center; justify-content: center; min-width: 50px;">{avatar}</div>
+                <div style="display: flex; flex-direction: column; justify-content: center; overflow: hidden; line-height: 1.3;">
+                    <div style="font-weight: 600; color: #F4F4F4; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{nombre}</div>
+                    <div style="color: #A0A0A0; font-size: 13px;">@{username}</div>
+                    {email_html}
+                </div>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                {roles_html}
+            </div>
+        </div>
+        """
+        st.markdown(html_tarjeta, unsafe_allow_html=True)
+        if st.button("🚪 Cerrar sesión", key="logout_btn", width="stretch"):
             logout()
-            
+
+        st.divider()
+        st.toggle("🌙 Modo oscuro", key="dark_mode")
+
         logo_path = os.path.join("app", "assets", "INVIAS_login_logo.png")
         if os.path.exists(logo_path):
             import base64
