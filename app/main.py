@@ -1289,6 +1289,8 @@ def pantalla_login() -> None:
                 st.error(error)
             else:
                 iniciar_sesion(sesion)
+                # Activar bandera para mostrar política de tratamiento de datos
+                st.session_state["politica_pendiente"] = True
                 st.rerun()
 
         # ===== Popover de Ayuda/Soporte =====
@@ -1305,6 +1307,180 @@ def pantalla_login() -> None:
             st.write("")
             whatsapp_url = "https://wa.me/573169333607?text=Hola,%0A%0ANecesito%20ayuda%20con%20el%20aplicativo%20*Gestiones%20Digitales%20SRTI*.%0A%0AQuedo%20atento%20a%20su%20soporte.%20Gracias."
             st.markdown(f"<a href='{whatsapp_url}' target='_blank' style='display: block; background-color: #25D366; color: white; text-align: center; padding: 10px; border-radius: 8px; text-decoration: none; font-weight: bold; margin-top: 5px; box-shadow: 0 4px 10px rgba(37,211,102,0.3);'>🟢 Escribir a WhatsApp</a>", unsafe_allow_html=True)
+
+
+
+@st.dialog("Política de Tratamiento de Datos Personales", width="large")
+def _dialogo_politica_datos() -> None:
+    """Contenido del diálogo modal de Política de Tratamiento de Datos."""
+
+    # ── CSS: estilos del diálogo al estilo INVIAS ─────────────────────────────
+    st.markdown("""
+    <style>
+    /* ── Ocultar el botón X de cierre (múltiples selectores por compatibilidad) ── */
+    [data-testid="stDialog"] [data-testid="stBaseButton-headerNoPadding"],
+    [data-testid="stDialog"] button[aria-label="Close"],
+    [data-testid="stDialog"] button[kind="header"],
+    div[role="dialog"] button[aria-label="Close"] {
+        display: none !important;
+    }
+
+    /* ── Ventana del diálogo ─────────────────────────────────────────────── */
+    [data-testid="stDialog"] > div {
+        background: linear-gradient(160deg, #2B1205 0%, #1A0B03 60%, #110702 100%) !important;
+        border: 1.5px solid #FF8C00 !important;
+        border-radius: 20px !important;
+        box-shadow:
+            0 0 0 1px rgba(255,140,0,0.15),
+            0 28px 70px rgba(0,0,0,0.90),
+            inset 0 0 50px rgba(255,140,0,0.025) !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+    }
+
+    /* ── Encabezado del diálogo nativo de Streamlit (ocultarlo completo) ── */
+    [data-testid="stDialog"] [data-testid="stDialogTitle"],
+    [data-testid="stDialog"] h2,
+    [data-testid="stDialog"] header,
+    [data-testid="stDialog"] > div > div:first-child > div:first-child {
+        display: none !important;
+    }
+
+    /* ── Scrollbar naranja ───────────────────────────────────────────────── */
+    [data-testid="stDialog"] ::-webkit-scrollbar { width: 5px; }
+    [data-testid="stDialog"] ::-webkit-scrollbar-track { background: transparent; }
+    [data-testid="stDialog"] ::-webkit-scrollbar-thumb {
+        background: rgba(255,140,0,0.45);
+        border-radius: 10px;
+    }
+
+    /* ── Checkbox en el diálogo ─────────────────────────────────────────── */
+    [data-testid="stDialog"] [data-testid="stCheckbox"] label p {
+        font-size: 13.5px !important;
+        color: #000000 !important;
+        font-weight: 500 !important;
+    }
+
+    /* ── Botón Aceptar — naranja institucional ───────────────────────────── */
+    [data-testid="stDialog"] [data-testid="stBaseButton-primary"] {
+        background: linear-gradient(90deg, #FF8C00 0%, #E67A00 100%) !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        border-radius: 10px !important;
+        font-weight: 700 !important;
+        font-size: 15px !important;
+        min-height: 46px !important;
+        box-shadow: 0 6px 20px rgba(255,140,0,0.35) !important;
+        transition: all 0.25s ease !important;
+    }
+    [data-testid="stDialog"] [data-testid="stBaseButton-primary"]:hover:not([disabled]) {
+        background: linear-gradient(90deg, #FF9D1A 0%, #F08000 100%) !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 10px 28px rgba(255,140,0,0.50) !important;
+    }
+    [data-testid="stDialog"] [data-testid="stBaseButton-primary"]:disabled {
+        background: rgba(80,40,10,0.55) !important;
+        color: rgba(200,160,100,0.45) !important;
+        box-shadow: none !important;
+        transform: none !important;
+    }
+
+    /* ── Texto general dentro del diálogo ───────────────────────────────── */
+    [data-testid="stDialog"] p,
+    [data-testid="stDialog"] span,
+    [data-testid="stDialog"] div {
+        color: #1A1A1A;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # ── Encabezado visual personalizado (reemplaza el título nativo) ──────────
+    st.markdown("""
+    <div style="
+        background: linear-gradient(90deg, #FF8C00 0%, #E67A00 60%, #CC6A00 100%);
+        margin: -1.2rem -1.2rem 0 -1.2rem;
+        padding: 20px 28px 18px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+    ">
+        <div style="font-size: 2rem; line-height:1;">🛡️</div>
+        <div>
+            <div style="font-size:11px; font-weight:600; letter-spacing:2px;
+                        color:rgba(255,255,255,0.75); text-transform:uppercase;">
+                INVIAS &middot; SRTI
+            </div>
+            <div style="font-size:18px; font-weight:700; color:#FFFFFF; line-height:1.2;">
+                Tratamiento de Datos Personales
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.write("")
+
+    # ── Texto de la política ───────────────────────────────────────────────────
+    st.markdown("""
+    <p style="font-size:14.5px; line-height:1.75; color:#222222; text-align:justify; margin-bottom:14px;">
+        El aplicativo <strong style="color:#E67A00;">"Gestiones correspondencia SRTI"</strong>
+        recopila y almacena datos personales y administrativos suministrados por sus usuarios,
+        tales como nombre, identificación, correo electrónico, información contractual,
+        información de correspondencia y demás datos necesarios para el funcionamiento de la
+        plataforma.
+    </p>
+    <p style="font-size:14.5px; line-height:1.75; color:#222222; text-align:justify; margin-bottom:14px;">
+        Esta información será utilizada <strong style="color:#222222;">exclusivamente</strong> para fines relacionados
+        con la gestión, administración, seguimiento y operación del aplicativo, así como para
+        garantizar la seguridad, trazabilidad y correcto uso de los servicios ofrecidos de
+        forma interna.
+    </p>
+    <p style="font-size:14.5px; line-height:1.75; color:#222222; text-align:justify; margin-bottom:14px;">
+        Los datos serán tratados de manera <strong style="color:#222222;">confidencial</strong> y se adoptarán medidas
+        razonables para protegerlos contra el acceso, uso, modificación o divulgación no
+        autorizada. La información <strong style="color:#222222;">no será compartida con terceros</strong>.
+    </p>
+    <p style="font-size:14.5px; line-height:1.75; color:#222222; text-align:justify; margin-bottom:14px;">
+        Al registrarse, acceder o utilizar el Aplicativo
+        <strong style="color:#E67A00;">"Gestiones correspondencia SRTI"</strong>, el usuario
+        declara haber leído y aceptado la presente política, autorizando de manera
+        <em style="color:#444444;">libre, previa, expresa e informada</em> el tratamiento de sus datos personales
+        para las finalidades aquí descritas.
+    </p>
+    <div style="
+        margin-top:4px; margin-bottom:18px;
+        padding: 12px 16px;
+        background: rgba(255,140,0,0.10);
+        border-left: 3px solid #FF8C00;
+        border-radius: 0 8px 8px 0;
+        font-size: 13px;
+        color: #C05E00;
+        font-style: italic;
+        font-weight: 600;
+    ">
+        ⚠️ La aceptación de esta política es requisito para el acceso y uso del Aplicativo SRTI.
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.divider()
+
+    # ── Confirmación y botón ──────────────────────────────────────────────────
+    confirmo = st.checkbox(
+        "✅ He leído y comprendo la Política de Tratamiento de Datos Personales",
+        key="politica_confirmo_lectura",
+    )
+
+    aceptar = st.button(
+        "🔓 Aceptar y Continuar",
+        key="politica_btn_aceptar",
+        type="primary",
+        disabled=not confirmo,
+        use_container_width=True,
+    )
+
+    if aceptar and confirmo:
+        # Aquí, en el futuro, se persistirá la aceptación en la BD
+        st.session_state["politica_pendiente"] = False
+        st.rerun()
 
 
 def pantalla_dashboard() -> None:
@@ -1413,6 +1589,10 @@ if not sesion_activa():
 else:
     sesion = obtener_sesion()
     aplicar_tema()
+
+    # Mostrar diálogo de política si aún no fue aceptado en esta sesión
+    if st.session_state.get("politica_pendiente", False):
+        _dialogo_politica_datos()
 
     # Definición de páginas
     page_dashboard = st.Page(pantalla_dashboard, title="Inicio", icon="🏠", default=True)
