@@ -1309,60 +1309,86 @@ def pantalla_login() -> None:
             st.markdown(f"<a href='{whatsapp_url}' target='_blank' style='display: block; background-color: #25D366; color: white; text-align: center; padding: 10px; border-radius: 8px; text-decoration: none; font-weight: bold; margin-top: 5px; box-shadow: 0 4px 10px rgba(37,211,102,0.3);'>🟢 Escribir a WhatsApp</a>", unsafe_allow_html=True)
 
 
+def pantalla_politica_datos() -> None:
+    """Contenido de Política de Tratamiento de Datos como página bloqueante."""
+    
+    import base64
+    import os
+    
+    # Codificar el logo en base64 para embeberlo en el HTML
+    logo_path = os.path.join("app", "assets", "INVIAS_login_logo.png")
+    logo_b64 = ""
+    if os.path.exists(logo_path):
+        with open(logo_path, "rb") as image_file:
+            logo_b64 = base64.b64encode(image_file.read()).decode("utf-8")
+            
+    html_logo = f'<img src="data:image/png;base64,{logo_b64}" style="height: 45px; object-fit: contain;">' if logo_b64 else '<div style="font-size: 2.2rem; line-height:1;">🛡️</div>'
 
-@st.dialog("Política de Tratamiento de Datos Personales", width="large")
-def _dialogo_politica_datos() -> None:
-    """Contenido del diálogo modal de Política de Tratamiento de Datos."""
-
-    # ── CSS: estilos del diálogo al estilo INVIAS ─────────────────────────────
+    # ── CSS: Estilos de la página bloqueante ────────────────
     st.markdown("""
     <style>
-    /* ── Ocultar el botón X de cierre (múltiples selectores por compatibilidad) ── */
-    [data-testid="stDialog"] [data-testid="stBaseButton-headerNoPadding"],
-    [data-testid="stDialog"] button[aria-label="Close"],
-    [data-testid="stDialog"] button[kind="header"],
-    div[role="dialog"] button[aria-label="Close"] {
-        display: none !important;
+    /* Ocultar menú y barra superior */
+    [data-testid="collapsedControl"] { display: none !important; }
+    [data-testid="stSidebar"] { display: none !important; }
+    header[data-testid="stHeader"] { display: none !important; }
+    
+    /* ===== Fondo Principal idéntico al Login ===== */
+    .stApp {
+        background: linear-gradient(135deg, #E87A1E 0%, #A65012 50%, #3D1E0A 100%) !important;
+        overflow: auto;
+        z-index: 1;
     }
 
-    /* ── Ventana del diálogo ─────────────────────────────────────────────── */
-    [data-testid="stDialog"] > div {
-        background: linear-gradient(160deg, #2B1205 0%, #1A0B03 60%, #110702 100%) !important;
-        border: 1.5px solid #FF8C00 !important;
-        border-radius: 20px !important;
-        box-shadow:
-            0 0 0 1px rgba(255,140,0,0.15),
-            0 28px 70px rgba(0,0,0,0.90),
-            inset 0 0 50px rgba(255,140,0,0.025) !important;
-        padding: 0 !important;
-        overflow: hidden !important;
+    /* ===== Geometrías Adaptables Superpuestas ===== */
+    .stApp::before {
+        content: ""; position: fixed; width: 650px; height: 650px;
+        background: radial-gradient(circle, rgba(255, 230, 180, 0.25) 0%, transparent 60%);
+        top: -150px; left: -150px; border-radius: 50%; z-index: 0;
+        box-shadow: 800px 500px 0 150px rgba(255, 160, 40, 0.15);
+        pointer-events: none;
     }
 
-    /* ── Encabezado del diálogo nativo de Streamlit (ocultarlo completo) ── */
-    [data-testid="stDialog"] [data-testid="stDialogTitle"],
-    [data-testid="stDialog"] h2,
-    [data-testid="stDialog"] header,
-    [data-testid="stDialog"] > div > div:first-child > div:first-child {
-        display: none !important;
+    .stApp::after {
+        content: ""; position: fixed; width: 450px; height: 450px;
+        background: linear-gradient(135deg, rgba(255, 140, 0, 0.4) 0%, rgba(200, 80, 10, 0.1) 100%);
+        bottom: 5%; right: -100px; 
+        border-radius: 60px; 
+        transform: rotate(35deg);
+        z-index: 0;
+        box-shadow: -800px -300px 0 80px rgba(100, 45, 15, 0.3);
+        pointer-events: none;
+    }
+    
+    /* ── Contenedor principal (Tarjeta Blanca) ── */
+    .block-container {
+        max-width: 800px !important;
+        background-color: #FFFFFF !important;
+        border-radius: 16px !important;
+        padding: 3rem !important;
+        margin-top: 4vh !important;
+        margin-bottom: 4vh !important;
+        box-shadow: 0 15px 40px rgba(0,0,0,0.4) !important;
+        position: relative;
+        z-index: 10;
     }
 
     /* ── Scrollbar naranja ───────────────────────────────────────────────── */
-    [data-testid="stDialog"] ::-webkit-scrollbar { width: 5px; }
-    [data-testid="stDialog"] ::-webkit-scrollbar-track { background: transparent; }
-    [data-testid="stDialog"] ::-webkit-scrollbar-thumb {
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
         background: rgba(255,140,0,0.45);
         border-radius: 10px;
     }
 
-    /* ── Checkbox en el diálogo ─────────────────────────────────────────── */
-    [data-testid="stDialog"] [data-testid="stCheckbox"] label p {
-        font-size: 13.5px !important;
-        color: #000000 !important;
-        font-weight: 500 !important;
+    /* ── Checkbox ─────────────────────────────────────────── */
+    [data-testid="stCheckbox"] label p {
+        font-size: 14px !important;
+        color: #000000 !important; /* Letra negra como se solicitó */
+        font-weight: 600 !important;
     }
 
     /* ── Botón Aceptar — naranja institucional ───────────────────────────── */
-    [data-testid="stDialog"] [data-testid="stBaseButton-primary"] {
+    [data-testid="stBaseButton-primary"] {
         background: linear-gradient(90deg, #FF8C00 0%, #E67A00 100%) !important;
         color: #FFFFFF !important;
         border: none !important;
@@ -1373,41 +1399,36 @@ def _dialogo_politica_datos() -> None:
         box-shadow: 0 6px 20px rgba(255,140,0,0.35) !important;
         transition: all 0.25s ease !important;
     }
-    [data-testid="stDialog"] [data-testid="stBaseButton-primary"]:hover:not([disabled]) {
+    [data-testid="stBaseButton-primary"]:hover:not([disabled]) {
         background: linear-gradient(90deg, #FF9D1A 0%, #F08000 100%) !important;
         transform: translateY(-2px) !important;
         box-shadow: 0 10px 28px rgba(255,140,0,0.50) !important;
     }
-    [data-testid="stDialog"] [data-testid="stBaseButton-primary"]:disabled {
-        background: rgba(80,40,10,0.55) !important;
-        color: rgba(200,160,100,0.45) !important;
+    [data-testid="stBaseButton-primary"]:disabled {
+        background: rgba(200,200,200,0.55) !important;
+        color: rgba(100,100,100,0.6) !important;
         box-shadow: none !important;
         transform: none !important;
-    }
-
-    /* ── Texto general dentro del diálogo ───────────────────────────────── */
-    [data-testid="stDialog"] p,
-    [data-testid="stDialog"] span,
-    [data-testid="stDialog"] div {
-        color: #1A1A1A;
     }
     </style>
     """, unsafe_allow_html=True)
 
-    # ── Encabezado visual personalizado (reemplaza el título nativo) ──────────
-    st.markdown("""
+    # ── Encabezado visual personalizado ──────────
+    st.markdown(f"""
     <div style="
         background: linear-gradient(90deg, #FF8C00 0%, #E67A00 60%, #CC6A00 100%);
-        margin: -1.2rem -1.2rem 0 -1.2rem;
+        margin: -3rem -3rem 2rem -3rem;
         padding: 20px 28px 18px;
+        border-radius: 16px 16px 0 0;
         display: flex;
         align-items: center;
         gap: 14px;
+        box-shadow: 0 4px 15px rgba(255,140,0,0.2);
     ">
-        <div style="font-size: 2rem; line-height:1;">🛡️</div>
+        {html_logo}
         <div>
             <div style="font-size:11px; font-weight:600; letter-spacing:2px;
-                        color:rgba(255,255,255,0.75); text-transform:uppercase;">
+                        color:rgba(255,255,255,0.85); text-transform:uppercase;">
                 INVIAS &middot; SRTI
             </div>
             <div style="font-size:18px; font-weight:700; color:#FFFFFF; line-height:1.2;">
@@ -1590,9 +1611,10 @@ else:
     sesion = obtener_sesion()
     aplicar_tema()
 
-    # Mostrar diálogo de política si aún no fue aceptado en esta sesión
+    # Mostrar pantalla de política si aún no fue aceptado en esta sesión
     if st.session_state.get("politica_pendiente", False):
-        _dialogo_politica_datos()
+        pantalla_politica_datos()
+        st.stop()
 
     # Definición de páginas
     page_dashboard = st.Page(pantalla_dashboard, title="Inicio", icon="🏠", default=True)
