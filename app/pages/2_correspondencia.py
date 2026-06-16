@@ -639,7 +639,7 @@ with tab_gestion:
             "🔍 Buscador de radicados", 
             placeholder="Ej: 2024-EXT-001", 
             on_change=on_filter_change,
-            help="Permite buscar por el número completo o parcial del radicado. Permite copiar y pegar."
+            help="Busca por número de radicado, número de oficio de respuesta, peticionario o asunto (coincidencia parcial). Permite copiar y pegar."
         )
 
     filtro_responsable = "Todos"
