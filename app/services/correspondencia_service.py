@@ -68,9 +68,13 @@ class CorrespondenciaService:
             if "busqueda" in filtros and filtros["busqueda"]:
                 busqueda_escapada = re.escape(filtros["busqueda"])
                 patron = {"$regex": busqueda_escapada, "$options": "i"}
+                # El buscador hace coincidencia parcial (insensible a mayúsculas) sobre:
+                # número de radicado, número de oficio de la respuesta, peticionario y asunto.
                 query["$or"] = [
                     {"numero_radicado": patron},
                     {"respuesta.numero_oficio": patron},
+                    {"peticionario": patron},
+                    {"asunto": patron},
                 ]
 
 
