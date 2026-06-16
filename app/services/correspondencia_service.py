@@ -67,7 +67,11 @@ class CorrespondenciaService:
 
             if "busqueda" in filtros and filtros["busqueda"]:
                 busqueda_escapada = re.escape(filtros["busqueda"])
-                query["numero_radicado"] = {"$regex": busqueda_escapada, "$options": "i"}
+                patron = {"$regex": busqueda_escapada, "$options": "i"}
+                query["$or"] = [
+                    {"numero_radicado": patron},
+                    {"respuesta.numero_oficio": patron},
+                ]
 
 
         return self.repo.listar(query, skip, limit), self.repo.contar(query)
