@@ -13,6 +13,7 @@ from app.services.auth_service import AuthService
 from app.services.sesion_service import SesionService
 from app.services.usuario_service import UsuarioService
 from app.services.correspondencia_service import CorrespondenciaService
+from app.services.politica_service import PoliticaService
 
 
 
@@ -1289,8 +1290,10 @@ def pantalla_login() -> None:
                 st.error(error)
             else:
                 iniciar_sesion(sesion)
-                # Activar bandera para mostrar política de tratamiento de datos
-                st.session_state["politica_pendiente"] = True
+                necesita, politica = PoliticaService().usuario_necesita_aceptar(sesion["id"])
+                if necesita:
+                    st.session_state["politica_pendiente"] = True
+                    st.session_state["politica_vigente"] = politica
                 st.rerun()
 
         # ===== Popover de Ayuda/Soporte =====
@@ -1310,10 +1313,13 @@ def pantalla_login() -> None:
 
 
 def pantalla_politica_datos() -> None:
-    """Contenido de Política de Tratamiento de Datos como página bloqueante."""
-    
+    """Muestra la política de tratamiento de datos como pantalla bloqueante."""
+
     import base64
     import os
+
+    politica = st.session_state.get("politica_vigente") or {}
+    sesion = obtener_sesion()
     
     # Codificar el logo en base64 para embeberlo en el HTML
     logo_path = os.path.join("app", "assets", "INVIAS_login_logo.png")
@@ -1440,47 +1446,15 @@ def pantalla_politica_datos() -> None:
 
     st.write("")
 
-    # ── Texto de la política ───────────────────────────────────────────────────
-    st.markdown("""
-    <p style="font-size:14.5px; line-height:1.75; color:#222222; text-align:justify; margin-bottom:14px;">
-        El aplicativo <strong style="color:#E67A00;">"Gestiones correspondencia SRTI"</strong>
-        recopila y almacena datos personales y administrativos suministrados por sus usuarios,
-        tales como nombre, identificación, correo electrónico, información contractual,
-        información de correspondencia y demás datos necesarios para el funcionamiento de la
-        plataforma.
-    </p>
-    <p style="font-size:14.5px; line-height:1.75; color:#222222; text-align:justify; margin-bottom:14px;">
-        Esta información será utilizada <strong style="color:#222222;">exclusivamente</strong> para fines relacionados
-        con la gestión, administración, seguimiento y operación del aplicativo, así como para
-        garantizar la seguridad, trazabilidad y correcto uso de los servicios ofrecidos de
-        forma interna.
-    </p>
-    <p style="font-size:14.5px; line-height:1.75; color:#222222; text-align:justify; margin-bottom:14px;">
-        Los datos serán tratados de manera <strong style="color:#222222;">confidencial</strong> y se adoptarán medidas
-        razonables para protegerlos contra el acceso, uso, modificación o divulgación no
-        autorizada. La información <strong style="color:#222222;">no será compartida con terceros</strong>.
-    </p>
-    <p style="font-size:14.5px; line-height:1.75; color:#222222; text-align:justify; margin-bottom:14px;">
-        Al registrarse, acceder o utilizar el Aplicativo
-        <strong style="color:#E67A00;">"Gestiones correspondencia SRTI"</strong>, el usuario
-        declara haber leído y aceptado la presente política, autorizando de manera
-        <em style="color:#444444;">libre, previa, expresa e informada</em> el tratamiento de sus datos personales
-        para las finalidades aquí descritas.
-    </p>
-    <div style="
-        margin-top:4px; margin-bottom:18px;
-        padding: 12px 16px;
-        background: rgba(255,140,0,0.10);
-        border-left: 3px solid #FF8C00;
-        border-radius: 0 8px 8px 0;
-        font-size: 13px;
-        color: #C05E00;
-        font-style: italic;
-        font-weight: 600;
-    ">
-        ⚠️ La aceptación de esta política es requisito para el acceso y uso del Aplicativo SRTI.
-    </div>
-    """, unsafe_allow_html=True)
+    # ── Texto de la política (desde BD) ──────────────────────────────────────
+    contenido_html = politica.get("contenido", "")
+    version_num = politica.get("numero_version", "")
+    if version_num:
+        st.caption(f"Versión {version_num}")
+    if contenido_html:
+        st.markdown(contenido_html, unsafe_allow_html=True)
+    else:
+        st.warning("No se pudo cargar el contenido de la política.")
 
     st.divider()
 
@@ -1499,8 +1473,33 @@ def pantalla_politica_datos() -> None:
     )
 
     if aceptar and confirmo:
-        # Aquí, en el futuro, se persistirá la aceptación en la BD
+        try:
+            headers = st.context.headers
+            ip = (
+                headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                or headers.get("X-Real-IP", "")
+                or "no_disponible"
+            )
+            user_agent = headers.get("User-Agent", "no_disponible")
+        except Exception:
+            ip, user_agent = "no_disponible", "no_disponible"
+
+        try:
+            PoliticaService().registrar_aceptacion(
+                usuario_id=sesion["id"],
+                politica=politica,
+                ip=ip,
+                user_agent=user_agent,
+                sesion_id=sesion.get("id_sesion"),
+                nombre_completo=sesion.get("nombre_completo"),
+                email=sesion.get("email"),
+            )
+        except Exception as e:
+            st.error(f"Error al registrar la aceptación: {e}")
+            st.stop()
+
         st.session_state["politica_pendiente"] = False
+        st.session_state.pop("politica_vigente", None)
         st.rerun()
 
 

@@ -8,6 +8,8 @@ from app.core.esquemas import (
     ESQUEMA_OPCIONES_CONFIGURACION,
     ESQUEMA_CORRESPONDENCIA,
     ESQUEMA_CERTIFICACIONES,
+    ESQUEMA_POLITICAS_DATOS,
+    ESQUEMA_ACEPTACIONES_POLITICA,
 )
 from app.db.mongo import obtener_base_datos
 
@@ -26,6 +28,8 @@ class MongoBootstrapService:
         )
         self._asegurar_coleccion("correspondencia", ESQUEMA_CORRESPONDENCIA)
         self._asegurar_coleccion("certificaciones", ESQUEMA_CERTIFICACIONES)
+        self._asegurar_coleccion("politicas_datos", ESQUEMA_POLITICAS_DATOS)
+        self._asegurar_coleccion("aceptaciones_politica", ESQUEMA_ACEPTACIONES_POLITICA)
 
         self.db["usuarios"].create_index(
             "usuario", unique=True, name="idx_usuarios_usuario_unico"
@@ -83,6 +87,21 @@ class MongoBootstrapService:
             unique=True,
             sparse=True,
             name="idx_cert_hash_unico",
+        )
+        self.db["politicas_datos"].create_index(
+            "numero_version", unique=True, name="idx_politicas_version_unica"
+        )
+        self.db["politicas_datos"].create_index("activa", name="idx_politicas_activa")
+        self.db["aceptaciones_politica"].create_index(
+            [("usuario_id", 1), ("politica_id", 1)],
+            unique=True,
+            name="idx_aceptaciones_usuario_politica_unico",
+        )
+        self.db["aceptaciones_politica"].create_index(
+            "usuario_id", name="idx_aceptaciones_usuario"
+        )
+        self.db["aceptaciones_politica"].create_index(
+            "politica_id", name="idx_aceptaciones_politica"
         )
 
     def _asegurar_coleccion(self, nombre: str, esquema: dict) -> None:
