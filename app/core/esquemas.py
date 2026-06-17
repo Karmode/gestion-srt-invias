@@ -182,6 +182,43 @@ ESQUEMA_CERTIFICACIONES = {
     },
 }
 
+ESQUEMA_POLITICAS_DATOS = {
+    "bsonType": "object",
+    "required": ["numero_version", "titulo", "contenido", "activa", "fecha_vigencia", "fecha_creacion"],
+    "properties": {
+        "numero_version": {"bsonType": "int", "minimum": 1},
+        "titulo": {"bsonType": "string"},
+        "contenido": {"bsonType": "string"},
+        "activa": {"bsonType": "bool"},
+        "fecha_vigencia": {"bsonType": "date"},
+        "fecha_creacion": {"bsonType": "date"},
+        "creada_por": {"bsonType": ["string", "null"]},
+    },
+}
+
+ESQUEMA_ACEPTACIONES_POLITICA = {
+    "bsonType": "object",
+    "required": [
+        "usuario_id",
+        "politica_id",
+        "numero_version",
+        "fecha_aceptacion",
+        "metodo",
+    ],
+    "properties": {
+        "usuario_id": {"bsonType": "objectId"},
+        "politica_id": {"bsonType": "objectId"},
+        "numero_version": {"bsonType": "int"},
+        "fecha_aceptacion": {"bsonType": "date"},
+        "ip_address": {"bsonType": ["string", "null"]},
+        "user_agent": {"bsonType": ["string", "null"]},
+        "nombre_completo": {"bsonType": ["string", "null"]},
+        "email": {"bsonType": ["string", "null"]},
+        "sesion_id": {"bsonType": ["string", "null"]},
+        "metodo": {"bsonType": "string"},
+    },
+}
+
 ESQUEMA_CORRESPONDENCIA = {
     "bsonType": "object",
     "required": [

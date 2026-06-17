@@ -13,6 +13,7 @@ from app.services.auth_service import AuthService
 from app.services.sesion_service import SesionService
 from app.services.usuario_service import UsuarioService
 from app.services.correspondencia_service import CorrespondenciaService
+from app.services.politica_service import PoliticaService
 
 
 
@@ -1289,6 +1290,10 @@ def pantalla_login() -> None:
                 st.error(error)
             else:
                 iniciar_sesion(sesion)
+                necesita, politica = PoliticaService().usuario_necesita_aceptar(sesion["id"])
+                if necesita:
+                    st.session_state["politica_pendiente"] = True
+                    st.session_state["politica_vigente"] = politica
                 st.rerun()
 
         # ===== Popover de Ayuda/Soporte =====
@@ -1305,6 +1310,197 @@ def pantalla_login() -> None:
             st.write("")
             whatsapp_url = "https://wa.me/573169333607?text=Hola,%0A%0ANecesito%20ayuda%20con%20el%20aplicativo%20*Gestiones%20Digitales%20SRTI*.%0A%0AQuedo%20atento%20a%20su%20soporte.%20Gracias."
             st.markdown(f"<a href='{whatsapp_url}' target='_blank' style='display: block; background-color: #25D366; color: white; text-align: center; padding: 10px; border-radius: 8px; text-decoration: none; font-weight: bold; margin-top: 5px; box-shadow: 0 4px 10px rgba(37,211,102,0.3);'>🟢 Escribir a WhatsApp</a>", unsafe_allow_html=True)
+
+
+def pantalla_politica_datos() -> None:
+    """Muestra la política de tratamiento de datos como pantalla bloqueante."""
+
+    import base64
+    import os
+
+    politica = st.session_state.get("politica_vigente") or {}
+    sesion = obtener_sesion()
+    
+    # Codificar el logo en base64 para embeberlo en el HTML
+    logo_path = os.path.join("app", "assets", "INVIAS_login_logo.png")
+    logo_b64 = ""
+    if os.path.exists(logo_path):
+        with open(logo_path, "rb") as image_file:
+            logo_b64 = base64.b64encode(image_file.read()).decode("utf-8")
+            
+    html_logo = f'<img src="data:image/png;base64,{logo_b64}" style="height: 45px; object-fit: contain;">' if logo_b64 else '<div style="font-size: 2.2rem; line-height:1;">🛡️</div>'
+
+    # ── CSS: Estilos de la página bloqueante ────────────────
+    st.markdown("""
+    <style>
+    /* Ocultar menú y barra superior */
+    [data-testid="collapsedControl"] { display: none !important; }
+    [data-testid="stSidebar"] { display: none !important; }
+    header[data-testid="stHeader"] { display: none !important; }
+    
+    /* ===== Fondo Principal idéntico al Login ===== */
+    .stApp {
+        background: linear-gradient(135deg, #E87A1E 0%, #A65012 50%, #3D1E0A 100%) !important;
+        overflow: auto;
+        z-index: 1;
+    }
+
+    /* ===== Geometrías Adaptables Superpuestas ===== */
+    .stApp::before {
+        content: ""; position: fixed; width: 650px; height: 650px;
+        background: radial-gradient(circle, rgba(255, 230, 180, 0.25) 0%, transparent 60%);
+        top: -150px; left: -150px; border-radius: 50%; z-index: 0;
+        box-shadow: 800px 500px 0 150px rgba(255, 160, 40, 0.15);
+        pointer-events: none;
+    }
+
+    .stApp::after {
+        content: ""; position: fixed; width: 450px; height: 450px;
+        background: linear-gradient(135deg, rgba(255, 140, 0, 0.4) 0%, rgba(200, 80, 10, 0.1) 100%);
+        bottom: 5%; right: -100px; 
+        border-radius: 60px; 
+        transform: rotate(35deg);
+        z-index: 0;
+        box-shadow: -800px -300px 0 80px rgba(100, 45, 15, 0.3);
+        pointer-events: none;
+    }
+    
+    /* ── Contenedor principal (Tarjeta Blanca) ── */
+    .block-container {
+        max-width: 800px !important;
+        background-color: #FFFFFF !important;
+        border-radius: 16px !important;
+        padding: 3rem !important;
+        margin-top: 4vh !important;
+        margin-bottom: 4vh !important;
+        box-shadow: 0 15px 40px rgba(0,0,0,0.4) !important;
+        position: relative;
+        z-index: 10;
+    }
+
+    /* ── Scrollbar naranja ───────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+        background: rgba(255,140,0,0.45);
+        border-radius: 10px;
+    }
+
+    /* ── Checkbox ─────────────────────────────────────────── */
+    [data-testid="stCheckbox"] label p {
+        font-size: 14px !important;
+        color: #000000 !important; /* Letra negra como se solicitó */
+        font-weight: 600 !important;
+    }
+
+    /* ── Botón Aceptar — naranja institucional ───────────────────────────── */
+    [data-testid="stBaseButton-primary"] {
+        background: linear-gradient(90deg, #FF8C00 0%, #E67A00 100%) !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        border-radius: 10px !important;
+        font-weight: 700 !important;
+        font-size: 15px !important;
+        min-height: 46px !important;
+        box-shadow: 0 6px 20px rgba(255,140,0,0.35) !important;
+        transition: all 0.25s ease !important;
+    }
+    [data-testid="stBaseButton-primary"]:hover:not([disabled]) {
+        background: linear-gradient(90deg, #FF9D1A 0%, #F08000 100%) !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 10px 28px rgba(255,140,0,0.50) !important;
+    }
+    [data-testid="stBaseButton-primary"]:disabled {
+        background: rgba(200,200,200,0.55) !important;
+        color: rgba(100,100,100,0.6) !important;
+        box-shadow: none !important;
+        transform: none !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # ── Encabezado visual personalizado ──────────
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(90deg, #FF8C00 0%, #E67A00 60%, #CC6A00 100%);
+        margin: -3rem -3rem 2rem -3rem;
+        padding: 20px 28px 18px;
+        border-radius: 16px 16px 0 0;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        box-shadow: 0 4px 15px rgba(255,140,0,0.2);
+    ">
+        {html_logo}
+        <div>
+            <div style="font-size:11px; font-weight:600; letter-spacing:2px;
+                        color:rgba(255,255,255,0.85); text-transform:uppercase;">
+                INVIAS &middot; SRTI
+            </div>
+            <div style="font-size:18px; font-weight:700; color:#FFFFFF; line-height:1.2;">
+                Tratamiento de Datos Personales
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.write("")
+
+    # ── Texto de la política (desde BD) ──────────────────────────────────────
+    contenido_html = politica.get("contenido", "")
+    version_num = politica.get("numero_version", "")
+    if version_num:
+        st.caption(f"Versión {version_num}")
+    if contenido_html:
+        st.markdown(contenido_html, unsafe_allow_html=True)
+    else:
+        st.warning("No se pudo cargar el contenido de la política.")
+
+    st.divider()
+
+    # ── Confirmación y botón ──────────────────────────────────────────────────
+    confirmo = st.checkbox(
+        "✅ He leído y comprendo la Política de Tratamiento de Datos Personales",
+        key="politica_confirmo_lectura",
+    )
+
+    aceptar = st.button(
+        "🔓 Aceptar y Continuar",
+        key="politica_btn_aceptar",
+        type="primary",
+        disabled=not confirmo,
+        use_container_width=True,
+    )
+
+    if aceptar and confirmo:
+        try:
+            headers = st.context.headers
+            ip = (
+                headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                or headers.get("X-Real-IP", "")
+                or "no_disponible"
+            )
+            user_agent = headers.get("User-Agent", "no_disponible")
+        except Exception:
+            ip, user_agent = "no_disponible", "no_disponible"
+
+        try:
+            PoliticaService().registrar_aceptacion(
+                usuario_id=sesion["id"],
+                politica=politica,
+                ip=ip,
+                user_agent=user_agent,
+                sesion_id=sesion.get("id_sesion"),
+                nombre_completo=sesion.get("nombre_completo"),
+                email=sesion.get("email"),
+            )
+        except Exception as e:
+            st.error(f"Error al registrar la aceptación: {e}")
+            st.stop()
+
+        st.session_state["politica_pendiente"] = False
+        st.session_state.pop("politica_vigente", None)
+        st.rerun()
 
 
 def pantalla_dashboard() -> None:
@@ -1413,6 +1609,11 @@ if not sesion_activa():
 else:
     sesion = obtener_sesion()
     aplicar_tema()
+
+    # Mostrar pantalla de política si aún no fue aceptado en esta sesión
+    if st.session_state.get("politica_pendiente", False):
+        pantalla_politica_datos()
+        st.stop()
 
     # Definición de páginas
     page_dashboard = st.Page(pantalla_dashboard, title="Inicio", icon="🏠", default=True)
