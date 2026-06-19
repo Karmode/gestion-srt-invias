@@ -15,33 +15,67 @@ if not sesion:
     st.warning("Debes iniciar sesión.")
     st.stop()
 
+TIPOS_DOCUMENTO = {
+    "": "— Sin especificar —",
+    "CC": "CC — Cédula de Ciudadanía",
+    "CE": "CE — Cédula de Extranjería",
+    "TI": "TI — Tarjeta de Identidad",
+    "PA": "PA — Pasaporte",
+}
+
 tab_perfil, tab_contrato = st.tabs(["👤 Perfil", "📄 Contratos"])
 
 # ── TAB: PERFIL ──────────────────────────────────────────────────────────────
 
 with tab_perfil:
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.subheader("Datos de acceso")
-        st.write(f"**Usuario:** {sesion['usuario']}")
-        st.write(f"**Nombre:** {sesion.get('nombre_completo') or 'Sin registrar'}")
-        st.write(f"**Correo:** {sesion.get('email') or 'Sin registrar'}")
-
-    with col2:
-        st.subheader("Documento de identidad")
-        tipo_doc = sesion.get("tipo_documento") or ""
-        num_doc = sesion.get("numero_documento") or ""
-        if tipo_doc or num_doc:
-            st.write(f"**Tipo:** {tipo_doc or 'Sin registrar'}")
-            st.write(f"**Número:** {num_doc or 'Sin registrar'}")
-        else:
-            st.info("Documento no registrado. Contacta al administrador para actualizarlo.")
+    st.subheader("Datos de acceso")
+    st.write(f"**Usuario:** {sesion['usuario']}")
+    st.write(f"**Roles:** {', '.join(sesion.get('roles', [])) or 'Sin roles'}")
 
     st.divider()
-    st.subheader("Acceso asignado")
-    st.write(f"**Roles:** {', '.join(sesion.get('roles', [])) or 'Sin roles'}")
-    st.write("Los permisos detallados se gestionan internamente según tu rol.")
+    st.subheader("Editar datos personales")
+
+    tipo_doc_actual = sesion.get("tipo_documento") or ""
+    tipo_doc_idx = list(TIPOS_DOCUMENTO.keys()).index(tipo_doc_actual) if tipo_doc_actual in TIPOS_DOCUMENTO else 0
+
+    with st.form("form_editar_perfil"):
+        col1, col2 = st.columns(2)
+        with col1:
+            nuevo_nombre = st.text_input("Nombre completo", value=sesion.get("nombre_completo") or "")
+            nuevo_email = st.text_input("Correo electrónico", value=sesion.get("email") or "")
+        with col2:
+            nuevo_tipo_doc = st.selectbox(
+                "Tipo de documento",
+                options=list(TIPOS_DOCUMENTO.keys()),
+                format_func=lambda k: TIPOS_DOCUMENTO[k],
+                index=tipo_doc_idx,
+            )
+            nuevo_num_doc = st.text_input("Número de documento", value=sesion.get("numero_documento") or "")
+        guardar_perfil = st.form_submit_button("💾 Guardar cambios", use_container_width=True)
+
+    if guardar_perfil:
+        try:
+            _svc = UsuarioService()
+            _svc.actualizar_usuario(
+                sesion["id"],
+                {
+                    "nombre_completo": nuevo_nombre.strip(),
+                    "email": nuevo_email.strip(),
+                    "tipo_documento": nuevo_tipo_doc.strip(),
+                    "numero_documento": nuevo_num_doc.strip(),
+                    "actualizado_por": sesion["usuario"],
+                },
+                validar_permisos=False,
+            )
+            st.session_state["usuario_autenticado"].update({
+                "nombre_completo": nuevo_nombre.strip(),
+                "email": nuevo_email.strip(),
+                "tipo_documento": nuevo_tipo_doc.strip(),
+                "numero_documento": nuevo_num_doc.strip(),
+            })
+            st.success("Datos actualizados correctamente.")
+        except ValueError as e:
+            st.error(str(e))
 
     st.divider()
     st.subheader("Cambiar contraseña")
