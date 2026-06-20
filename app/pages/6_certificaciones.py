@@ -96,27 +96,55 @@ def _mostrar_avance(usuario_id: str, cert_actual) -> None:
             st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
 
 
-def render(sesion=None):
-    sesion = sesion or obtener_sesion()
-
-    if not sesion:
-        st.warning("Debes iniciar sesión.")
-        st.stop()
-
-    servicio = CertificacionService()
-    usuario_id = sesion["id"]
-
-    año_cert, mes_cert = servicio.periodo_certificable()
-    nombre_mes_cert = MESES_ES[mes_cert - 1]
-    es_anterior = servicio.es_mes_anterior()
-
-    mostrar_titulo_decorado("Mis Certificados")
+def _render_verificador_codigo(servicio: CertificacionService):
+    mostrar_titulo_decorado("Verificar formato")
     st.caption(
-        "Aquí puedes consultar el estado de tu certificación mensual de correspondencia "
-        "y descargar los certificados aprobados para tus cuentas de cobro."
+        "Ingresa el código que aparece en el recuadro inferior del certificado PDF "
+        "para comprobar su autenticidad. Un certificado genuino siempre devuelve "
+        "resultado positivo con los datos exactos del titular."
     )
+    codigo = st.text_input("Código de verificación", placeholder="XXXX-XXXX-XXXX-XXXX", max_chars=19)
+    if st.button("Verificar autenticidad", type="primary"):
+        codigo_limpio = codigo.strip().upper().replace(" ", "")
+        if not codigo_limpio:
+            st.warning("Ingresa el código de verificación antes de continuar.")
+            return
 
-    # ── Estado del período certificable ──────────────────────────
+        cert = servicio.verificar_certificado(codigo_limpio)
+        if cert:
+            nombre = cert.get("nombre_usuario", "")
+            año = cert.get("año", "")
+            mes_num = cert.get("mes", 1)
+            mes_nombre = MESES_ES[mes_num - 1]
+            aprobado_por = cert.get("aprobado_por", {})
+            fecha_ap = aprobado_por.get("fecha")
+            fecha_str = formato_fecha_bogota(fecha_ap, "%d de %B de %Y a las %H:%M") if fecha_ap else "—"
+
+            st.success("Certificado válido — documento auténtico")
+            with st.container(border=True):
+                st.markdown(f"**Titular:** {nombre}")
+                st.markdown(f"**Período certificado:** {mes_nombre} {año}")
+                st.markdown(f"**Emitido por:** {aprobado_por.get('nombre', '—')} · {fecha_str}")
+                if cert.get("observaciones"):
+                    st.caption(f"Observaciones: {cert['observaciones']}")
+
+            pdf_bytes = servicio.generar_pdf(cert)
+            nombre_archivo = f"Certificado_correspondencia_{mes_nombre}_{año}.pdf"
+            st.download_button(
+                label="⬇️ Descargar certificado verificado",
+                data=pdf_bytes,
+                file_name=nombre_archivo,
+                mime="application/pdf",
+                type="primary",
+            )
+        else:
+            st.error("Código no encontrado. El certificado puede ser falso, haber sido revocado o el código fue transcrito incorrectamente.")
+            st.caption("Revisa que el código esté completo y en el formato XXXX-XXXX-XXXX-XXXX.")
+
+
+def _render_opcion_6_gestion_corr(servicio, usuario_id, año_cert, mes_cert, nombre_mes_cert, es_anterior):
+    mostrar_titulo_decorado("Formato de control a la correspondencia - Gestión documental - SECOP II")
+    
     etiqueta = (
         f"Período anterior — {nombre_mes_cert} {año_cert} (ponerse al día)"
         if es_anterior
@@ -126,8 +154,6 @@ def render(sesion=None):
 
     cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id)
 
-    # Recuperación: si tiene 3 firmas + contrato pero quedó en "pendiente" por
-    # un fallo previo en auto-cert, certificar ahora y recargar.
     if cert_actual and cert_actual.get("estado") != "aprobado":
         if servicio.recuperar_auto_cert(usuario_id, cert_actual):
             cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id)
@@ -175,24 +201,23 @@ def render(sesion=None):
         st.warning(f"Tu certificado de **{nombre_mes_cert} {año_cert}** aún está en proceso.")
         _mostrar_avance(usuario_id, cert_actual)
 
-    # ── Historial ─────────────────────────────────────────────────
-    st.divider()
-    st.subheader("Historial de certificados")
+
+def _render_opcion_8_historial(servicio, usuario_id, año_cert, mes_cert):
+    mostrar_titulo_decorado("Historial de formatos")
 
     historial = servicio.obtener_historial(usuario_id)
 
-    # Excluir el período certificable del historial (ya se muestra arriba)
     historial_pasado = [
         c for c in historial
         if not (c.get("año") == año_cert and c.get("mes") == mes_cert)
     ]
 
     if not historial_pasado:
-        st.caption("Aún no tienes certificados de meses anteriores.")
+        st.caption("Aún no tienes formatos de meses anteriores.")
     else:
         for cert in historial_pasado:
             mes_num = cert.get("mes", 1)
-            año_cert = cert.get("año", "")
+            año_cert_hist = cert.get("año", "")
             mes_nombre = MESES_ES[mes_num - 1]
             estado = cert.get("estado")
 
@@ -201,7 +226,7 @@ def render(sesion=None):
 
                 with c_info:
                     st.markdown(
-                        f"**{mes_nombre} {año_cert}** &nbsp; {_badge_estado(estado)}",
+                        f"**{mes_nombre} {año_cert_hist}** &nbsp; {_badge_estado(estado)}",
                         unsafe_allow_html=False,
                     )
                     if estado == "aprobado":
@@ -217,7 +242,7 @@ def render(sesion=None):
                 with c_btn:
                     if estado == "aprobado":
                         pdf_bytes = servicio.generar_pdf(cert)
-                        nombre_archivo = f"Certificado_correspondencia_{mes_nombre}_{año_cert}.pdf"
+                        nombre_archivo = f"Certificado_correspondencia_{mes_nombre}_{año_cert_hist}.pdf"
                         cert_id = str(cert.get("_id", ""))
                         st.download_button(
                             "⬇️ PDF",
@@ -231,9 +256,62 @@ def render(sesion=None):
                             st.session_state["_preview_cert_user"] = {
                                 "cert": cert,
                                 "mes_nombre": mes_nombre,
-                                "año": año_cert,
+                                "año": año_cert_hist,
                             }
                             st.rerun()
+
+
+def render(sesion=None):
+    sesion = sesion or obtener_sesion()
+
+    if not sesion:
+        st.warning("Debes iniciar sesión.")
+        st.stop()
+
+    servicio = CertificacionService()
+    usuario_id = sesion["id"]
+
+    año_cert, mes_cert = servicio.periodo_certificable()
+    nombre_mes_cert = MESES_ES[mes_cert - 1]
+    es_anterior = servicio.es_mes_anterior()
+
+    mostrar_titulo_decorado("Formatos de contrato")
+
+    col_menu, col_contenido = st.columns([1, 2], gap="large")
+
+    with col_menu:
+        with st.container(border=True):
+            st.markdown("### Formatos - Cuenta de cobro SRTI")
+            st.button("1- Cuenta de cobro.", disabled=True, use_container_width=True)
+            st.button("2- Form. retención en la fuente Primera cuenta.", disabled=True, use_container_width=True)
+            st.button("3- Form. retención en la fuente Segunda cuenta ++", disabled=True, use_container_width=True)
+            st.button("4- Form. condicion de declarante y dep. Economica.", disabled=True, use_container_width=True)
+            st.button("5- Form. Acta de compromiso.", disabled=True, use_container_width=True)
+            
+            if st.button("6- Form. Gestion Corr - GD- SECOP II.", type="primary", disabled=False, use_container_width=True):
+                st.session_state["tab_formato_activo"] = 6
+                st.rerun()
+                
+            st.button("7- ADRES - SECOP II - KLIC 2 - AZ - Her. PDF.", disabled=True, use_container_width=True)
+            
+            if st.button("8- Historial de formatos.", type="primary", disabled=False, use_container_width=True):
+                st.session_state["tab_formato_activo"] = 8
+                st.rerun()
+                
+            if st.button("9- Verificar formato.", type="primary", disabled=False, use_container_width=True):
+                st.session_state["tab_formato_activo"] = 9
+                st.rerun()
+
+    with col_contenido:
+        tab_activa = st.session_state.get("tab_formato_activo")
+        if tab_activa == 6:
+            _render_opcion_6_gestion_corr(servicio, usuario_id, año_cert, mes_cert, nombre_mes_cert, es_anterior)
+        elif tab_activa == 8:
+            _render_opcion_8_historial(servicio, usuario_id, año_cert, mes_cert)
+        elif tab_activa == 9:
+            _render_verificador_codigo(servicio)
+        else:
+            st.info("👈 Selecciona un formato en el menú de la izquierda para visualizar su contenido.")
 
     if st.session_state.get("_preview_cert_user"):
         _dialog_preview_cert(servicio)

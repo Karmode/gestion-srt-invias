@@ -170,7 +170,7 @@ def render(sesion=None):
     nombre_mes = MESES_ES[mes - 1]
     es_anterior = servicio.es_mes_anterior()
 
-    mostrar_titulo_decorado("Certificaciones Mensuales")
+    mostrar_titulo_decorado("Seguimiento - Formatos")
     st.caption(
         "Revisa el estado de correspondencia, firmas y contrato de cada colaborador "
         "y emite las certificaciones del período."

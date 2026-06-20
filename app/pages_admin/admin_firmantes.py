@@ -134,7 +134,7 @@ def render(sesion=None):
     nombre_mes = MESES_ES[mes - 1]
     es_anterior = servicio.es_mes_anterior()
 
-    mostrar_titulo_decorado("✍️ Aprobaciones de Certificaciones")
+    mostrar_titulo_decorado("Sup. Formatos")
     st.caption(f"Período certificable: **{nombre_mes} {año}**")
 
     if es_anterior:

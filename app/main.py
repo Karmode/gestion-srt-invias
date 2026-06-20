@@ -1653,7 +1653,11 @@ def pantalla_dashboard() -> None:
         </div>
         """, unsafe_allow_html=True)
         
-        st.info("Se esta actualizando la sección de contratos para la gestion y descarga de formatos, porfavor revisar en 'Mi perfil' que los datos personales y de contrato (en caso de contratistas) esten al dia y correctamente ingresados.")
+        st.markdown("""
+        <div style="background-color: #e8f4fd; padding: 16px; border-radius: 8px; border-left: 5px solid #2b8cbe; margin-bottom: 15px;">
+            <span style="color: #1c5e82;">⚠️ Se está actualizando la sección de contratos para la gestión y descarga de formatos. Por favor revisar en 'Mi perfil' que los datos personales y de contrato <span style="font-weight: bold; text-decoration: underline;">(en caso de contratistas)</span> estén al día y correctamente ingresados. ⚠️</span>
+        </div>
+        """, unsafe_allow_html=True)
         
         st.write("")
         
@@ -1667,9 +1671,9 @@ def pantalla_dashboard() -> None:
         """, unsafe_allow_html=True)
         
         st.markdown("""
-        - La correspondencia atrasada del trámite se calculará de la siguiente forma: 10 días hábiles desde la fecha de radicado sin contar fines de semana ni festivos colombianos.
-        - Se recomienda utilizar el filtro por estado <a href="Correspondencia" target="_self" style="color: #FF8C00; font-weight: bold; text-decoration: none;">"En trámite"</a>.
-        - Los formatos generados por el sistema para los contratistas solo serán funcionales y válidos si el usuario diligencia todos los datos personales y de contrato en <a href="Mi_perfil" target="_self" style="color: #FF8C00; font-weight: bold; text-decoration: none;">Mi perfil</a>.
+        - La correspondencia atrasada del trámite se calculará de la siguiente forma: **10 días hábiles desde la fecha de radicado sin contar fines de semana ni festivos colombianos.**
+        - Se recomienda utilizar el filtro por estado <span style="color: #FF8C00; font-weight: bold;">"En trámite"</span>.
+        - Los formatos generados por el sistema para los contratistas solo serán funcionales y válidos si el usuario diligencia todos los datos personales y de contrato en <span style="color: #FF8C00; font-weight: bold;">Mi perfil</span>.
         - Cualquier correspondencia mal asignada o que no pertenezca al usuario deberá ser reasignada a "Javier Alexander Delgado" en la ventana de reasignación de la correspondencia.
         """, unsafe_allow_html=True)
 
@@ -1733,24 +1737,23 @@ else:
         admin_pages.append(st.Page("pages/5_dashboard.py", title="Dashboard", icon="📊"))
     if "reporte.ver" in permisos_sesion:
         admin_pages.append(st.Page("pages/4_reportes.py", title="Reportes y Evidencias", icon="📄"))
-# Páginas de Supervisión / Certificaciones
+    # Páginas de Gestión de contratos / Formatos
     _perms_firma = {"certificacion.firmar_corr", "certificacion.firmar_gd", "certificacion.firmar_secop"}
     es_admin_main = any(r in {"admin", "administrador"} for r in sesion.get("roles", []))
     es_firmante_o_supervisor = bool(_perms_firma & set(permisos_sesion)) or es_admin_main or "certificacion.aprobar" in permisos_sesion
 
     supervision_pages = [
-        st.Page("pages/6_certificaciones.py", title="Mis Certificados", icon="🏅"),
-        st.Page("pages/8_verificar_cert.py", title="Verificar Certificado", icon="🔍"),
+        st.Page("pages/6_certificaciones.py", title="Formatos de contrato", icon="📄"),
     ]
     if es_firmante_o_supervisor:
-        supervision_pages.append(st.Page("pages/9_firmantes_certif.py", title="Aprobar Certificaciones", icon="✍️"))
+        supervision_pages.append(st.Page("pages/9_firmantes_certif.py", title="Sup. Formatos", icon="✍️"))
     if "certificacion.aprobar" in permisos_sesion:
-        supervision_pages.append(st.Page("pages/7_admin_certif.py", title="Seguimiento de Certificaciones", icon="📊"))
+        supervision_pages.append(st.Page("pages/7_admin_certif.py", title="Seguimiento - Formatos", icon="📊"))
 
     # Agrupar páginas
     menu_dict = {
         "Principal": [page_dashboard, page_correspondencia, page_perfil, page_instructivos],
-        "Supervisión": supervision_pages,
+        "Gestión contratos": supervision_pages,
     }
 
     if admin_pages:
