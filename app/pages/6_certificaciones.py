@@ -5,6 +5,7 @@ y el historial de certificados anteriores con opción de descarga PDF.
 """
 
 import streamlit as st
+from app.core.ui_titulos import mostrar_titulo_decorado
 
 from app.core.sesion import obtener_sesion
 from app.core.ui_certificado import render_preview_cert
@@ -109,7 +110,7 @@ def render(sesion=None):
     nombre_mes_cert = MESES_ES[mes_cert - 1]
     es_anterior = servicio.es_mes_anterior()
 
-    st.title("Mis Certificados")
+    mostrar_titulo_decorado("Mis Certificados")
     st.caption(
         "Aquí puedes consultar el estado de tu certificación mensual de correspondencia "
         "y descargar los certificados aprobados para tus cuentas de cobro."

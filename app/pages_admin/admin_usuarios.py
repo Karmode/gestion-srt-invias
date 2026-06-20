@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 import pandas as pd
 import streamlit as st
+from app.core.ui_titulos import mostrar_titulo_decorado
 
 from app.core.autorizacion import validar_permiso, ValidacionAutorizacion
 from app.core.catalogos import TIPOS_CONTRATO
@@ -235,7 +236,7 @@ def render(sesion=None):
     servicio = UsuarioService()
     sesion = sesion or obtener_sesion()
 
-    st.title("Administración de usuarios")
+    mostrar_titulo_decorado("Administración de usuarios")
 
     if not sesion:
         st.warning("Debes iniciar sesión.")

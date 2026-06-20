@@ -1,4 +1,5 @@
 import streamlit as st
+from app.core.ui_titulos import mostrar_titulo_decorado
 import pandas as pd
 
 from app.core.autorizacion import validar_permiso, ValidacionAutorizacion
@@ -13,7 +14,7 @@ def render(sesion=None):
     usuario_serv = UsuarioService()
     sesion = sesion or obtener_sesion()
 
-    st.title("Administración de roles")
+    mostrar_titulo_decorado("Administración de roles")
 
     if not sesion:
         st.warning("Debes iniciar sesión.")

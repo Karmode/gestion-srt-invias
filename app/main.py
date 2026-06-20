@@ -14,8 +14,7 @@ from app.services.sesion_service import SesionService
 from app.services.usuario_service import UsuarioService
 from app.services.correspondencia_service import CorrespondenciaService
 from app.services.politica_service import PoliticaService
-
-
+from app.core.ui_titulos import mostrar_titulo_decorado
 
 st.set_page_config(
     page_title="Gestión de Correspondencia", 
@@ -1513,45 +1512,99 @@ def pantalla_dashboard() -> None:
     id_filtro = sesion.get("id")
     metricas = servicio_corr.obtener_metricas_dashboard(id_usuario=id_filtro)
 
+    # 2. Título "Inicio" decorado
+    mostrar_titulo_decorado("Inicio")
 
-    st.title("Gestión de Correspondencia")
-    st.subheader(f"Bienvenido(a), {sesion.get('nombre_completo') or sesion['usuario']}.")
-    
-    st.markdown("**Vista actual:** Personal (Mis asignaciones)")
+    # 3. Dividir la página en 2 columnas (Izquierda y Derecha)
+    col_left, col_right = st.columns([2, 1], gap="large")
 
-
-    # Métricas de Valor
-    st.write("")
-    m1, m2, m3 = st.columns(3)
-    
-    with m1:
-        st.metric(
-            label="Pendientes de Trámite", 
-            value=metricas["pendientes"],
-            help="Radicados que aún no han sido respondidos o archivados."
+    with col_left:
+        st.subheader(f"Bienvenido(a), {sesion.get('nombre_completo') or sesion['usuario']}.")
+        
+        st.markdown(
+            "<div style='color: #6D4C41; font-weight: bold; margin-bottom: 10px; font-size: 15px;'>"
+            "Herramienta interna de la Subdirección SRTI para la gestión de correspondencia desde 2026, administración de usuarios y automatización de formatos para contratistas."
+            "</div>", unsafe_allow_html=True
         )
-    with m2:
-        # El delta se muestra en rojo si hay urgentes
-        st.metric(
-            label="Urgentes o Vencidos", 
-            value=metricas["urgentes"],
-            delta=f"{metricas['urgentes']} críticos" if metricas["urgentes"] > 0 else None,
-            delta_color="inverse",
-            help="Radicados vencidos o que vencen en los próximos 3 días."
-        )
-    with m3:
-        st.metric(
-            label="Radicados Nuevos", 
-            value=metricas["recientes"],
-            help="Correspondencia ingresada en las últimas 48 horas."
-        )
+        st.write("")
 
-    st.divider()
-    
-    # Secciones de Acción
-    col_acciones, col_guia = st.columns([2, 1])
-    
-    with col_acciones:
+        # Recuadro "Mi correspondencia"
+        with st.container(border=True):
+            st.markdown("""
+            <span id='mi-corr-box'></span>
+            <h3 style='color: #FF8C00; margin-top: 0; padding-top: 0; position: relative; z-index: 2;'>Mi correspondencia</h3>
+            <style>
+                div[data-testid="stVerticalBlockBorderWrapper"]:has(#mi-corr-box) {
+                    background: 
+                        radial-gradient(circle at 10% 20%, rgba(255, 140, 0, 0.04) 0%, transparent 40%),
+                        radial-gradient(circle at 90% 80%, rgba(255, 152, 0, 0.04) 0%, transparent 40%),
+                        linear-gradient(135deg, rgba(255,140,0,0.015) 0%, rgba(255,140,0,0.005) 100%) !important;
+                    border: 1px solid rgba(255, 140, 0, 0.25) !important;
+                    position: relative;
+                    overflow: hidden;
+                }
+                
+                div[data-testid="stVerticalBlockBorderWrapper"]:has(#mi-corr-box)::before {
+                    content: "";
+                    position: absolute;
+                    top: -40px;
+                    right: -20px;
+                    width: 120px;
+                    height: 120px;
+                    background: linear-gradient(135deg, rgba(255,140,0,0.05), transparent);
+                    clip-path: polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0% 50%);
+                    transform: rotate(15deg);
+                    pointer-events: none;
+                    z-index: 0;
+                }
+                
+                div[data-testid="stVerticalBlockBorderWrapper"]:has(#mi-corr-box)::after {
+                    content: "";
+                    position: absolute;
+                    bottom: -30px;
+                    left: -20px;
+                    width: 90px;
+                    height: 90px;
+                    background: linear-gradient(135deg, rgba(255,140,0,0.04), transparent);
+                    clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);
+                    transform: rotate(-10deg);
+                    pointer-events: none;
+                    z-index: 0;
+                }
+                
+                /* Ensure content stays above background shapes */
+                div[data-testid="stVerticalBlockBorderWrapper"]:has(#mi-corr-box) > div {
+                    position: relative;
+                    z-index: 2;
+                }
+            </style>
+            """, unsafe_allow_html=True)
+            m1, m2, m3 = st.columns(3)
+            with m1:
+                st.metric(
+                    label="Pendientes de Trámite", 
+                    value=metricas["pendientes"],
+                    help="Radicados que aún no han sido respondidos o archivados."
+                )
+            with m2:
+                # El delta se muestra en rojo si hay urgentes
+                st.metric(
+                    label="Urgentes o Vencidos", 
+                    value=metricas["urgentes"],
+                    delta=f"{metricas['urgentes']} críticos" if metricas["urgentes"] > 0 else None,
+                    delta_color="inverse",
+                    help="Radicados vencidos o que vencen en los próximos 3 días."
+                )
+            with m3:
+                st.metric(
+                    label="Radicados Nuevos", 
+                    value=metricas["recientes"],
+                    help="Correspondencia ingresada en las últimas 48 horas."
+                )
+
+        st.divider()
+        
+        # Secciones de Acción
         st.subheader("🎯 Acciones rápidas")
         
         c1, c2 = st.columns(2)
@@ -1559,22 +1612,69 @@ def pantalla_dashboard() -> None:
             if st.button("📂 Ir a Correspondencia", width="stretch", type="primary"):
                 st.switch_page("pages/2_correspondencia.py")
         with c2:
+            # CSS robusto para el botón verde sin romper la alineación vertical
+            st.markdown("""
+            <style>
+                /* Ocultar el contenedor que Streamlit crea para este bloque st.markdown */
+                div.element-container:has(style#btn-style) {
+                    display: none !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    height: 0 !important;
+                }
+                
+                /* Aplicar estilo ÚNICAMENTE al botón adyacente para no afectar los tooltips */
+                div.element-container:has(style#btn-style) + div.element-container button {
+                    background-color: #28a745 !important;
+                    color: white !important;
+                    border-color: #28a745 !important;
+                }
+                div.element-container:has(style#btn-style) + div.element-container button:hover {
+                    background-color: #218838 !important;
+                    border-color: #1e7e34 !important;
+                }
+                div.element-container:has(style#btn-style) + div.element-container button p {
+                    color: white !important;
+                }
+            </style>
+            <style id="btn-style"></style>
+            """, unsafe_allow_html=True)
+            
             if st.button("👤 Ver mi Perfil", width="stretch"):
                 st.switch_page("pages/2_mi_perfil.py")
+
+    with col_right:
+        # Título decorado "Anuncios"
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, #FF8C00, #FF9800); color: white; padding: 12px 15px; border-radius: 8px; margin-bottom: 15px;">
+            <h3 style="margin: 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">
+                📢 Anuncios
+            </h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.info("Se esta actualizando la sección de contratos para la gestion y descarga de formatos, porfavor revisar en 'Mi perfil' que los datos personales y de contrato (en caso de contratistas) esten al dia y correctamente ingresados.")
         
         st.write("")
-        st.markdown("""
-        ### Recomendaciones:
-        - **Prioriza lo urgente:** Revisa primero los radicados marcados con tiempo crítico.
-        - **Mantén la trazabilidad:** Cada vez que realices un avance, regístralo en el sistema.
-        - **Cierra el ciclo:** No olvides marcar como 'Respondido' o 'Archivado' para limpiar tu lista de pendientes.
-        """)
-
-    with col_guia:
-        st.info("**Tip del día**")
-        st.write("Puedes filtrar la correspondencia por fecha de vencimiento en el módulo principal para organizar mejor tu jornada.")
         
+        # Título decorado "Recomendaciones"
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, #FF8C00, #FF9800); color: white; padding: 12px 15px; border-radius: 8px; margin-bottom: 15px;">
+            <h3 style="margin: 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">
+                💡 Recomendaciones
+            </h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("""
+        - La correspondencia atrasada del trámite se calculará de la siguiente forma: 10 días hábiles desde la fecha de radicado sin contar fines de semana ni festivos colombianos.
+        - Se recomienda utilizar el filtro por estado <a href="Correspondencia" target="_self" style="color: #FF8C00; font-weight: bold; text-decoration: none;">"En trámite"</a>.
+        - Los formatos generados por el sistema para los contratistas solo serán funcionales y válidos si el usuario diligencia todos los datos personales y de contrato en <a href="Mi_perfil" target="_self" style="color: #FF8C00; font-weight: bold; text-decoration: none;">Mi perfil</a>.
+        - Cualquier correspondencia mal asignada o que no pertenezca al usuario deberá ser reasignada a "Javier Alexander Delgado" en la ventana de reasignación de la correspondencia.
+        """, unsafe_allow_html=True)
+
         if es_admin:
+            st.write("")
             st.warning("**Nota de Admin**")
             st.write("Como administrador, tienes acceso a la configuración de usuarios y roles desde el menú lateral.")
 

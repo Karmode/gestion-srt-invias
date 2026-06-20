@@ -5,6 +5,7 @@ certificado PDF y comprobar que es original e inalterado.
 """
 
 import streamlit as st
+from app.core.ui_titulos import mostrar_titulo_decorado
 
 from app.core.sesion import obtener_sesion
 from app.core.zona_horaria import formato_fecha_bogota
@@ -20,7 +21,7 @@ def render(sesion=None):
 
     servicio = CertificacionService()
 
-    st.title("Verificar Certificado")
+    mostrar_titulo_decorado("Verificar Certificado")
     st.caption(
         "Ingresa el código que aparece en el recuadro inferior del certificado PDF "
         "para comprobar su autenticidad. Un certificado genuino siempre devuelve "

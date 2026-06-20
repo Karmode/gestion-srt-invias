@@ -1,4 +1,5 @@
 import streamlit as st
+from app.core.ui_titulos import mostrar_titulo_decorado
 import pandas as pd
 import json
 from datetime import datetime, timezone, timedelta
@@ -25,7 +26,7 @@ if "mensaje_error" in st.session_state:
 
 
 
-st.title("Correspondencia")
+mostrar_titulo_decorado("Correspondencia")
 sesion = obtener_sesion()
 
 if not sesion:

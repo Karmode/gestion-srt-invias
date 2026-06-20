@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 import streamlit as st
+from app.core.ui_titulos import mostrar_titulo_decorado
 
 from app.core.catalogos import TIPOS_CONTRATO
 from app.core.sesion import obtener_sesion
@@ -8,7 +9,7 @@ from app.services.auth_service import AuthService
 from app.services.usuario_service import UsuarioService
 
 
-st.title("Mi perfil")
+mostrar_titulo_decorado("Mi perfil")
 sesion = obtener_sesion()
 
 if not sesion:

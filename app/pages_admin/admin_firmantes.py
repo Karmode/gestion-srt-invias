@@ -6,6 +6,7 @@ Accesible para los 3 firmantes designados y para el administrador.
 """
 
 import streamlit as st
+from app.core.ui_titulos import mostrar_titulo_decorado
 
 from app.core.sesion import obtener_sesion
 from app.core.zona_horaria import formato_fecha_bogota
@@ -133,7 +134,7 @@ def render(sesion=None):
     nombre_mes = MESES_ES[mes - 1]
     es_anterior = servicio.es_mes_anterior()
 
-    st.title("✍️ Aprobaciones de Certificaciones")
+    mostrar_titulo_decorado("✍️ Aprobaciones de Certificaciones")
     st.caption(f"Período certificable: **{nombre_mes} {año}**")
 
     if es_anterior:
