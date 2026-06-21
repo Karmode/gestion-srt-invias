@@ -4,7 +4,10 @@ Cada usuario ve el estado de su certificación del mes actual
 y el historial de certificados anteriores con opción de descarga PDF.
 """
 
+import os
+
 import streamlit as st
+from app.config import configuracion
 from app.core.ui_titulos import mostrar_titulo_decorado
 
 from app.core.sesion import obtener_sesion
@@ -202,6 +205,118 @@ def _render_opcion_6_gestion_corr(servicio, usuario_id, año_cert, mes_cert, nom
         _mostrar_avance(usuario_id, cert_actual)
 
 
+def _render_opcion_7_herramientas():
+    """Viñeta 7 — acceso a plataformas externas (ADRES, SECOP II, KLIC 2, AZ Digital, Her. PDF)."""
+    import base64
+
+    mostrar_titulo_decorado("🌐 ADRES · SECOP II · KLIC 2 · AZ Digital · Her. PDF")
+    st.caption("Haz clic en cualquier imagen para abrir la plataforma en una nueva pestaña.")
+    st.write("")
+
+    PLATAFORMAS = [
+        {
+            "img": os.path.join("app", "assets", "az_digital.png"),
+            "name": "AZ Digital",
+            "desc": "Carpeta digital de gestión documental",
+            "url": configuracion.az_digital_url,
+        },
+        {
+            "img": os.path.join("app", "assets", "klic_2.png"),
+            "name": "KLIC 2",
+            "desc": "Sistema de correspondencia INVIAS",
+            "url": configuracion.klic_2_url,
+        },
+        {
+            "img": os.path.join("app", "assets", "adres.png"),
+            "name": "ADRES",
+            "desc": "Administradora de Recursos del SGSSS",
+            "url": configuracion.adres_url,
+        },
+        {
+            "img": os.path.join("app", "assets", "secop.png"),
+            "name": "SECOP II",
+            "desc": "Sistema Electrónico de Contratación Pública",
+            "url": configuracion.secop_url,
+        },
+        {
+            "img": os.path.join("app", "assets", "pdf_h.png"),
+            "name": "Her. PDF",
+            "desc": "Herramienta de edición y gestión PDF",
+            "url": configuracion.pdf_h_url,
+        },
+    ]
+
+    def _img_b64(path: str) -> str:
+        if not os.path.exists(path):
+            return ""
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+
+    def _card(plat: dict, delay_ms: int = 0) -> str:
+        b64 = _img_b64(plat["img"])
+        img_tag = (
+            f'<img src="data:image/png;base64,{b64}" alt="{plat["name"]}" '
+            f'style="max-height:80px;max-width:100%;object-fit:contain;'
+            f'transition:transform 0.22s ease;" />'
+            if b64 else ""
+        )
+        # Si hay URL, toda la imagen es un enlace; si no, solo muestra la imagen
+        if plat["url"]:
+            content = (
+                f'<a href="{plat["url"]}" target="_blank" rel="noopener noreferrer" '
+                f'style="display:block;text-decoration:none;">'
+                f'{img_tag}'
+                f'</a>'
+            )
+        else:
+            content = img_tag
+
+        return f"""
+        <div style="
+            border: 1.5px solid rgba(255,140,0,0.28);
+            border-radius: 16px;
+            padding: 22px 16px 16px;
+            text-align: center;
+            background: transparent;
+            transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+            animation: fadeCardIn7 0.4s ease {delay_ms}ms both;
+            cursor: {'pointer' if plat['url'] else 'default'};
+        " onmouseover="this.style.transform='translateY(-5px)';this.style.boxShadow='0 10px 32px rgba(255,140,0,0.22)';this.style.borderColor='rgba(255,140,0,0.60)'"
+           onmouseout="this.style.transform='';this.style.boxShadow='';this.style.borderColor='rgba(255,140,0,0.28)'">
+            {content}
+            <div style="font-weight:700;font-size:0.96em;margin:10px 0 3px;color:#FF8C00;">{plat["name"]}</div>
+            <div style="font-size:0.78em;color:#888;">{plat["desc"]}</div>
+        </div>
+        """
+
+    # CSS de animación (una sola vez)
+    st.markdown(
+        """
+        <style>
+        @keyframes fadeCardIn7 {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # ── Primera fila: 3 plataformas ──────────────────────────────────────────
+    cols1 = st.columns(3, gap="medium")
+    for i, plat in enumerate(PLATAFORMAS[:3]):
+        with cols1[i]:
+            st.markdown(_card(plat, delay_ms=i * 80), unsafe_allow_html=True)
+
+    st.write("")
+
+    # ── Segunda fila: 2 plataformas centradas ───────────────────────────────
+    _, col_d, col_e, _ = st.columns([0.5, 1, 1, 0.5], gap="medium")
+    for col, plat, delay in zip([col_d, col_e], PLATAFORMAS[3:], [240, 320]):
+        with col:
+            st.markdown(_card(plat, delay_ms=delay), unsafe_allow_html=True)
+
+
 def _render_opcion_8_historial(servicio, usuario_id, año_cert, mes_cert):
     mostrar_titulo_decorado("Historial de formatos")
 
@@ -288,11 +403,13 @@ def render(sesion=None):
             st.button("4- Form. condicion de declarante y dep. Economica.", disabled=True, use_container_width=True)
             st.button("5- Form. Acta de compromiso.", disabled=True, use_container_width=True)
             
-            if st.button("6- Form. Gestion Corr - GD- SECOP II.", type="primary", disabled=False, use_container_width=True):
+            if st.button("6– Form. Gestión Corr – GD – SECOP II.", type="primary", disabled=False, use_container_width=True):
                 st.session_state["tab_formato_activo"] = 6
                 st.rerun()
-                
-            st.button("7- ADRES - SECOP II - KLIC 2 - AZ - Her. PDF.", disabled=True, use_container_width=True)
+
+            if st.button("7– ADRES · SECOP II · KLIC 2 · AZ · Her. PDF.", type="primary", disabled=False, use_container_width=True):
+                st.session_state["tab_formato_activo"] = 7
+                st.rerun()
             
             if st.button("8- Historial de formatos.", type="primary", disabled=False, use_container_width=True):
                 st.session_state["tab_formato_activo"] = 8
@@ -306,6 +423,8 @@ def render(sesion=None):
         tab_activa = st.session_state.get("tab_formato_activo")
         if tab_activa == 6:
             _render_opcion_6_gestion_corr(servicio, usuario_id, año_cert, mes_cert, nombre_mes_cert, es_anterior)
+        elif tab_activa == 7:
+            _render_opcion_7_herramientas()
         elif tab_activa == 8:
             _render_opcion_8_historial(servicio, usuario_id, año_cert, mes_cert)
         elif tab_activa == 9:
