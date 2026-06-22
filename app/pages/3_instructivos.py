@@ -1,4 +1,5 @@
 import streamlit as st
+from app.core.ui_titulos import mostrar_titulo_decorado
 
 from app.config import configuracion
 
@@ -30,7 +31,7 @@ RECURSOS = {
     },
 }
 
-st.title("📚 Instructivos")
+mostrar_titulo_decorado("📚 Instructivos")
 st.caption("Recursos de capacitación y documentación oficial.")
 
 col_controles, col_vista = st.columns([1, 3])

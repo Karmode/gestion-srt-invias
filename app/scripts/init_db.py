@@ -107,7 +107,7 @@ def main():
     colecciones = [
         "usuarios", "roles", "permisos", "sesiones",
         "opciones_configuracion", "certificaciones",
-        "politicas_datos", "aceptaciones_politica",
+        "politicas_datos", "aceptaciones_politica", "firmas",
     ]
     for nombre in colecciones:
         try:

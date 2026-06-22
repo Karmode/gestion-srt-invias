@@ -1,5 +1,6 @@
 import pandas as pd
 import streamlit as st
+from app.core.ui_titulos import mostrar_titulo_decorado
 
 from app.core.autorizacion import validar_permiso, ValidacionAutorizacion
 from app.core.sesion import obtener_sesion
@@ -20,7 +21,7 @@ except ValidacionAutorizacion:
 # --- Encabezado ---
 col_title, col_btn = st.columns([5, 1])
 with col_title:
-    st.title("📊 Dashboard de Gestión")
+    mostrar_titulo_decorado("📊 Dashboard de Gestión")
     st.markdown("Métricas clave y gráficos de rendimiento operativo para el control de correspondencia.")
 with col_btn:
     st.write("") # Espaciador para alineación vertical
