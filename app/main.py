@@ -267,6 +267,15 @@ def aplicar_tema():
             font-weight: 400 !important;
         }
 
+        /* Ocultar "Mi Perfil" del menú: se accede desde el botón de la tarjeta.
+           La página sigue registrada en st.navigation (ruta /mi_perfil) para que
+           st.page_link funcione. */
+
+        div[data-testid="stSidebarNav"] li:has(a[href$="/mi_perfil"]) {
+
+            display: none !important;
+        }
+
         /* =====================================================
            SOLO TÍTULOS DE SECCIÓN
         ===================================================== */
@@ -303,7 +312,7 @@ def aplicar_tema():
            TARJETA PERFIL
         ===================================================== */
 
-        .menu-card-premium {
+        .st-key-perfil_card {
 
             background:
 
@@ -333,11 +342,13 @@ def aplicar_tema():
             position: relative;
 
             padding: 18px !important;
+
+            margin-bottom: 15px;
         }
 
         /* Glow tarjeta */
 
-        .menu-card-premium::before {
+        .st-key-perfil_card::before {
 
             content: "";
 
@@ -359,6 +370,35 @@ def aplicar_tema():
                 );
 
             pointer-events: none;
+        }
+
+        /* Enlace "Ver mi perfil" (page_link) dentro de la tarjeta */
+
+        .st-key-perfil_card a {
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            width: fit-content !important;
+            margin: 12px auto 0 auto !important;
+            padding: 5px 14px !important;
+            border-radius: 9px !important;
+            background: rgba(255,152,0,0.12) !important;
+            border: 1px solid rgba(255,152,0,0.35) !important;
+            transition: background 0.15s ease;
+            position: relative;
+            z-index: 1;
+        }
+
+        .st-key-perfil_card a:hover {
+            background: rgba(255,152,0,0.24) !important;
+        }
+
+        .st-key-perfil_card a p,
+        .st-key-perfil_card a span {
+            color: #FFB74D !important;
+            font-weight: 600 !important;
+            font-size: 12.5px !important;
         }
 
         /* =====================================================
@@ -1721,7 +1761,7 @@ else:
 
     # Definición de páginas
     page_dashboard = st.Page(pantalla_dashboard, title="Inicio", icon="🏠", default=True)
-    page_perfil = st.Page("pages/2_mi_perfil.py", title="Mi Perfil", icon="👤")
+    page_perfil = st.Page("pages/2_mi_perfil.py", title="Mi Perfil", icon="👤", url_path="mi_perfil")
     page_correspondencia = st.Page("pages/2_correspondencia.py", title="Correspondencia", icon="📬")
     page_instructivos = st.Page("pages/3_instructivos.py", title="Instructivos", icon="📚")
     
@@ -1786,7 +1826,7 @@ else:
         email_html = f"<div style='color: gray; font-size: 0.75em; word-break: break-all; margin-top: 2px;'>{email}</div>" if email else ""
         
         html_tarjeta = f"""
-        <div class="menu-card-premium" style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 15px; box-sizing: border-box; width: 100%;">
+        <div style="display: flex; flex-direction: column; gap: 14px; box-sizing: border-box; width: 100%;">
             <div style="display: flex; align-items: center; gap: 14px;">
                 <div style="font-size: 2.6em; display: flex; align-items: center; justify-content: center; min-width: 50px;">{avatar}</div>
                 <div style="display: flex; flex-direction: column; justify-content: center; overflow: hidden; line-height: 1.3;">
@@ -1800,7 +1840,12 @@ else:
             </div>
         </div>
         """
-        st.markdown(html_tarjeta, unsafe_allow_html=True)
+        # Tarjeta = contenedor con borde (clase st-key-perfil_card) para que el
+        # enlace "Ver mi perfil" quede DENTRO de la caja, con navegación cliente
+        # (st.page_link no recarga la página, así no se pierde la sesión).
+        with st.container(key="perfil_card"):
+            st.markdown(html_tarjeta, unsafe_allow_html=True)
+            st.page_link("pages/2_mi_perfil.py", label="Ver mi perfil", icon="👤", use_container_width=False)
         if st.button("🚪 Cerrar sesión", key="logout_btn", width="stretch"):
             logout()
 
