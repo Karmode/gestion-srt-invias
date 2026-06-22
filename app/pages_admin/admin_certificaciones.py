@@ -6,6 +6,7 @@ y el contratista cumple: sin vencidas + contrato activo.
 """
 
 import streamlit as st
+from app.core.ui_titulos import mostrar_titulo_decorado
 
 from app.core.sesion import obtener_sesion
 from app.core.ui_certificado import render_preview_cert
@@ -169,7 +170,7 @@ def render(sesion=None):
     nombre_mes = MESES_ES[mes - 1]
     es_anterior = servicio.es_mes_anterior()
 
-    st.title("Certificaciones Mensuales")
+    mostrar_titulo_decorado("Seguimiento - Formatos")
     st.caption(
         "Revisa el estado de correspondencia, firmas y contrato de cada colaborador "
         "y emite las certificaciones del período."
