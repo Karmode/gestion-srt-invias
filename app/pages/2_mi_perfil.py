@@ -5,6 +5,12 @@ from app.core.ui_titulos import mostrar_titulo_decorado
 
 from app.core.catalogos import TIPOS_CONTRATO
 from app.core.sesion import obtener_sesion
+from app.core.ui_laboral import (
+    construir_mapas_catalogos,
+    inputs_informacion_laboral,
+    limpiar_estado_laboral,
+    render_seccion_firma,
+)
 from app.services.auth_service import AuthService
 from app.services.usuario_service import UsuarioService
 
@@ -24,7 +30,12 @@ TIPOS_DOCUMENTO = {
     "PA": "PA — Pasaporte",
 }
 
-tab_perfil, tab_contrato = st.tabs(["👤 Perfil", "📄 Contratos"])
+_servicio = UsuarioService()
+_usuario_doc = _servicio.obtener_usuario(sesion["id"]) or {}
+
+tab_perfil, tab_laboral, tab_firma, tab_contrato, tab_password = st.tabs(
+    ["👤 Perfil", "💼 Información laboral", "✍️ Firma", "📄 Contratos", "🔒 Contraseña"]
+)
 
 # ── TAB: PERFIL ──────────────────────────────────────────────────────────────
 
@@ -52,18 +63,23 @@ with tab_perfil:
                 index=tipo_doc_idx,
             )
             nuevo_num_doc = st.text_input("Número de documento", value=sesion.get("numero_documento") or "")
+        nuevo_lugar_exp = st.text_input(
+            "Lugar de expedición del documento",
+            value=_usuario_doc.get("lugar_expedicion_documento") or "",
+            placeholder="Ciudad de expedición de la cédula",
+        )
         guardar_perfil = st.form_submit_button("💾 Guardar cambios", use_container_width=True)
 
     if guardar_perfil:
         try:
-            _svc = UsuarioService()
-            _svc.actualizar_usuario(
+            _servicio.actualizar_usuario(
                 sesion["id"],
                 {
                     "nombre_completo": nuevo_nombre.strip(),
                     "email": nuevo_email.strip(),
                     "tipo_documento": nuevo_tipo_doc.strip(),
                     "numero_documento": nuevo_num_doc.strip(),
+                    "lugar_expedicion_documento": nuevo_lugar_exp.strip(),
                     "actualizado_por": sesion["usuario"],
                 },
                 validar_permisos=False,
@@ -78,33 +94,41 @@ with tab_perfil:
         except ValueError as e:
             st.error(str(e))
 
-    st.divider()
-    st.subheader("Cambiar contraseña")
+# ── TAB: INFORMACIÓN LABORAL ───────────────────────────────────────────────────
 
-    with st.form("form_cambiar_password"):
-        pwd_actual = st.text_input("Contraseña actual", type="password")
-        pwd_nueva = st.text_input("Contraseña nueva", type="password")
-        pwd_confirmar = st.text_input("Confirmar contraseña nueva", type="password")
-        enviar_pwd = st.form_submit_button("Cambiar contraseña")
+with tab_laboral:
+    st.subheader("Información laboral")
+    st.caption("Seguridad social, datos bancarios, tributarios y dependientes económicos.")
 
-    if enviar_pwd:
-        if pwd_nueva != pwd_confirmar:
-            st.error("Las contraseñas nuevas no coinciden")
-        else:
-            auth_service = AuthService()
-            exito, mensaje = auth_service.cambiar_password(sesion["id"], pwd_actual, pwd_nueva)
-            if exito:
-                st.success(mensaje)
-            else:
-                st.error(mensaje)
+    _mapas = construir_mapas_catalogos()
+    _il_actual = _usuario_doc.get("informacion_laboral") or {}
+    _il_raw = inputs_informacion_laboral("perfil_lab", _il_actual, _mapas)
+
+    if st.button("💾 Guardar información laboral", use_container_width=True, key="guardar_lab_perfil"):
+        try:
+            _servicio.actualizar_usuario(
+                sesion["id"],
+                {"informacion_laboral": _il_raw, "actualizado_por": sesion["usuario"]},
+                validar_permisos=False,
+            )
+            limpiar_estado_laboral("perfil_lab")
+            st.toast("Información laboral actualizada.")
+            st.rerun()
+        except ValueError as e:
+            st.error(str(e))
+
+# ── TAB: FIRMA ──────────────────────────────────────────────────────────────────
+
+with tab_firma:
+    st.subheader("Firma")
+    st.caption("Sube una foto o escaneo de tu firma sobre papel blanco; se procesa para quitar el fondo.")
+    render_seccion_firma(sesion["id"], sesion["usuario"], "perfil_firma")
 
 # ── TAB: CONTRATOS ────────────────────────────────────────────────────────────
 
 with tab_contrato:
-    _servicio = UsuarioService()
-    _usuario_doc = _servicio.obtener_usuario(sesion["id"])
     _contratos = sorted(
-        (_usuario_doc.get("contratos") or []) if _usuario_doc else [],
+        (_usuario_doc.get("contratos") or []),
         key=lambda c: c.get("fecha_inicio") or datetime(1970, 1, 1, tzinfo=timezone.utc),
         reverse=True,
     )
@@ -121,8 +145,8 @@ with tab_contrato:
                     format_func=lambda k: TIPOS_CONTRATO[k],
                 )
             with _nc2:
-                # _n_valor = st.number_input("Valor del contrato (COP)", min_value=0, step=100000, format="%d")
-                _n_valor = 0  # campo oculto temporalmente
+                _n_valor = st.number_input("Valor del contrato (COP)", min_value=0, step=100000, format="%d")
+                _n_rp = st.text_input("RP / compromiso presupuestal", placeholder="Código alfanumérico")
             _nc3, _nc4 = st.columns(2)
             with _nc3:
                 _n_fi = st.date_input("Fecha de inicio", value=None, format="DD/MM/YYYY")
@@ -137,6 +161,7 @@ with tab_contrato:
                     "numero": _n_num.strip(),
                     "tipo": _n_tipo,
                     "valor": _n_valor if _n_valor > 0 else None,
+                    "rp_compromiso_presupuestal": _n_rp.strip(),
                     "fecha_inicio": _n_fi,
                     "fecha_fin": _n_ff,
                     "objeto": _n_obj.strip(),
@@ -166,6 +191,7 @@ with tab_contrato:
                     _v = _c.get("valor")
                     st.write(f"**Valor:** {'${:,.0f}'.format(_v) if _v else '—'}")
                     st.write(f"**Fin:** {_c_ff.strftime('%d/%m/%Y') if _c_ff else '—'}")
+                st.write(f"**RP / compromiso presupuestal:** {_c.get('rp_compromiso_presupuestal') or '—'}")
                 if _c.get("objeto"):
                     st.write(f"**Objeto:** {_c.get('objeto')}")
 
@@ -190,6 +216,10 @@ with tab_contrato:
                                 "Valor (COP)", min_value=0, value=int(_c.get("valor") or 0),
                                 step=100000, format="%d", key=f"e_val_{_c_num}",
                             )
+                            _e_rp = st.text_input(
+                                "RP / compromiso presupuestal", value=_c.get("rp_compromiso_presupuestal") or "",
+                                key=f"e_rp_{_c_num}", placeholder="Código alfanumérico",
+                            )
                         _ec3, _ec4 = st.columns(2)
                         with _ec3:
                             _e_fi = st.date_input("Inicio", value=_fi_ed, format="DD/MM/YYYY", key=f"e_fi_{_c_num}")
@@ -204,6 +234,7 @@ with tab_contrato:
                                 "numero": _e_num.strip(),
                                 "tipo": _e_tipo,
                                 "valor": _e_valor if _e_valor > 0 else None,
+                                "rp_compromiso_presupuestal": _e_rp.strip(),
                                 "fecha_inicio": _e_fi,
                                 "fecha_fin": _e_ff,
                                 "objeto": _e_obj.strip(),
@@ -212,3 +243,25 @@ with tab_contrato:
                             st.rerun()
                         except ValueError as e:
                             st.error(str(e))
+
+# ── TAB: CONTRASEÑA ────────────────────────────────────────────────────────────
+
+with tab_password:
+    st.subheader("Cambiar contraseña")
+
+    with st.form("form_cambiar_password"):
+        pwd_actual = st.text_input("Contraseña actual", type="password")
+        pwd_nueva = st.text_input("Contraseña nueva", type="password")
+        pwd_confirmar = st.text_input("Confirmar contraseña nueva", type="password")
+        enviar_pwd = st.form_submit_button("Cambiar contraseña")
+
+    if enviar_pwd:
+        if pwd_nueva != pwd_confirmar:
+            st.error("Las contraseñas nuevas no coinciden")
+        else:
+            auth_service = AuthService()
+            exito, mensaje = auth_service.cambiar_password(sesion["id"], pwd_actual, pwd_nueva)
+            if exito:
+                st.success(mensaje)
+            else:
+                st.error(mensaje)

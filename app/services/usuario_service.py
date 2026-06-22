@@ -39,6 +39,57 @@ class UsuarioService:
         return fecha_fin.astimezone(_ZONA_BOGOTA).date() < hoy
 
     @staticmethod
+    def _afiliacion(datos) -> dict:
+        """Normaliza una afiliación {entidad, valor}; campos vacíos → None."""
+        datos = datos or {}
+        entidad = (datos.get("entidad") or "").strip() or None
+        valor = datos.get("valor")
+        valor = int(valor) if valor not in (None, "", 0) and int(valor) > 0 else None
+        return {"entidad": entidad, "valor": valor}
+
+    @staticmethod
+    def _construir_informacion_laboral(datos) -> dict:
+        """Sanea el bloque de información laboral proveniente del formulario.
+
+        Mantiene la forma estable del sub-documento; los campos sin valor quedan
+        en None y los dependientes sin nombre se descartan.
+        """
+        datos = datos or {}
+        ss = datos.get("seguridad_social") or {}
+        bancaria = datos.get("bancaria") or {}
+        tributaria = datos.get("tributaria") or {}
+
+        dependientes = []
+        for dep in datos.get("dependientes") or []:
+            nombre = (dep.get("nombre") or "").strip()
+            if not nombre:
+                continue
+            dependientes.append({
+                "nombre": nombre,
+                "tipo_documento": (dep.get("tipo_documento") or "").strip().upper() or None,
+                "numero_documento": (dep.get("numero_documento") or "").strip() or None,
+                "tipo": (dep.get("tipo") or "").strip() or None,
+            })
+
+        return {
+            "seguridad_social": {
+                "eps": UsuarioService._afiliacion(ss.get("eps")),
+                "arl": UsuarioService._afiliacion(ss.get("arl")),
+                "afp": UsuarioService._afiliacion(ss.get("afp")),
+                "ccf": UsuarioService._afiliacion(ss.get("ccf")),
+            },
+            "bancaria": {
+                "banco": (bancaria.get("banco") or "").strip() or None,
+                "numero_cuenta": (bancaria.get("numero_cuenta") or "").strip() or None,
+            },
+            "tributaria": {
+                "rut": (tributaria.get("rut") or "").strip() or None,
+                "declarante_renta": bool(tributaria.get("declarante_renta")),
+            },
+            "dependientes": dependientes,
+        }
+
+    @staticmethod
     def _fecha_a_datetime(d):
         if d is None:
             return None
@@ -78,6 +129,15 @@ class UsuarioService:
             datos["tipo_documento"] = datos["tipo_documento"].strip().upper()
         else:
             datos.pop("tipo_documento", None)
+
+        lugar = (datos.get("lugar_expedicion_documento") or "").strip()
+        if lugar:
+            datos["lugar_expedicion_documento"] = lugar
+        else:
+            datos.pop("lugar_expedicion_documento", None)
+
+        if "informacion_laboral" in datos:
+            datos["informacion_laboral"] = self._construir_informacion_laboral(datos.get("informacion_laboral"))
 
         datos["password_hash"] = generar_hash_password(datos.pop("password"))
         datos.setdefault("activo", True)
@@ -125,6 +185,12 @@ class UsuarioService:
         else:
             datos.pop("tipo_documento", None)
 
+        if "lugar_expedicion_documento" in datos:
+            datos["lugar_expedicion_documento"] = (datos.get("lugar_expedicion_documento") or "").strip() or None
+
+        if "informacion_laboral" in datos:
+            datos["informacion_laboral"] = self._construir_informacion_laboral(datos.get("informacion_laboral"))
+
         if datos.get("password"):
             datos["password_hash"] = generar_hash_password(datos.pop("password"))
         else:
@@ -154,6 +220,9 @@ class UsuarioService:
         valor = datos.get("valor")
         if valor is not None and valor > 0:
             contrato["valor"] = int(valor)
+        rp = (datos.get("rp_compromiso_presupuestal") or "").strip()
+        if rp:
+            contrato["rp_compromiso_presupuestal"] = rp
         fecha_inicio = datos.get("fecha_inicio")
         if fecha_inicio:
             contrato["fecha_inicio"] = UsuarioService._fecha_a_datetime(fecha_inicio)

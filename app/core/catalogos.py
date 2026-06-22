@@ -7,6 +7,14 @@ TIPOS_CONTRATO = {
     "aprendizaje": "Aprendizaje",
 }
 
+# Tipos de documento admitidos para un dependiente económico
+TIPOS_DOC_DEPENDIENTE = {
+    "": "— Sin especificar —",
+    "CC": "CC — Cédula de Ciudadanía",
+    "TI": "TI — Tarjeta de Identidad",
+    "CE": "CE — Cédula de Extranjería",
+}
+
 PERMISOS_BASE = [
     {"clave": "usuario.ver", "descripcion": "Ver usuarios", "modulo": "usuarios"},
     {"clave": "usuario.crear", "descripcion": "Crear usuarios", "modulo": "usuarios"},
