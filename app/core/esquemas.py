@@ -286,6 +286,28 @@ ESQUEMA_ACEPTACIONES_POLITICA = {
     },
 }
 
+ESQUEMA_INSTRUCTIVOS = {
+    "bsonType": "object",
+    "required": ["titulo", "url", "tipo", "activo", "orden", "fecha_creacion"],
+    "properties": {
+        "titulo": {"bsonType": "string", "minLength": 1},
+        "descripcion": {"bsonType": ["string", "null"]},
+        "url": {"bsonType": "string", "minLength": 1},
+        "tipo": {
+            "enum": ["pdf", "video", "enlace"],
+            "description": "pdf y video se incrustan en iframe; enlace solo muestra botón externo",
+        },
+        "icono": {"bsonType": ["string", "null"], "description": "Emoji o texto corto para el botón"},
+        "activo": {"bsonType": "bool"},
+        "orden": {"bsonType": "int", "minimum": 1},
+        "embed_height": {"bsonType": ["int", "null"], "description": "Altura del iframe en px"},
+        "fecha_creacion": {"bsonType": "date"},
+        "fecha_actualizacion": {"bsonType": ["date", "null"]},
+        "creado_por": {"bsonType": ["string", "null"]},
+        "actualizado_por": {"bsonType": ["string", "null"]},
+    },
+}
+
 ESQUEMA_FIRMAS = {
     "bsonType": "object",
     "required": ["usuario_id", "imagen", "bytes", "actualizado_en"],
