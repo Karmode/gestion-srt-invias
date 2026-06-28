@@ -140,7 +140,7 @@ def render(sesion=None):
     if es_anterior:
         st.warning(
             f"Estás aprobando el **mes anterior: {nombre_mes} {año}** "
-            f"(ventana disponible hasta el día 24 del mes en curso)."
+            f"(ventana disponible hasta el día 28 del mes en curso)."
         )
 
     # Selector de rol cuando el usuario tiene más de un permiso de firma

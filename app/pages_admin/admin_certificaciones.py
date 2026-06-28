@@ -179,13 +179,13 @@ def render(sesion=None):
     if es_anterior:
         st.warning(
             f"Estás certificando el **mes anterior: {nombre_mes} {año}** "
-            f"(ventana disponible hasta el día 24 del mes en curso). "
-            f"A partir del día 25 solo podrás certificar el mes actual."
+            f"(ventana disponible hasta el día 28 del mes en curso). "
+            f"A partir del día 29 solo podrás certificar el mes actual."
         )
     else:
         st.success(
             f"Período de certificación abierto: **{nombre_mes} {año}** "
-            f"(días 25 al fin de mes)"
+            f"(días 29 al fin de mes)"
         )
 
     # Resumen de firmantes designados

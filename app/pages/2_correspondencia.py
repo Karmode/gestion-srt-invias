@@ -209,11 +209,13 @@ def modal_gestion_correspondencia(corr_actual):
 
     es_finalizado = estado_actual in ["respondido", "archivado", "traslado_competencia"]
 
-    if es_finalizado:
+    if es_finalizado and not is_admin:
         st.warning("🔒 Este radicado ha finalizado su trámite y no puede ser modificado (Estado: " + estado_actual.upper() + ").")
     else:
         # --- ACCIONES ---
         st.write("### Acciones")
+        if es_finalizado and is_admin:
+            st.info("⚠️ Este radicado ha finalizado su trámite, pero tienes permisos de Administrador para modificarlo.")
         col_acc1, col_acc2, col_acc3 = st.columns(3)
         
         # Acción 1: Editar (Solo Asignación)
@@ -330,7 +332,7 @@ def modal_gestion_correspondencia(corr_actual):
 
             with col_acc3 if is_asignacion else (col_acc2 if can_assign else col_acc1):
                 with st.popover("✅ Responder / Tramitar", width="stretch"):
-                    if estado_actual not in ["respondido", "archivado", "traslado_competencia"]:
+                    if is_admin or estado_actual not in ["respondido", "archivado", "traslado_competencia"]:
                         st.write("Cargar Respuesta")
                         # Se quita st.form para validar en tiempo real el campo y habilitar/deshabilitar el botón
                         col_resp1, col_resp2 = st.columns(2)
@@ -347,7 +349,7 @@ def modal_gestion_correspondencia(corr_actual):
                         
                         if num_oficio:
                             if re.match(patron_oficio, num_oficio, re.IGNORECASE):
-                                es_valido = True
+                                  es_valido = True
                             else:
                                 st.warning("Formato invalido, no es una respuesta")
                         
@@ -366,7 +368,7 @@ def modal_gestion_correspondencia(corr_actual):
                             st.rerun()
 
                     
-                    if estado_actual not in ["archivado", "traslado_competencia"]:
+                    if is_admin or estado_actual not in ["archivado", "traslado_competencia"]:
                         st.markdown('Archivar Radicado <span title="Solo archivar radicados que no necesiten respuesta y se encuentren debidamente en una Carpeta de Archivados o Archivo en AZ, de lo contrario contará como abierto y generará reporte de retraso (Se realiza revisión semanal de archivados)">ℹ️</span>', unsafe_allow_html=True)
                         comentario_arch = st.text_input("Comentario *", value="", key=f"comentario_arch_{id_seleccionado}")
                         if st.button("Archivar", type="primary", disabled=not bool(comentario_arch.strip()), key=f"btn_archivar_{id_seleccionado}"):
@@ -379,7 +381,7 @@ def modal_gestion_correspondencia(corr_actual):
                             st.success("Archivado")
                             st.rerun()
                                 
-                    if estado_actual not in ["archivado", "traslado_competencia"] and (is_admin or is_asignacion or is_coordinador or is_lider):
+                    if (is_admin or estado_actual not in ["archivado", "traslado_competencia"]) and (is_admin or is_asignacion or is_coordinador or is_lider):
                         st.write("Traslado por Competencia")
                         with st.form(f"form_traslado_comp_{id_seleccionado}"):
                             comentario_tc = st.text_input("Comentario", value="No es competencia de la entidad")
