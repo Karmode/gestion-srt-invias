@@ -68,12 +68,25 @@ class UsuarioService:
 
     @staticmethod
     def _afiliacion(datos) -> dict:
-        """Normaliza una afiliación {entidad, valor}; campos vacíos → None."""
+        """Normaliza una afiliación {entidad, paga, valor, radicado}; campos vacíos → None.
+
+        'paga' indica quién cubre el aporte: si lo paga el contratista se conserva el
+        'valor'; si lo paga la entidad se conserva el 'radicado'. Se descarta el dato
+        que no corresponde a la opción elegida para evitar inconsistencias.
+        """
         datos = datos or {}
         entidad = (datos.get("entidad") or "").strip() or None
+        paga = (datos.get("paga") or "").strip() or None
+        if paga not in ("contratista", "entidad"):
+            paga = None
         valor = datos.get("valor")
         valor = int(valor) if valor not in (None, "", 0) and int(valor) > 0 else None
-        return {"entidad": entidad, "valor": valor}
+        radicado = (datos.get("radicado") or "").strip() or None
+        if paga == "entidad":
+            valor = None
+        elif paga == "contratista":
+            radicado = None
+        return {"entidad": entidad, "paga": paga, "valor": valor, "radicado": radicado}
 
     @staticmethod
     def _construir_informacion_laboral(datos) -> dict:
@@ -386,8 +399,19 @@ class UsuarioService:
             af = ss.get(cod) or {}
             if self._vacio(af.get("entidad")):
                 faltan_laboral.append(f"{etiqueta} (entidad)")
-            if self._vacio(af.get("valor")):
+            paga = af.get("paga")
+            # Inferir quién paga en registros antiguos sin el campo 'paga'.
+            if not paga:
+                if not self._vacio(af.get("valor")):
+                    paga = "contratista"
+                elif not self._vacio(af.get("radicado")):
+                    paga = "entidad"
+            if not paga:
+                faltan_laboral.append(f"{etiqueta} (indicar quién paga el aporte)")
+            elif paga == "contratista" and self._vacio(af.get("valor")):
                 faltan_laboral.append(f"{etiqueta} (valor mensual)")
+            elif paga == "entidad" and self._vacio(af.get("radicado")):
+                faltan_laboral.append(f"{etiqueta} (número de radicado)")
         if self._vacio(bancaria.get("banco")):
             faltan_laboral.append("Banco")
         if self._vacio(bancaria.get("numero_cuenta")):

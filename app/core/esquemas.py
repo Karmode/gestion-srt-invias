@@ -1,10 +1,17 @@
 # Sub-esquema reutilizable: afiliación a una entidad de seguridad social
-# (EPS / ARL / AFP / CCF) con su valor de aporte mensual por persona.
+# (EPS / ARL / AFP / CCF). El aporte lo paga el contratista (registra 'valor')
+# o la entidad (registra 'radicado'); 'paga' indica cuál de los dos casos aplica.
 _ESQUEMA_AFILIACION = {
     "bsonType": ["object", "null"],
     "properties": {
         "entidad": {"bsonType": ["string", "null"], "description": "Clave del catálogo correspondiente"},
-        "valor": {"bsonType": ["int", "long", "double", "null"], "description": "Valor mensual del aporte (COP)"},
+        "paga": {
+            "bsonType": ["string", "null"],
+            "enum": ["contratista", "entidad", None],
+            "description": "Quién paga el aporte: 'contratista' (registra valor) o 'entidad' (registra radicado)",
+        },
+        "valor": {"bsonType": ["int", "long", "double", "null"], "description": "Valor mensual del aporte (COP), cuando lo paga el contratista"},
+        "radicado": {"bsonType": ["string", "null"], "description": "Número de radicado del pago, cuando lo paga la entidad"},
     },
 }
 
