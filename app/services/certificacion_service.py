@@ -633,7 +633,7 @@ class CertificacionService:
         story.append(Spacer(1, 0.25 * cm))
 
         # ── Firma: imagen pegada a la línea en una sola tabla ──
-        ruta_firma = os.path.join("app", "assets", "firma_nestor.png")
+        ruta_firma = os.path.join("app", "assets", "Firma_Nestor.png")
         if os.path.exists(ruta_firma):
             from reportlab.platypus import Image as _Img
             firma_img = _Img(ruta_firma, width=5.2 * cm, height=2.6 * cm, kind="proportional")
