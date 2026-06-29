@@ -23,6 +23,13 @@ MESES_ES = [
     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ]
 
+# Día del mes en que se abre la ventana normal de certificación del mes actual.
+# Días 1 a (DIA_INICIO_PERIODO - 1): se certifica el mes anterior (ventana de ponerse al día).
+# Días DIA_INICIO_PERIODO en adelante: se certifica el mes actual (ventana normal).
+# Es el valor DEFAULT/fallback: el admin puede sobreescribirlo en runtime
+# (ver ParametrosService, parámetro "dia_inicio_periodo_certificacion").
+DIA_INICIO_PERIODO = 29
+
 
 class CertificacionService:
     def __init__(self) -> None:
@@ -35,22 +42,31 @@ class CertificacionService:
     def _ahora_bogota(self) -> datetime:
         return datetime.now(ZONA_BOGOTA)
 
+    def _dia_inicio_periodo(self) -> int:
+        """Día del mes en que se abre la ventana normal de certificación.
+        Configurable por el admin; cae a DIA_INICIO_PERIODO si no está definido."""
+        try:
+            from app.services.parametros_service import ParametrosService
+            return ParametrosService().obtener("dia_inicio_periodo_certificacion")
+        except Exception:
+            return DIA_INICIO_PERIODO
+
     def periodo_certificable(self) -> tuple:
         """Devuelve (año, mes) del período que se puede certificar hoy.
 
-        Días 1–28: mes anterior (ventana de ponerse al día).
-        Días 29–31: mes actual (ventana normal).
+        Antes del día de inicio: mes anterior (ventana de ponerse al día).
+        Desde el día de inicio: mes actual (ventana normal).
         """
         ahora = self._ahora_bogota()
-        if ahora.day >= 29:
+        if ahora.day >= self._dia_inicio_periodo():
             return ahora.year, ahora.month
         if ahora.month == 1:
             return ahora.year - 1, 12
         return ahora.year, ahora.month - 1
 
     def es_mes_anterior(self) -> bool:
-        """True si el período certificable es el mes anterior (día 1–28)."""
-        return self._ahora_bogota().day < 29
+        """True si el período certificable es el mes anterior (antes del día de inicio)."""
+        return self._ahora_bogota().day < self._dia_inicio_periodo()
 
     def _generar_hash(self, usuario_id: str, año: int, mes: int, supervisor_id: str, ts_iso: str) -> str:
         """HMAC-SHA256 firmado con SECRET_KEY. Toma los primeros 16 hex → XXXX-XXXX-XXXX-XXXX."""

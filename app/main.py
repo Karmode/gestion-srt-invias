@@ -1782,6 +1782,9 @@ else:
     es_admin_main = any(r in {"admin", "administrador"} for r in sesion.get("roles", []))
     es_firmante_o_supervisor = bool(_perms_firma & set(permisos_sesion)) or es_admin_main or "certificacion.aprobar" in permisos_sesion
 
+    if es_admin_main:
+        admin_pages.append(st.Page("pages/10_admin_parametros.py", title="Parámetros", icon="⚙️"))
+
     supervision_pages = [
         st.Page("pages/6_certificaciones.py", title="Formatos de contrato", icon="📄"),
     ]
