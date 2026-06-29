@@ -229,6 +229,12 @@ class UsuarioService:
         fecha_fin = datos.get("fecha_fin")
         if fecha_fin:
             contrato["fecha_fin"] = UsuarioService._fecha_a_datetime(fecha_fin)
+        fecha_rp = datos.get("fecha_recurso_presupuestal")
+        if fecha_rp:
+            contrato["fecha_recurso_presupuestal"] = UsuarioService._fecha_a_datetime(fecha_rp)
+        valor_mensual = datos.get("valor_mensual")
+        if valor_mensual is not None and valor_mensual > 0:
+            contrato["valor_mensual"] = int(valor_mensual)
         return contrato
 
     def agregar_contrato(self, id_usuario: str, datos_contrato: dict):
