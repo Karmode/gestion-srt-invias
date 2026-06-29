@@ -138,9 +138,10 @@ def render(sesion=None):
     st.caption(f"Período certificable: **{nombre_mes} {año}**")
 
     if es_anterior:
+        _dia_cierre = servicio._dia_inicio_periodo() - 1
         st.warning(
             f"Estás aprobando el **mes anterior: {nombre_mes} {año}** "
-            f"(ventana disponible hasta el día 24 del mes en curso)."
+            f"(ventana disponible hasta el día {_dia_cierre} del mes en curso)."
         )
 
     # Selector de rol cuando el usuario tiene más de un permiso de firma

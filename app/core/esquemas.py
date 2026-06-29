@@ -47,10 +47,12 @@ ESQUEMA_USUARIOS = {
                     },
                     "objeto": {"bsonType": ["string", "null"]},
                     "valor": {"bsonType": ["int", "long", "double", "null"]},
+                    "valor_mensual": {"bsonType": ["int", "long", "double", "null"]},
                     "rp_compromiso_presupuestal": {
                         "bsonType": ["string", "null"],
                         "description": "Código de Registro Presupuestal / compromiso presupuestal (alfanumérico)",
                     },
+                    "fecha_recurso_presupuestal": {"bsonType": ["date", "null"]},
                     "fecha_inicio": {"bsonType": ["date", "null"]},
                     "fecha_fin": {"bsonType": ["date", "null"]},
                 },
