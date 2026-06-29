@@ -11,12 +11,17 @@ class CertificacionRepositorio:
     def __init__(self) -> None:
         self.coleccion = obtener_coleccion("certificaciones")
 
-    def buscar_por_usuario_periodo(self, usuario_id: str, año: int, mes: int):
-        return self.coleccion.find_one({
+    def buscar_por_usuario_periodo(self, usuario_id: str, año: int, mes: int, tipo_formato: str = None):
+        query = {
             "usuario_id": ObjectId(usuario_id),
             "año": año,
             "mes": mes,
-        })
+        }
+        if tipo_formato:
+            query["tipo_formato"] = tipo_formato
+        else:
+            query["tipo_formato"] = {"$in": [None, "gestion_correspondencia"]}
+        return self.coleccion.find_one(query)
 
     def listar_por_usuario(self, usuario_id: str):
         return list(

@@ -376,6 +376,101 @@ def _render_opcion_8_historial(servicio, usuario_id, año_cert, mes_cert):
                             st.rerun()
 
 
+def _render_opcion_4_declarante_dependencia(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, es_anterior):
+    usuario_id = sesion["id"]
+    nombre_usuario_actual = sesion.get("nombre_completo") or sesion.get("usuario")
+    mostrar_titulo_decorado("Condición de Declarante y Existencia y Dependencia Económica")
+
+    etiqueta = (
+        f"Período anterior — {nombre_mes_cert} {año_cert} (ponerse al día)"
+        if es_anterior
+        else f"Período actual — {nombre_mes_cert} {año_cert}"
+    )
+    st.subheader(etiqueta)
+
+    from app.services.firma_service import FirmaService
+    firma_service = FirmaService()
+    if not firma_service.tiene_firma(usuario_id):
+        st.warning(
+            "⚠️ No tienes una firma registrada en tu perfil.\n\n"
+            "Para poder generar y firmar digitalmente este formato, necesitas registrar tu firma. "
+            "Por favor, ve a **Mi Perfil** para subirla."
+        )
+        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
+        return
+
+    cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id, "dependencia_economica")
+
+    if cert_actual:
+        st.success(
+            f"Tu formato de **Condición de Declarante y Dependencia Económica** para **{nombre_mes_cert} {año_cert}** "
+            f"ha sido generado y firmado digitalmente."
+        )
+        
+        try:
+            pdf_bytes = servicio.generar_pdf(cert_actual)
+        except Exception as e:
+            st.error(f"No se pudo generar el PDF del formato: {e}")
+            pdf_bytes = None
+
+        if pdf_bytes:
+            nombre_archivo = f"Condicion_Declarante_{nombre_mes_cert}_{año_cert}.pdf"
+            c_dl, c_prev = st.columns(2)
+            with c_dl:
+                st.download_button(
+                    "⬇️ Descargar PDF",
+                    data=pdf_bytes,
+                    file_name=nombre_archivo,
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True,
+                )
+            with c_prev:
+                if st.button("👁️ Ver formato", use_container_width=True):
+                    st.session_state["_preview_cert_user"] = {
+                        "cert": cert_actual,
+                        "mes_nombre": nombre_mes_cert,
+                        "año": año_cert,
+                    }
+                    st.rerun()
+    else:
+        st.warning(f"Aún no has generado el formato para el período **{nombre_mes_cert} {año_cert}**.")
+        
+        # Mostrar resumen de datos del usuario
+        from app.repositories.usuario_repo import UsuarioRepositorio
+        usuario_data = UsuarioRepositorio().buscar_por_id(usuario_id) or {}
+        info_laboral = usuario_data.get("informacion_laboral") or {}
+        tributaria = info_laboral.get("tributaria") or {}
+        declarante_renta = tributaria.get("declarante_renta", False)
+        dependientes = info_laboral.get("dependientes") or []
+
+        st.write("### Datos para generación de formato")
+        st.write(f"**Contratista:** {usuario_data.get('nombre_completo', '')}")
+        st.write(f"**Identificación:** {usuario_data.get('tipo_documento', '')} Nº {usuario_data.get('numero_documento', '')}")
+        st.write(f"**Lugar de expedición:** {usuario_data.get('lugar_expedicion_documento', '—')}")
+        
+        renta_str = "Declarante de Renta" if declarante_renta else "No Declarante de Renta"
+        st.write(f"**Condición Tributaria:** {renta_str}")
+        
+        st.write("**Dependientes Económicos:**")
+        if dependientes:
+            import pandas as pd
+            df_dep = pd.DataFrame(dependientes)
+            df_dep.columns = ["Nombre", "Tipo Documento", "Número Documento", "Tipo Dependiente"]
+            st.table(df_dep)
+        else:
+            st.info("No tienes dependientes económicos registrados. Se generará la tabla en blanco.")
+
+        st.caption("Si alguno de estos datos es incorrecto o deseas modificarlo, ve a tu perfil.")
+        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
+        
+        st.write("---")
+        if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True):
+            if servicio.firmar_y_generar_dependencia(usuario_id, nombre_usuario_actual):
+                st.success("¡Formato generado y firmado digitalmente con éxito!")
+                st.rerun()
+
+
 def render(sesion=None):
     sesion = sesion or obtener_sesion()
 
@@ -400,7 +495,11 @@ def render(sesion=None):
             st.button("1- Cuenta de cobro.", disabled=True, use_container_width=True)
             st.button("2- Form. retención en la fuente Primera cuenta.", disabled=True, use_container_width=True)
             st.button("3- Form. retención en la fuente Segunda cuenta ++", disabled=True, use_container_width=True)
-            st.button("4- Form. condicion de declarante y dep. Economica.", disabled=True, use_container_width=True)
+            
+            if st.button("4- Form. condicion de declarante y dep. Economica.", type="primary", disabled=False, use_container_width=True):
+                st.session_state["tab_formato_activo"] = 4
+                st.rerun()
+
             st.button("5- Form. Acta de compromiso.", disabled=True, use_container_width=True)
             
             if st.button("6– Form. Gestión Corr – GD – SECOP II.", type="primary", disabled=False, use_container_width=True):
@@ -421,7 +520,9 @@ def render(sesion=None):
 
     with col_contenido:
         tab_activa = st.session_state.get("tab_formato_activo")
-        if tab_activa == 6:
+        if tab_activa == 4:
+            _render_opcion_4_declarante_dependencia(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, es_anterior)
+        elif tab_activa == 6:
             _render_opcion_6_gestion_corr(servicio, usuario_id, año_cert, mes_cert, nombre_mes_cert, es_anterior)
         elif tab_activa == 7:
             _render_opcion_7_herramientas()

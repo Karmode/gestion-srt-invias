@@ -146,11 +146,14 @@ with tab_contrato:
                 )
             with _nc2:
                 _n_valor = st.number_input("Valor del contrato (COP)", min_value=0, step=100000, format="%d")
-                _n_rp = st.text_input("RP / compromiso presupuestal", placeholder="Código alfanumérico")
-            _nc3, _nc4 = st.columns(2)
+                _n_vm = st.number_input("Valor mensual (COP)", min_value=0, step=100000, format="%d")
+            _n_rp = st.text_input("RP / compromiso presupuestal", placeholder="Código alfanumérico")
+            _nc3, _nc4, _nc5 = st.columns(3)
             with _nc3:
-                _n_fi = st.date_input("Fecha de inicio", value=None, format="DD/MM/YYYY")
+                _n_frp = st.date_input("Fecha recurso presupuestal (opcional)", value=None, format="DD/MM/YYYY")
             with _nc4:
+                _n_fi = st.date_input("Fecha de inicio", value=None, format="DD/MM/YYYY")
+            with _nc5:
                 _n_ff = st.date_input("Fecha de finalización (opcional)", value=None, format="DD/MM/YYYY")
             _n_obj = st.text_area("Objeto del contrato")
             _n_env = st.form_submit_button("Agregar contrato", use_container_width=True)
@@ -164,6 +167,8 @@ with tab_contrato:
                     "rp_compromiso_presupuestal": _n_rp.strip(),
                     "fecha_inicio": _n_fi,
                     "fecha_fin": _n_ff,
+                    "fecha_recurso_presupuestal": _n_frp,
+                    "valor_mensual": _n_vm if _n_vm > 0 else None,
                     "objeto": _n_obj.strip(),
                 })
                 st.success("Contrato agregado correctamente.")
@@ -186,12 +191,20 @@ with tab_contrato:
                 _d1, _d2 = st.columns(2)
                 with _d1:
                     st.write(f"**Tipo:** {TIPOS_CONTRATO.get(_c.get('tipo') or '', '—')}")
-                    st.write(f"**Inicio:** {_c_fi.strftime('%d/%m/%Y') if _c_fi else '—'}")
-                with _d2:
                     _v = _c.get("valor")
                     st.write(f"**Valor:** {'${:,.0f}'.format(_v) if _v else '—'}")
+                with _d2:
+                    _vm = _c.get("valor_mensual")
+                    st.write(f"**Valor mensual:** {'${:,.0f}'.format(_vm) if _vm else '—'}")
+                    st.write(f"**RP / compromiso presupuestal:** {_c.get('rp_compromiso_presupuestal') or '—'}")
+                _d3, _d4, _d5 = st.columns(3)
+                with _d3:
+                    _frp = _c.get("fecha_recurso_presupuestal")
+                    st.write(f"**Fecha RP:** {_frp.strftime('%d/%m/%Y') if _frp else '—'}")
+                with _d4:
+                    st.write(f"**Inicio:** {_c_fi.strftime('%d/%m/%Y') if _c_fi else '—'}")
+                with _d5:
                     st.write(f"**Fin:** {_c_ff.strftime('%d/%m/%Y') if _c_ff else '—'}")
-                st.write(f"**RP / compromiso presupuestal:** {_c.get('rp_compromiso_presupuestal') or '—'}")
                 if _c.get("objeto"):
                     st.write(f"**Objeto:** {_c.get('objeto')}")
 
@@ -216,14 +229,23 @@ with tab_contrato:
                                 "Valor (COP)", min_value=0, value=int(_c.get("valor") or 0),
                                 step=100000, format="%d", key=f"e_val_{_c_num}",
                             )
-                            _e_rp = st.text_input(
-                                "RP / compromiso presupuestal", value=_c.get("rp_compromiso_presupuestal") or "",
-                                key=f"e_rp_{_c_num}", placeholder="Código alfanumérico",
+                            _e_vm = st.number_input(
+                                "Valor mensual (COP)", min_value=0, value=int(_c.get("valor_mensual") or 0),
+                                step=100000, format="%d", key=f"e_vm_{_c_num}",
                             )
-                        _ec3, _ec4 = st.columns(2)
+                        _e_rp = st.text_input(
+                            "RP / compromiso presupuestal", value=_c.get("rp_compromiso_presupuestal") or "",
+                            key=f"e_rp_{_c_num}", placeholder="Código alfanumérico",
+                        )
+                        _ec3, _ec4, _ec5 = st.columns(3)
                         with _ec3:
-                            _e_fi = st.date_input("Inicio", value=_fi_ed, format="DD/MM/YYYY", key=f"e_fi_{_c_num}")
+                            _e_frp_ed = _c.get("fecha_recurso_presupuestal")
+                            if _e_frp_ed and hasattr(_e_frp_ed, "date"):
+                                _e_frp_ed = _e_frp_ed.date()
+                            _e_frp = st.date_input("Fecha recurso presupuestal (opcional)", value=_e_frp_ed, format="DD/MM/YYYY", key=f"e_frp_{_c_num}")
                         with _ec4:
+                            _e_fi = st.date_input("Inicio", value=_fi_ed, format="DD/MM/YYYY", key=f"e_fi_{_c_num}")
+                        with _ec5:
                             _e_ff = st.date_input("Fin (opcional)", value=_ff_ed, format="DD/MM/YYYY", key=f"e_ff_{_c_num}")
                         _e_obj = st.text_area("Objeto", value=_c.get("objeto") or "", key=f"e_obj_{_c_num}")
                         _e_env = st.form_submit_button("💾 Guardar cambios", use_container_width=True)
@@ -237,6 +259,8 @@ with tab_contrato:
                                 "rp_compromiso_presupuestal": _e_rp.strip(),
                                 "fecha_inicio": _e_fi,
                                 "fecha_fin": _e_ff,
+                                "fecha_recurso_presupuestal": _e_frp,
+                                "valor_mensual": _e_vm if _e_vm > 0 else None,
                                 "objeto": _e_obj.strip(),
                             })
                             st.success(f"Contrato {_c_num} actualizado correctamente.")
