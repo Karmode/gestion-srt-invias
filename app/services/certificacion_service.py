@@ -610,7 +610,7 @@ class CertificacionService:
 
             "Cumplió con las actividades de gestión documental y archivo derivadas de la ejecución "
             "contractual, de acuerdo con los lineamientos institucionales y las disposiciones aplicables "
-            "del Archivo General de la Nación – AGN. (Obligación general 21)",
+            "del Archivo General de la Nación – AGN. (Obligación general 21)(NOAPLICA)",
 
             "Registró / actualizó en la plataforma SECOP II la información correspondiente al "
             "\"Plan de Pagos\", ubicada en la pestaña \"Ejecución del Contrato\", adjuntando el "
