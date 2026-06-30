@@ -14,12 +14,27 @@ from app.core.sesion import obtener_sesion
 from app.core.ui_certificado import render_preview_cert
 from app.core.zona_horaria import formato_fecha_bogota
 from app.services.certificacion_service import CertificacionService, MESES_ES
+from app.services.usuario_service import UsuarioService
 
 
 def _badge_estado(estado: str | None) -> str:
     if estado == "aprobado":
         return "✅ **Certificado**"
     return "⏳ Pendiente de aprobación"
+
+
+# Prefijo de nombre de archivo por tipo de formato. Los formatos sin
+# tipo_formato (p. ej. el control de correspondencia) usan el prefijo por defecto.
+_PREFIJO_ARCHIVO = {
+    "dependencia_economica": "Condicion_Declarante",
+}
+_PREFIJO_ARCHIVO_DEFAULT = "Certificado_correspondencia"
+
+
+def _nombre_archivo_pdf(cert: dict, mes_nombre: str, año) -> str:
+    """Construye el nombre del PDF según el tipo de formato del certificado."""
+    prefijo = _PREFIJO_ARCHIVO.get(cert.get("tipo_formato"), _PREFIJO_ARCHIVO_DEFAULT)
+    return f"{prefijo}_{mes_nombre}_{año}.pdf"
 
 
 @st.dialog("Vista previa del certificado", width="large")
@@ -35,7 +50,7 @@ def _dialog_preview_cert(servicio: CertificacionService) -> None:
     render_preview_cert(
         pdf_bytes=pdf_bytes,
         caption=f"{mes_nombre} {año}",
-        file_name=f"Certificado_correspondencia_{mes_nombre}_{año}.pdf",
+        file_name=_nombre_archivo_pdf(data["cert"], mes_nombre, año),
         dl_key="_dl_preview_user",
     )
 
@@ -132,7 +147,7 @@ def _render_verificador_codigo(servicio: CertificacionService):
                     st.caption(f"Observaciones: {cert['observaciones']}")
 
             pdf_bytes = servicio.generar_pdf(cert)
-            nombre_archivo = f"Certificado_correspondencia_{mes_nombre}_{año}.pdf"
+            nombre_archivo = _nombre_archivo_pdf(cert, mes_nombre, año)
             st.download_button(
                 label="⬇️ Descargar certificado verificado",
                 data=pdf_bytes,
@@ -145,9 +160,13 @@ def _render_verificador_codigo(servicio: CertificacionService):
             st.caption("Revisa que el código esté completo y en el formato XXXX-XXXX-XXXX-XXXX.")
 
 
-def _render_opcion_6_gestion_corr(servicio, usuario_id, año_cert, mes_cert, nombre_mes_cert, es_anterior):
+def _render_opcion_6_gestion_corr(servicio, usuario_id, año_cert, mes_cert, nombre_mes_cert, es_anterior, bloqueado=False):
     mostrar_titulo_decorado("Formato de control a la correspondencia - Gestión documental - SECOP II")
-    
+
+    if bloqueado:
+        _aviso_bloqueado()
+        return
+
     etiqueta = (
         f"Período anterior — {nombre_mes_cert} {año_cert} (ponerse al día)"
         if es_anterior
@@ -181,7 +200,7 @@ def _render_opcion_6_gestion_corr(servicio, usuario_id, año_cert, mes_cert, nom
             pdf_bytes = None
 
         if pdf_bytes:
-            nombre_archivo = f"Certificado_correspondencia_{nombre_mes_cert}_{año_cert}.pdf"
+            nombre_archivo = _nombre_archivo_pdf(cert_actual, nombre_mes_cert, año_cert)
             c_dl, c_prev = st.columns(2)
             with c_dl:
                 st.download_button(
@@ -317,8 +336,12 @@ def _render_opcion_7_herramientas():
             st.markdown(_card(plat, delay_ms=delay), unsafe_allow_html=True)
 
 
-def _render_opcion_8_historial(servicio, usuario_id, año_cert, mes_cert):
+def _render_opcion_8_historial(servicio, usuario_id, año_cert, mes_cert, bloqueado=False):
     mostrar_titulo_decorado("Historial de formatos")
+
+    if bloqueado:
+        _aviso_bloqueado()
+        return
 
     historial = servicio.obtener_historial(usuario_id)
 
@@ -357,7 +380,7 @@ def _render_opcion_8_historial(servicio, usuario_id, año_cert, mes_cert):
                 with c_btn:
                     if estado == "aprobado":
                         pdf_bytes = servicio.generar_pdf(cert)
-                        nombre_archivo = f"Certificado_correspondencia_{mes_nombre}_{año_cert_hist}.pdf"
+                        nombre_archivo = _nombre_archivo_pdf(cert, mes_nombre, año_cert_hist)
                         cert_id = str(cert.get("_id", ""))
                         st.download_button(
                             "⬇️ PDF",
@@ -376,10 +399,14 @@ def _render_opcion_8_historial(servicio, usuario_id, año_cert, mes_cert):
                             st.rerun()
 
 
-def _render_opcion_4_declarante_dependencia(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, es_anterior):
+def _render_opcion_4_declarante_dependencia(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, es_anterior, bloqueado=False):
     usuario_id = sesion["id"]
     nombre_usuario_actual = sesion.get("nombre_completo") or sesion.get("usuario")
     mostrar_titulo_decorado("Condición de Declarante y Existencia y Dependencia Económica")
+
+    if bloqueado:
+        _aviso_bloqueado()
+        return
 
     etiqueta = (
         f"Período anterior — {nombre_mes_cert} {año_cert} (ponerse al día)"
@@ -414,7 +441,7 @@ def _render_opcion_4_declarante_dependencia(servicio, sesion, año_cert, mes_cer
             pdf_bytes = None
 
         if pdf_bytes:
-            nombre_archivo = f"Condicion_Declarante_{nombre_mes_cert}_{año_cert}.pdf"
+            nombre_archivo = _nombre_archivo_pdf(cert_actual, nombre_mes_cert, año_cert)
             c_dl, c_prev = st.columns(2)
             with c_dl:
                 st.download_button(
@@ -471,6 +498,31 @@ def _render_opcion_4_declarante_dependencia(servicio, sesion, año_cert, mes_cer
                 st.rerun()
 
 
+def _render_alerta_faltantes(faltantes: dict) -> None:
+    """Alerta superior que enumera los datos pendientes que bloquean la descarga."""
+    msg = (
+        "⚠️ **No podrás descargar los formatos de contrato.**\n\n"
+        "Faltan datos por diligenciar. Complétalos en **Mi perfil** para habilitar "
+        "la descarga:\n"
+    )
+    for sec in faltantes["secciones"]:
+        msg += f"\n**{sec['titulo']}** — _{sec['destino']}_\n"
+        for f in sec["faltantes"]:
+            msg += f"- {f}\n"
+    st.warning(msg)
+    st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil para completar mis datos →", icon="👤")
+
+
+def _aviso_bloqueado() -> None:
+    """Mensaje mostrado en lugar del contenido de un formato cuando está bloqueado."""
+    st.warning(
+        "🔒 No puedes descargar este formato hasta completar tus datos. "
+        "Revisa la alerta de **datos pendientes** en la parte superior de la página "
+        "y complétalos en **Mi perfil**."
+    )
+    st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
+
+
 def render(sesion=None):
     sesion = sesion or obtener_sesion()
 
@@ -486,6 +538,11 @@ def render(sesion=None):
     es_anterior = servicio.es_mes_anterior()
 
     mostrar_titulo_decorado("Formatos de contrato")
+
+    faltantes = UsuarioService().faltantes_para_formatos(usuario_id)
+    bloqueado = not faltantes["puede_descargar"]
+    if bloqueado:
+        _render_alerta_faltantes(faltantes)
 
     col_menu, col_contenido = st.columns([1, 2], gap="large")
 
@@ -521,13 +578,13 @@ def render(sesion=None):
     with col_contenido:
         tab_activa = st.session_state.get("tab_formato_activo")
         if tab_activa == 4:
-            _render_opcion_4_declarante_dependencia(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, es_anterior)
+            _render_opcion_4_declarante_dependencia(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, es_anterior, bloqueado)
         elif tab_activa == 6:
-            _render_opcion_6_gestion_corr(servicio, usuario_id, año_cert, mes_cert, nombre_mes_cert, es_anterior)
+            _render_opcion_6_gestion_corr(servicio, usuario_id, año_cert, mes_cert, nombre_mes_cert, es_anterior, bloqueado)
         elif tab_activa == 7:
             _render_opcion_7_herramientas()
         elif tab_activa == 8:
-            _render_opcion_8_historial(servicio, usuario_id, año_cert, mes_cert)
+            _render_opcion_8_historial(servicio, usuario_id, año_cert, mes_cert, bloqueado)
         elif tab_activa == 9:
             _render_verificador_codigo(servicio)
         else:

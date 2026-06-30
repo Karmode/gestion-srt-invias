@@ -21,6 +21,27 @@ _AFILIACIONES = [
 ]
 _CATEGORIAS = ["eps", "arl", "afp", "ccf", "banco", "tipo_dependiente"]
 
+# Cómo se cubre el aporte de seguridad social (no es catálogo: opciones fijas).
+# El valor interno "entidad" se conserva por compatibilidad; la etiqueta visible
+# es genérica ("por otro medio") para no explicitar quién realiza el pago.
+_MAPA_PAGA = {
+    "": "— Seleccionar —",
+    "contratista": "La pago yo",
+    "entidad": "Se paga por otro medio",
+}
+
+
+def _paga_inicial(af: dict) -> str:
+    """Determina la opción 'quién paga' inicial, infiriéndola en registros antiguos."""
+    paga = af.get("paga")
+    if paga in ("contratista", "entidad"):
+        return paga
+    if af.get("valor"):
+        return "contratista"
+    if af.get("radicado"):
+        return "entidad"
+    return ""
+
 
 # ── Catálogos ─────────────────────────────────────────────────────────────────
 
@@ -68,16 +89,28 @@ def inputs_informacion_laboral(prefijo, il, mapas):
     deps = il.get("dependientes") or []
 
     st.markdown("##### 🏥 Seguridad social y aportes")
+    st.caption("Indica si el aporte lo pagas tú (registra el valor mensual) o se paga por otro medio (registra el número de radicado).")
     resultado_ss = {}
     for cod, etiqueta, cat in _AFILIACIONES:
         af = ss.get(cod) or {}
-        c1, c2 = st.columns([2, 1])
+        c1, c2, c3 = st.columns([2, 1.3, 1.3])
         with c1:
             entidad = _select_keyed(etiqueta, mapas[cat], af.get("entidad") or "", f"{prefijo}_{cod}_ent")
         with c2:
-            _preseed(f"{prefijo}_{cod}_val", int(af.get("valor") or 0))
-            valor = st.number_input("Valor mensual", min_value=0, step=10000, format="%d", key=f"{prefijo}_{cod}_val")
-        resultado_ss[cod] = {"entidad": entidad, "valor": valor}
+            paga = _select_keyed("¿Quién paga?", _MAPA_PAGA, _paga_inicial(af), f"{prefijo}_{cod}_paga")
+        with c3:
+            if paga == "entidad":
+                _preseed(f"{prefijo}_{cod}_rad", af.get("radicado") or "")
+                radicado = st.text_input("N° de radicado", key=f"{prefijo}_{cod}_rad", placeholder="Radicado del pago")
+                valor = 0
+            elif paga == "contratista":
+                _preseed(f"{prefijo}_{cod}_val", int(af.get("valor") or 0))
+                valor = st.number_input("Valor mensual", min_value=0, step=10000, format="%d", key=f"{prefijo}_{cod}_val")
+                radicado = ""
+            else:
+                st.caption("Selecciona quién paga el aporte.")
+                valor, radicado = 0, ""
+        resultado_ss[cod] = {"entidad": entidad, "paga": paga, "valor": valor, "radicado": radicado}
 
     st.markdown("##### 🏦 Información bancaria")
     cb1, cb2 = st.columns(2)
@@ -174,7 +207,7 @@ def _inputs_dependientes(prefijo, deps, mapas):
 def laboral_vacia(il):
     """True si el bloque de información laboral no tiene ningún dato diligenciado."""
     ss = il.get("seguridad_social") or {}
-    if any((a.get("entidad") or a.get("valor")) for a in ss.values()):
+    if any((a.get("entidad") or a.get("valor") or a.get("radicado")) for a in ss.values()):
         return False
     bancaria = il.get("bancaria") or {}
     if bancaria.get("banco") or bancaria.get("numero_cuenta"):
