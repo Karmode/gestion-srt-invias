@@ -610,7 +610,7 @@ class CertificacionService:
 
             "Cumplió con las actividades de gestión documental y archivo derivadas de la ejecución "
             "contractual, de acuerdo con los lineamientos institucionales y las disposiciones aplicables "
-            "del Archivo General de la Nación – AGN. (Obligación general 21)",
+            "del Archivo General de la Nación – AGN. (Obligación general 21)(NOAPLICA)",
 
             "Registró / actualizó en la plataforma SECOP II la información correspondiente al "
             "\"Plan de Pagos\", ubicada en la pestaña \"Ejecución del Contrato\", adjuntando el "
@@ -722,22 +722,23 @@ class CertificacionService:
         return buf.getvalue()
 
     def generar_pdf_dependencia(self, certificacion: Dict) -> bytes:
+        # ── Formato plano: documento en blanco, solo texto, sin marcas de agua,
+        #    sin logos, sin colores corporativos y sin código de verificación
+        #    visible (el hash se sigue guardando en la certificación, solo no se
+        #    muestra). Aplica únicamente a este formato. ──
         from reportlab.lib.pagesizes import letter
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib.units import cm
-        from reportlab.lib.colors import HexColor, Color
+        from reportlab.lib.colors import HexColor, black
         from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
         from reportlab.platypus import (
             SimpleDocTemplate, Paragraph, Spacer,
-            Table, TableStyle, HRFlowable, Image,
+            Table, TableStyle, Image,
         )
 
-        # ── Paleta idéntica al formato 6 ──
-        NARANJA   = HexColor("#FF8C00")
-        CAFE      = HexColor("#3D1E0A")
-        NEGRO     = HexColor("#000000")
-        GRIS      = HexColor("#777777")
-        GRIS_TABLA = HexColor("#F5F5F5")
+        # ── Paleta neutra: todo en negro sobre fondo blanco ──
+        NEGRO   = black
+        BORDE   = HexColor("#666666")
 
         # ── Datos del usuario ──
         from app.repositories.usuario_repo import UsuarioRepositorio
@@ -759,24 +760,19 @@ class CertificacionService:
         declarante_renta = tributaria.get("declarante_renta", False)
         dependientes     = info_laboral.get("dependientes") or []
 
-        año       = certificacion.get("año", "")
-        mes_num   = certificacion.get("mes", 1)
-        mes_nombre = MESES_ES[mes_num - 1]
-        hash_code = certificacion.get("hash_verificacion", "")
+        # Mes/año de EXPEDICIÓN = período al que corresponde el formato
+        # (certificacion["mes"]/["año"]), no la fecha de generación. Así un
+        # formato del período de mayo dice "se expide en el mes de MAYO".
+        mes_periodo = certificacion.get("mes", 1)
+        mes_exp     = MESES_ES[mes_periodo - 1]
+        año_exp     = str(certificacion.get("año", ""))
 
+        # fecha_fmt = fecha real de firma (bloque de firma), tomada de fecha_corte.
         fecha_corte = certificacion.get("fecha_corte")
         if fecha_corte:
-            fc_bogota = utc_a_bogota(fecha_corte)
-            dia_exp   = fc_bogota.strftime("%d").lstrip("0") or "1"
-            mes_exp   = MESES_ES[fc_bogota.month - 1]
-            año_exp   = fc_bogota.strftime("%Y")
-            fecha_fmt = fc_bogota.strftime("%d/%m/%Y")
+            fecha_fmt = utc_a_bogota(fecha_corte).strftime("%d/%m/%Y")
         else:
-            ahora     = datetime.now(ZONA_BOGOTA)
-            dia_exp   = str(ahora.day)
-            mes_exp   = MESES_ES[ahora.month - 1]
-            año_exp   = str(ahora.year)
-            fecha_fmt = ahora.strftime("%d/%m/%Y")
+            fecha_fmt = datetime.now(ZONA_BOGOTA).strftime("%d/%m/%Y")
 
         # ── Documento — mismos márgenes que formato 6 ──
         buf = io.BytesIO()
@@ -791,127 +787,49 @@ class CertificacionService:
 
         estilos = getSampleStyleSheet()
 
-        # ── Estilos — mismos tamaños que formato 6 ──
+        # ── Estilos — texto plano en negro, sin colores corporativos ──
         s_inst_bold = ParagraphStyle(
             "dep4_inst", parent=estilos["Normal"],
-            fontSize=9, textColor=CAFE, alignment=TA_CENTER,
+            fontSize=9, textColor=NEGRO, alignment=TA_CENTER,
             fontName="Helvetica-Bold", spaceAfter=1, leading=12,
         )
         s_titulo = ParagraphStyle(
             "dep4_tit", parent=estilos["Normal"],
-            fontSize=10, textColor=CAFE, alignment=TA_CENTER,
+            fontSize=10, textColor=NEGRO, alignment=TA_CENTER,
             fontName="Helvetica-Bold", spaceAfter=2, leading=13,
         )
         s_cuerpo = ParagraphStyle(
             "dep4_cuerpo", parent=estilos["Normal"],
             fontSize=8.5, alignment=TA_JUSTIFY, leading=12, spaceAfter=5,
+            textColor=NEGRO,
         )
         s_renta = ParagraphStyle(
             "dep4_renta", parent=estilos["Normal"],
             fontSize=9.5, alignment=TA_CENTER, leading=13, spaceAfter=5,
-            fontName="Helvetica-Bold", textColor=CAFE,
+            fontName="Helvetica-Bold", textColor=NEGRO,
         )
         s_bullet = ParagraphStyle(
             "dep4_bullet", parent=estilos["Normal"],
             fontSize=8, alignment=TA_JUSTIFY, leading=11, spaceAfter=2,
-            leftIndent=12,
+            leftIndent=12, textColor=NEGRO,
         )
         s_cell = ParagraphStyle(
             "dep4_cell", parent=estilos["Normal"],
-            fontSize=8, alignment=TA_CENTER, leading=10,
+            fontSize=8, alignment=TA_CENTER, leading=10, textColor=NEGRO,
         )
         s_cellhdr = ParagraphStyle(
             "dep4_cellhdr", parent=estilos["Normal"],
-            fontSize=8, fontName="Helvetica-Bold", alignment=TA_CENTER, leading=10,
-        )
-        s_pie = ParagraphStyle(
-            "dep4_pie", parent=estilos["Normal"],
-            fontSize=7, textColor=GRIS, alignment=TA_CENTER,
+            fontSize=8, fontName="Helvetica-Bold", alignment=TA_CENTER,
+            leading=10, textColor=NEGRO,
         )
 
-        # ── Decoraciones de página — IDÉNTICAS al formato 6 ──
-        def _watermark(canvas_obj, _doc):
-            w, h = letter
-
-            # Texto INVIAS SRTI en malla diagonal
-            canvas_obj.saveState()
-            canvas_obj.setFont("Helvetica", 7.5)
-            canvas_obj.setFillColor(Color(0.68, 0.68, 0.68, alpha=0.30))
-            canvas_obj.translate(w / 2, h / 2)
-            canvas_obj.rotate(38)
-            for xi in range(-5, 6):
-                for yi in range(-14, 15):
-                    canvas_obj.drawCentredString(xi * 112, yi * 42, "INVIAS  SRTI")
-            canvas_obj.restoreState()
-
-            # Nombre + período en grande diagonal
-            canvas_obj.saveState()
-            canvas_obj.setFont("Helvetica-Bold", 48)
-            canvas_obj.setFillColor(Color(0.58, 0.58, 0.58, alpha=0.30))
-            canvas_obj.translate(w / 2, h / 2)
-            canvas_obj.rotate(45)
-            canvas_obj.drawCentredString(0, 42, nombre.upper())
-            canvas_obj.drawCentredString(0, -32, f"{mes_nombre.upper()} {año}")
-            canvas_obj.restoreState()
-
-            # Doble borde naranja
-            canvas_obj.saveState()
-            nb = Color(1.0, 0.549, 0.0, alpha=0.55)
-            canvas_obj.setStrokeColor(nb)
-            canvas_obj.setLineWidth(1.2)
-            canvas_obj.rect(18, 18, w - 36, h - 36)
-            canvas_obj.setLineWidth(0.35)
-            canvas_obj.rect(23, 23, w - 46, h - 46)
-            canvas_obj.restoreState()
-
-            # Rombos decorativos en las esquinas
-            canvas_obj.saveState()
-            nf = Color(1.0, 0.549, 0.0, alpha=0.58)
-            canvas_obj.setFillColor(nf)
-            canvas_obj.setStrokeColor(nf)
-            canvas_obj.setLineWidth(0.9)
-            dm = 7
-            arm = 20
-            for cx, cy, dx, dy in [
-                (28, 28, 1, 1), (w - 28, 28, -1, 1),
-                (28, h - 28, 1, -1), (w - 28, h - 28, -1, -1),
-            ]:
-                p = canvas_obj.beginPath()
-                p.moveTo(cx, cy + dm)
-                p.lineTo(cx + dm, cy)
-                p.lineTo(cx, cy - dm)
-                p.lineTo(cx - dm, cy)
-                p.close()
-                canvas_obj.drawPath(p, stroke=1, fill=1)
-                canvas_obj.line(cx, cy, cx + dx * arm, cy)
-                canvas_obj.line(cx, cy, cx, cy + dy * arm)
-            # Marcas de centro
-            canvas_obj.setLineWidth(0.7)
-            tk = 5
-            for mx, my in [(w / 2, h - 18), (w / 2, 18), (18, h / 2), (w - 18, h / 2)]:
-                canvas_obj.line(mx - tk, my, mx + tk, my)
-                canvas_obj.line(mx, my - tk, mx, my + tk)
-            canvas_obj.restoreState()
-
-        # ── Story ──
+        # ── Story — sin marca de agua, sin logo, sin reglas de color ──
         story = []
 
-        # Logo — mismo que formato 6
-        logo = os.path.join("app", "assets", "INVIAS_login_logo.png")
-        if os.path.exists(logo):
-            img = Image(logo, width=4 * cm, height=2 * cm, kind="proportional")
-            img.hAlign = "CENTER"
-            story.append(img)
-            story.append(Spacer(1, 0.2 * cm))
-
-        story.append(HRFlowable(width="100%", thickness=2, color=NARANJA))
-        story.append(Spacer(1, 0.15 * cm))
         story.append(Paragraph("INSTITUTO NACIONAL DE VÍAS – INVIAS", s_inst_bold))
         story.append(Paragraph("SUBDIRECCIÓN DE REGLAMENTACIÓN TÉCNICA E INNOVACIÓN", s_inst_bold))
         story.append(Paragraph("CONDICIÓN DE DECLARANTE Y EXISTENCIA Y DEPENDENCIA ECONÓMICA", s_titulo))
-        story.append(Spacer(1, 0.2 * cm))
-        story.append(HRFlowable(width="100%", thickness=1, color=NARANJA))
-        story.append(Spacer(1, 0.25 * cm))
+        story.append(Spacer(1, 0.35 * cm))
 
         # Párrafo 1
         story.append(Paragraph(
@@ -963,17 +881,17 @@ class CertificacionService:
             t_data.append([Paragraph(" ", s_cell)] * 4)
 
         cw = doc.width
-        dep_tbl = Table(t_data, colWidths=[cw * 0.36, cw * 0.22, cw * 0.24, cw * 0.18], rowHeights=0.55 * cm)
+        # Fila de encabezados más alta (texto de 2 líneas); filas de datos normales.
+        row_heights = [0.95 * cm] + [0.55 * cm] * (len(t_data) - 1)
+        dep_tbl = Table(t_data, colWidths=[cw * 0.36, cw * 0.22, cw * 0.24, cw * 0.18], rowHeights=row_heights)
         dep_tbl.setStyle(TableStyle([
-            ("BACKGROUND",    (0, 0), (-1, 0),  GRIS_TABLA),
             ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
             ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
-            ("GRID",          (0, 0), (-1, -1), 0.5, HexColor("#CCCCCC")),
+            ("GRID",          (0, 0), (-1, -1), 0.5, BORDE),
             ("FONTNAME",      (0, 0), (-1, 0),  "Helvetica-Bold"),
             ("FONTSIZE",      (0, 0), (-1, -1), 8),
             ("TOPPADDING",    (0, 0), (-1, -1), 3),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ("ROWBACKGROUNDS",(0, 1), (-1, -1), [HexColor("#FFFFFF"), HexColor("#FFF9F0")]),
             ("LEFTPADDING",   (0, 0), (-1, -1), 4),
             ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
         ]))
@@ -1017,11 +935,11 @@ class CertificacionService:
         s_firma_nombre = ParagraphStyle(
             "dep4_fn", parent=estilos["Normal"],
             fontSize=9, fontName="Helvetica-Bold", alignment=TA_CENTER,
-            textColor=CAFE, leading=12,
+            textColor=NEGRO, leading=12,
         )
         s_firma_sub = ParagraphStyle(
             "dep4_fs", parent=estilos["Normal"],
-            fontSize=8.5, alignment=TA_CENTER, leading=11,
+            fontSize=8.5, alignment=TA_CENTER, leading=11, textColor=NEGRO,
         )
 
         if firma_bytes:
@@ -1044,45 +962,19 @@ class CertificacionService:
             ("VALIGN",        (0, 0), (-1, -1), "BOTTOM"),
             ("FONTNAME",      (0, 0), (0, 0),   "Helvetica"),
             ("FONTSIZE",      (0, 0), (-1, -1), 9),
-            # Línea gris debajo de la imagen de firma
-            ("LINEBELOW",     (0, 0), (-1, 0),  0.5, HexColor("#AAAAAA")),
+            # Línea negra debajo de la imagen de firma
+            ("LINEBELOW",     (0, 0), (-1, 0),  0.5, NEGRO),
             ("TOPPADDING",    (0, 0), (-1, 0),  0),
             ("BOTTOMPADDING", (0, 0), (-1, 0),  0),
             ("TOPPADDING",    (0, 1), (-1, 1),  3),
         ]))
         story.append(firma_tabla)
 
-        story.append(Spacer(1, 0.4 * cm))
+        # NOTA: el código de verificación (hash_verificacion) se sigue
+        # generando y almacenando en la certificación, pero por solicitud
+        # NO se muestra en este formato plano. No se renderiza aquí.
 
-        # ── Código de verificación — misma tabla naranja que formato 6 ──
-        if hash_code:
-            cod_tabla = Table(
-                [[f"Código de verificación: {hash_code}"]],
-                colWidths=[doc.width],
-            )
-            cod_tabla.setStyle(TableStyle([
-                ("BACKGROUND",    (0, 0), (-1, -1), HexColor("#FFF3E0")),
-                ("TEXTCOLOR",     (0, 0), (-1, -1), CAFE),
-                ("FONTNAME",      (0, 0), (-1, -1), "Helvetica-Bold"),
-                ("FONTSIZE",      (0, 0), (-1, -1), 8),
-                ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
-                ("BOX",           (0, 0), (-1, -1), 1.2, NARANJA),
-                ("TOPPADDING",    (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ]))
-            story.append(cod_tabla)
-            story.append(Spacer(1, 0.2 * cm))
-
-        # ── Pie de página — igual que formato 6 ──
-        story.append(HRFlowable(width="100%", thickness=1, color=NARANJA))
-        story.append(Spacer(1, 0.1 * cm))
-        story.append(Paragraph(
-            f"Documento generado automáticamente por el Sistema de Gestión de "
-            f"Correspondencia SRTI-INVIAS · {dia_exp} de {mes_exp} de {año_exp}",
-            s_pie,
-        ))
-
-        doc.build(story, onFirstPage=_watermark, onLaterPages=_watermark)
+        doc.build(story)
         buf.seek(0)
         return buf.getvalue()
 

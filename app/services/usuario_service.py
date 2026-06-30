@@ -11,6 +11,34 @@ from app.services.auditoria_service import AuditoriaService
 
 _ZONA_BOGOTA = pytz.timezone("America/Bogota")
 
+# ── Requisitos para descargar "Formatos de contrato" ──────────────────────────
+# Conjuntos de campos que deben estar diligenciados para habilitar la descarga
+# de formatos de contrato. (clave, etiqueta visible para el usuario)
+_CAMPOS_PERSONALES = [
+    ("nombre_completo", "Nombre completo"),
+    ("tipo_documento", "Tipo de documento"),
+    ("numero_documento", "Número de documento"),
+    ("lugar_expedicion_documento", "Lugar de expedición del documento"),
+    ("email", "Correo electrónico"),
+]
+_CAMPOS_CONTRATO = [
+    ("numero", "Número de contrato"),
+    ("tipo", "Tipo de contrato"),
+    ("objeto", "Objeto del contrato"),
+    ("valor", "Valor del contrato"),
+    ("valor_mensual", "Valor mensual"),
+    ("rp_compromiso_presupuestal", "RP / compromiso presupuestal"),
+    ("fecha_recurso_presupuestal", "Fecha recurso presupuestal"),
+    ("fecha_inicio", "Fecha de inicio"),
+    ("fecha_fin", "Fecha de finalización"),
+]
+# Afiliaciones de seguridad social requeridas (CCF queda excluida por ser opcional).
+_AFILIACIONES_REQUERIDAS = [
+    ("eps", "EPS"),
+    ("arl", "ARL"),
+    ("afp", "Fondo de pensiones (AFP)"),
+]
+
 
 class UsuarioService:
     def __init__(self) -> None:
@@ -40,12 +68,25 @@ class UsuarioService:
 
     @staticmethod
     def _afiliacion(datos) -> dict:
-        """Normaliza una afiliación {entidad, valor}; campos vacíos → None."""
+        """Normaliza una afiliación {entidad, paga, valor, radicado}; campos vacíos → None.
+
+        'paga' indica quién cubre el aporte: si lo paga el contratista se conserva el
+        'valor'; si lo paga la entidad se conserva el 'radicado'. Se descarta el dato
+        que no corresponde a la opción elegida para evitar inconsistencias.
+        """
         datos = datos or {}
         entidad = (datos.get("entidad") or "").strip() or None
+        paga = (datos.get("paga") or "").strip() or None
+        if paga not in ("contratista", "entidad"):
+            paga = None
         valor = datos.get("valor")
         valor = int(valor) if valor not in (None, "", 0) and int(valor) > 0 else None
-        return {"entidad": entidad, "valor": valor}
+        radicado = (datos.get("radicado") or "").strip() or None
+        if paga == "entidad":
+            valor = None
+        elif paga == "contratista":
+            radicado = None
+        return {"entidad": entidad, "paga": paga, "valor": valor, "radicado": radicado}
 
     @staticmethod
     def _construir_informacion_laboral(datos) -> dict:
@@ -274,6 +315,117 @@ class UsuarioService:
                 raise ValueError("Este usuario ya tiene registrado ese número de contrato.")
         nuevo_contrato = self._construir_contrato(nuevo_numero, datos_contrato)
         self.repositorio.editar_contrato_en_usuario(id_usuario, numero_contrato, nuevo_contrato)
+
+    # ──────────────────────────────────────────────────────────────
+    # Validación de completitud para descargar formatos de contrato
+    # ──────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _vacio(valor) -> bool:
+        """True si el valor cuenta como 'no diligenciado' (None, vacío o cero)."""
+        if valor is None:
+            return True
+        if isinstance(valor, str):
+            return not valor.strip()
+        if isinstance(valor, (int, float)):
+            return valor == 0
+        return False
+
+    @classmethod
+    def _contrato_campos_faltantes(cls, contrato: dict) -> list:
+        """Etiquetas de los campos del contrato que faltan por diligenciar."""
+        return [etiqueta for clave, etiqueta in _CAMPOS_CONTRATO if cls._vacio(contrato.get(clave))]
+
+    def faltantes_para_formatos(self, id_usuario: str) -> dict:
+        """Evalúa si el usuario tiene todos los datos necesarios para descargar
+        formatos de contrato.
+
+        Devuelve ``{"puede_descargar": bool, "secciones": [...]}`` donde cada
+        sección es ``{"titulo", "destino", "faltantes": [etiquetas]}`` y solo se
+        incluyen las secciones con datos pendientes. ``puede_descargar`` es True
+        cuando no hay ninguna sección con faltantes.
+        """
+        usuario = self.repositorio.buscar_por_id(id_usuario) or {}
+        secciones = []
+
+        # 1) Datos personales
+        faltan_personales = [
+            etiqueta for clave, etiqueta in _CAMPOS_PERSONALES if self._vacio(usuario.get(clave))
+        ]
+        if faltan_personales:
+            secciones.append({
+                "titulo": "Datos personales",
+                "destino": "Mi perfil › 👤 Perfil",
+                "faltantes": faltan_personales,
+            })
+
+        # 2) Al menos un contrato activo con todos sus datos completos
+        contratos = usuario.get("contratos") or []
+        activos = [c for c in contratos if not self._contrato_finalizado(c)]
+        if not activos:
+            secciones.append({
+                "titulo": "Contrato activo",
+                "destino": "Mi perfil › 📄 Contratos",
+                "faltantes": ["No tienes ningún contrato activo registrado"],
+            })
+        else:
+            faltan_por_contrato = [(c, self._contrato_campos_faltantes(c)) for c in activos]
+            if not any(not faltan for _, faltan in faltan_por_contrato):
+                # Ningún contrato activo está completo: reportar el menos incompleto.
+                contrato, faltan = min(faltan_por_contrato, key=lambda t: len(t[1]))
+                numero = contrato.get("numero") or "—"
+                secciones.append({
+                    "titulo": f"Contrato activo {numero}",
+                    "destino": "Mi perfil › 📄 Contratos",
+                    "faltantes": faltan,
+                })
+
+        # 3) Firma cargada
+        from app.services.firma_service import FirmaService
+        if not FirmaService().tiene_firma(id_usuario):
+            secciones.append({
+                "titulo": "Firma",
+                "destino": "Mi perfil › ✍️ Firma",
+                "faltantes": ["No tienes una firma cargada"],
+            })
+
+        # 4) Información laboral (CCF, declarante de renta y dependientes son opcionales)
+        il = usuario.get("informacion_laboral") or {}
+        ss = il.get("seguridad_social") or {}
+        bancaria = il.get("bancaria") or {}
+        tributaria = il.get("tributaria") or {}
+        faltan_laboral = []
+        for cod, etiqueta in _AFILIACIONES_REQUERIDAS:
+            af = ss.get(cod) or {}
+            if self._vacio(af.get("entidad")):
+                faltan_laboral.append(f"{etiqueta} (entidad)")
+            paga = af.get("paga")
+            # Inferir quién paga en registros antiguos sin el campo 'paga'.
+            if not paga:
+                if not self._vacio(af.get("valor")):
+                    paga = "contratista"
+                elif not self._vacio(af.get("radicado")):
+                    paga = "entidad"
+            if not paga:
+                faltan_laboral.append(f"{etiqueta} (indicar quién paga el aporte)")
+            elif paga == "contratista" and self._vacio(af.get("valor")):
+                faltan_laboral.append(f"{etiqueta} (valor mensual)")
+            elif paga == "entidad" and self._vacio(af.get("radicado")):
+                faltan_laboral.append(f"{etiqueta} (número de radicado)")
+        if self._vacio(bancaria.get("banco")):
+            faltan_laboral.append("Banco")
+        if self._vacio(bancaria.get("numero_cuenta")):
+            faltan_laboral.append("Número de cuenta")
+        if self._vacio(tributaria.get("rut")):
+            faltan_laboral.append("RUT")
+        if faltan_laboral:
+            secciones.append({
+                "titulo": "Información laboral",
+                "destino": "Mi perfil › 💼 Información laboral",
+                "faltantes": faltan_laboral,
+            })
+
+        return {"puede_descargar": not secciones, "secciones": secciones}
 
     def activar_usuario(self, id_usuario: str, validar_permisos: bool = True, permisos_usuario: list = None, usuario_actual: str = None):
         if validar_permisos and permisos_usuario:
