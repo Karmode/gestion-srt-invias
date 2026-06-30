@@ -23,6 +23,20 @@ def _badge_estado(estado: str | None) -> str:
     return "⏳ Pendiente de aprobación"
 
 
+# Prefijo de nombre de archivo por tipo de formato. Los formatos sin
+# tipo_formato (p. ej. el control de correspondencia) usan el prefijo por defecto.
+_PREFIJO_ARCHIVO = {
+    "dependencia_economica": "Condicion_Declarante",
+}
+_PREFIJO_ARCHIVO_DEFAULT = "Certificado_correspondencia"
+
+
+def _nombre_archivo_pdf(cert: dict, mes_nombre: str, año) -> str:
+    """Construye el nombre del PDF según el tipo de formato del certificado."""
+    prefijo = _PREFIJO_ARCHIVO.get(cert.get("tipo_formato"), _PREFIJO_ARCHIVO_DEFAULT)
+    return f"{prefijo}_{mes_nombre}_{año}.pdf"
+
+
 @st.dialog("Vista previa del certificado", width="large")
 def _dialog_preview_cert(servicio: CertificacionService) -> None:
     data = st.session_state.pop("_preview_cert_user", None)
@@ -36,7 +50,7 @@ def _dialog_preview_cert(servicio: CertificacionService) -> None:
     render_preview_cert(
         pdf_bytes=pdf_bytes,
         caption=f"{mes_nombre} {año}",
-        file_name=f"Certificado_correspondencia_{mes_nombre}_{año}.pdf",
+        file_name=_nombre_archivo_pdf(data["cert"], mes_nombre, año),
         dl_key="_dl_preview_user",
     )
 
@@ -133,7 +147,7 @@ def _render_verificador_codigo(servicio: CertificacionService):
                     st.caption(f"Observaciones: {cert['observaciones']}")
 
             pdf_bytes = servicio.generar_pdf(cert)
-            nombre_archivo = f"Certificado_correspondencia_{mes_nombre}_{año}.pdf"
+            nombre_archivo = _nombre_archivo_pdf(cert, mes_nombre, año)
             st.download_button(
                 label="⬇️ Descargar certificado verificado",
                 data=pdf_bytes,
@@ -186,7 +200,7 @@ def _render_opcion_6_gestion_corr(servicio, usuario_id, año_cert, mes_cert, nom
             pdf_bytes = None
 
         if pdf_bytes:
-            nombre_archivo = f"Certificado_correspondencia_{nombre_mes_cert}_{año_cert}.pdf"
+            nombre_archivo = _nombre_archivo_pdf(cert_actual, nombre_mes_cert, año_cert)
             c_dl, c_prev = st.columns(2)
             with c_dl:
                 st.download_button(
@@ -366,7 +380,7 @@ def _render_opcion_8_historial(servicio, usuario_id, año_cert, mes_cert, bloque
                 with c_btn:
                     if estado == "aprobado":
                         pdf_bytes = servicio.generar_pdf(cert)
-                        nombre_archivo = f"Certificado_correspondencia_{mes_nombre}_{año_cert_hist}.pdf"
+                        nombre_archivo = _nombre_archivo_pdf(cert, mes_nombre, año_cert_hist)
                         cert_id = str(cert.get("_id", ""))
                         st.download_button(
                             "⬇️ PDF",
@@ -427,7 +441,7 @@ def _render_opcion_4_declarante_dependencia(servicio, sesion, año_cert, mes_cer
             pdf_bytes = None
 
         if pdf_bytes:
-            nombre_archivo = f"Condicion_Declarante_{nombre_mes_cert}_{año_cert}.pdf"
+            nombre_archivo = _nombre_archivo_pdf(cert_actual, nombre_mes_cert, año_cert)
             c_dl, c_prev = st.columns(2)
             with c_dl:
                 st.download_button(
