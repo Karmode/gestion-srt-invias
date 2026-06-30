@@ -80,6 +80,9 @@ def limpiar_estado_laboral(prefijo):
 
 # ── Sección de información laboral ────────────────────────────────────────────
 
+_CAMPOS_NO_APLICAN_PENSIONADO = {"afp", "ccf"}
+
+
 def inputs_informacion_laboral(prefijo, il, mapas):
     """Renderiza los campos de información laboral y devuelve el dict crudo."""
     il = il or {}
@@ -88,11 +91,22 @@ def inputs_informacion_laboral(prefijo, il, mapas):
     tributaria = il.get("tributaria") or {}
     deps = il.get("dependientes") or []
 
+    _preseed(f"{prefijo}_es_pensionado", bool(il.get("es_pensionado")))
+    es_pensionado = st.checkbox(
+        "¿Eres pensionado/a?",
+        key=f"{prefijo}_es_pensionado",
+        help="Si estás pensionado/a, los campos de AFP y Caja de Compensación Familiar no aplican y no serán requeridos para descargar los formatos.",
+    )
+
     st.markdown("##### 🏥 Seguridad social y aportes")
     st.caption("Indica si el aporte lo pagas tú (registra el valor mensual) o se paga por otro medio (registra el número de radicado).")
     resultado_ss = {}
     for cod, etiqueta, cat in _AFILIACIONES:
         af = ss.get(cod) or {}
+        if es_pensionado and cod in _CAMPOS_NO_APLICAN_PENSIONADO:
+            st.caption(f"**{etiqueta}** — No aplica (pensionado/a)")
+            resultado_ss[cod] = af  # preservar datos existentes sin modificar
+            continue
         c1, c2, c3 = st.columns([2, 1.3, 1.3])
         with c1:
             entidad = _select_keyed(etiqueta, mapas[cat], af.get("entidad") or "", f"{prefijo}_{cod}_ent")
@@ -133,6 +147,7 @@ def inputs_informacion_laboral(prefijo, il, mapas):
     dependientes = _inputs_dependientes(prefijo, deps, mapas)
 
     return {
+        "es_pensionado": es_pensionado,
         "seguridad_social": resultado_ss,
         "bancaria": {"banco": banco, "numero_cuenta": num_cuenta},
         "tributaria": {"rut": rut, "declarante_renta": declarante},

@@ -391,11 +391,14 @@ class UsuarioService:
 
         # 4) Información laboral (CCF, declarante de renta y dependientes son opcionales)
         il = usuario.get("informacion_laboral") or {}
+        es_pensionado = bool(il.get("es_pensionado"))
         ss = il.get("seguridad_social") or {}
         bancaria = il.get("bancaria") or {}
         tributaria = il.get("tributaria") or {}
         faltan_laboral = []
         for cod, etiqueta in _AFILIACIONES_REQUERIDAS:
+            if es_pensionado and cod in ("afp", "ccf"):
+                continue
             af = ss.get(cod) or {}
             if self._vacio(af.get("entidad")):
                 faltan_laboral.append(f"{etiqueta} (entidad)")
