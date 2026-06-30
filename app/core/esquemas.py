@@ -69,6 +69,10 @@ ESQUEMA_USUARIOS = {
             "bsonType": ["object", "null"],
             "description": "Datos de seguridad social, bancarios, tributarios y dependientes. Opcional (no aplica a todos los usuarios).",
             "properties": {
+                "es_pensionado": {
+                    "bsonType": ["bool", "null"],
+                    "description": "Si es True, AFP y CCF no aplican y no se validan para descarga de formatos",
+                },
                 "seguridad_social": {
                     "bsonType": ["object", "null"],
                     "properties": {
