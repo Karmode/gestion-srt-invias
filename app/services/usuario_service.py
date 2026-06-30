@@ -113,6 +113,7 @@ class UsuarioService:
             })
 
         return {
+            "es_pensionado": bool(datos.get("es_pensionado")),
             "seguridad_social": {
                 "eps": UsuarioService._afiliacion(ss.get("eps")),
                 "arl": UsuarioService._afiliacion(ss.get("arl")),
