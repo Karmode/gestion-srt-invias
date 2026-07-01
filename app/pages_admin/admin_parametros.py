@@ -119,9 +119,14 @@ def render(sesion=None):
                     st.session_state["_param_pendiente"] = {"clave": clave, "valor": nuevo}
                     st.rerun()
 
-            st.caption(
-                f"Valor actual: **{actual}** · Rango permitido: {meta['min']}–{meta['max']}"
-            )
+            if meta["tipo"] == "int":
+                st.caption(
+                    f"Valor actual: **{actual}** · Rango permitido: {meta['min']}–{meta['max']}"
+                )
+            else:
+                st.caption(
+                    f"Valor actual: **{actual}**"
+                )
 
     if st.session_state.get("_param_pendiente"):
         _dialog_confirmar(servicio, sesion)

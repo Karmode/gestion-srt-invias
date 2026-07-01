@@ -123,7 +123,39 @@ class CertificacionService:
                 "mes": mes,
             })
             self.repo.crear(campos)
+    def firmar_y_generar_retencion_segunda(self, usuario_id: str, nombre_usuario: str) -> bool:
+        año, mes = self.periodo_certificable()
+        ahora_utc = datetime.now(timezone.utc)
+        
+        cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "retencion_fuente_segunda")
+        
+        hash_code = (
+            cert_existente["hash_verificacion"]
+            if cert_existente and cert_existente.get("hash_verificacion")
+            else self._generar_hash(usuario_id, año, mes, usuario_id, ahora_utc.isoformat())
+        )
+        
+        campos = {
+            "estado": "aprobado",  # Ya queda aprobado porque lo firma el contratista
+            "fecha_corte": ahora_utc,
+            "snapshot_al_dia": True,
+            "tipo_formato": "retencion_fuente_segunda",
+            "hash_verificacion": hash_code,
+            "creado_en": ahora_utc,
+        }
+        
+        if cert_existente:
+            self.repo.actualizar(str(cert_existente["_id"]), campos)
+        else:
+            campos.update({
+                "usuario_id": ObjectId(usuario_id),
+                "nombre_usuario": nombre_usuario,
+                "año": año,
+                "mes": mes,
+            })
+            self.repo.crear(campos)
         return True
+
 
     def obtener_historial(self, usuario_id: str) -> List[Dict]:
         return self.repo.listar_por_usuario(usuario_id)
@@ -170,6 +202,7 @@ class CertificacionService:
                 "firmas": firmas,
                 "tiene_contrato": tiene_contrato,
                 "numero_contrato": contrato.get("numero"),
+                "tipo_contrato": contrato.get("tipo"),
             })
 
         return resultados
@@ -399,6 +432,8 @@ class CertificacionService:
         """Genera el PDF del certificado con ReportLab en memoria."""
         if certificacion.get("tipo_formato") == "dependencia_economica":
             return self.generar_pdf_dependencia(certificacion)
+        if certificacion.get("tipo_formato") == "retencion_fuente_segunda":
+            return self.generar_pdf_retencion_fuente_segunda(certificacion)
 
         from reportlab.lib.pagesizes import letter
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -974,6 +1009,358 @@ class CertificacionService:
         # NOTA: el código de verificación (hash_verificacion) se sigue
         # generando y almacenando en la certificación, pero por solicitud
         # NO se muestra en este formato plano. No se renderiza aquí.
+
+        doc.build(story)
+        buf.seek(0)
+        return buf.getvalue()
+
+    def generar_pdf_retencion_fuente_segunda(self, certificacion: Dict) -> bytes:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import cm
+        from reportlab.lib.colors import HexColor, black
+        from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
+        from reportlab.platypus import (
+            SimpleDocTemplate, Paragraph, Spacer,
+            Table, TableStyle, Image,
+        )
+
+        NEGRO = black
+        BORDE = HexColor("#666666")
+
+        # ── Datos del usuario ──
+        from app.repositories.usuario_repo import UsuarioRepositorio
+        usuario_id = str(certificacion.get("usuario_id", ""))
+        usuario_data: dict = {}
+        if usuario_id:
+            try:
+                usuario_data = UsuarioRepositorio().buscar_por_id(usuario_id) or {}
+            except Exception:
+                pass
+
+        nombre = usuario_data.get("nombre_completo", "")
+        tipo_doc = usuario_data.get("tipo_documento", "C.C.")
+        cedula = usuario_data.get("numero_documento") or "—"
+        lugar_exp = usuario_data.get("lugar_expedicion_documento") or "—"
+
+        info_laboral = usuario_data.get("informacion_laboral") or {}
+        tributaria = info_laboral.get("tributaria") or {}
+        declarante_renta = tributaria.get("declarante_renta", False)
+        seguridad_social = info_laboral.get("seguridad_social") or {}
+
+        # Contrato vigente
+        contratos = usuario_data.get("contratos") or []
+        contrato_vig = self._contrato_vigente(contratos)
+        no_contrato = contrato_vig.get("numero", "—")
+        valor_contrato = contrato_vig.get("valor", 0)
+        valor_mensual = contrato_vig.get("valor_mensual", 0)
+        
+        fecha_ini_raw = contrato_vig.get("fecha_inicio")
+        fecha_fin_raw = contrato_vig.get("fecha_fin")
+        
+        fecha_ini_str = utc_a_bogota(fecha_ini_raw).strftime("%d/%m/%Y") if fecha_ini_raw else "—"
+        fecha_fin_str = utc_a_bogota(fecha_fin_raw).strftime("%d/%m/%Y") if fecha_fin_raw else "—"
+
+        # Fechas de expedición del documento (mes/año parameter)
+        mes_num = certificacion.get("mes", 1)
+        nombre_mes_exp = MESES_ES[mes_num - 1]
+        año_exp = str(certificacion.get("año", ""))
+
+        # Fecha actual o de firma para el encabezado "Bogotá D.C., {fecha de expedición del formato}"
+        fecha_corte = certificacion.get("fecha_corte")
+        if fecha_corte:
+            dt = utc_a_bogota(fecha_corte)
+        else:
+            dt = datetime.now(ZONA_BOGOTA)
+        
+        fecha_expedicion_completa = f"{dt.day} {MESES_ES[dt.month - 1]} de {dt.year}"
+
+        # ── Utilidades de conversión ──
+        def _numero_a_letras(numero: int) -> str:
+            unidades = ["", "UN", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE"]
+            decenas = ["", "DIEZ", "VEINTE", "TREINTA", "CUARENTA", "CINCUENTA", "SESENTA", "SETENTA", "OCHENTA", "NOVENTA"]
+            especiales = {
+                11: "ONCE", 12: "DOCE", 13: "TRECE", 14: "CATORCE", 15: "QUINCE",
+                16: "DIECISEIS", 17: "DIECISIETE", 18: "DIECIOCHO", 19: "DIECINUEVE",
+                21: "VEINTIUNO", 22: "VEINTIDOS", 23: "VEINTITRES", 24: "VEINTICUATRO",
+                25: "VEINTICINCO", 26: "VEINTISEIS", 27: "VEINTISIETE", 28: "VEINTIOCHO", 29: "VEINTINUEVE"
+            }
+            centenas = ["", "CIENTO", "DOSCIENTOS", "TRESCIENTOS", "CUATROCIENTOS", "QUINIENTOS", "SEISCIENTOS", "SETECIENTOS", "OCHOCIENTOS", "NOVECIENTOS"]
+
+            if numero == 0:
+                return "CERO"
+
+            def _convertir(n):
+                if n < 10:
+                    return unidades[n]
+                elif n in especiales:
+                    return especiales[n]
+                elif n < 30:
+                    if n == 20: return "VEINTE"
+                    return especiales.get(n, "")
+                elif n < 100:
+                    u = n % 10
+                    d = n // 10
+                    if u > 0:
+                        return f"{decenas[d]} Y {unidades[u]}"
+                    return decenas[d]
+                elif n < 1000:
+                    if n == 100:
+                        return "CIEN"
+                    d_u = n % 100
+                    c = n // 100
+                    if d_u > 0:
+                        return f"{centenas[c]} {_convertir(d_u)}"
+                    return centenas[c]
+                elif n < 1000000:
+                    m = n // 1000
+                    resto = n % 1000
+                    m_str = ""
+                    if m == 1:
+                        m_str = "MIL"
+                    else:
+                        m_str = f"{_convertir(m)} MIL"
+                    if resto > 0:
+                        return f"{m_str} {_convertir(resto)}"
+                    return m_str
+                elif n < 1000000000:
+                    millon = n // 1000000
+                    resto = n % 1000000
+                    mill_str = ""
+                    if millon == 1:
+                        mill_str = "UN MILLON"
+                    else:
+                        mill_words = _convertir(millon)
+                        if mill_words.endswith("UNO"):
+                            mill_words = mill_words[:-3] + "UN"
+                        elif mill_words == "UNO":
+                            mill_words = "UN"
+                        mill_str = f"{mill_words} MILLONES"
+                    if resto > 0:
+                        return f"{mill_str} {_convertir(resto)}"
+                    return mill_str
+                return str(n)
+
+            return _convertir(numero).strip()
+
+        def _formatear_pesos(valor: float) -> str:
+            return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+        # ── Documento — márgenes ──
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buf,
+            pagesize=letter,
+            leftMargin=2.3 * cm,
+            rightMargin=2.3 * cm,
+            topMargin=1.2 * cm,
+            bottomMargin=1.2 * cm,
+        )
+
+        estilos = getSampleStyleSheet()
+
+        s_cuerpo = ParagraphStyle(
+            "ret_cuerpo", parent=estilos["Normal"],
+            fontSize=9.5, alignment=TA_JUSTIFY, leading=12.5, spaceAfter=4,
+            textColor=NEGRO,
+        )
+        s_cuerpo_left = ParagraphStyle(
+            "ret_cuerpo_l", parent=estilos["Normal"],
+            fontSize=9.5, alignment=TA_LEFT, leading=12.5, spaceAfter=1,
+            textColor=NEGRO,
+        )
+        s_cuerpo_bold = ParagraphStyle(
+            "ret_cuerpo_b", parent=estilos["Normal"],
+            fontSize=9.5, alignment=TA_LEFT, leading=12.5, spaceAfter=1,
+            fontName="Helvetica-Bold", textColor=NEGRO,
+        )
+        s_cell = ParagraphStyle(
+            "ret_cell", parent=estilos["Normal"],
+            fontSize=9.5, alignment=TA_LEFT, leading=12, textColor=NEGRO,
+        )
+        s_cell_center = ParagraphStyle(
+            "ret_cell_c", parent=estilos["Normal"],
+            fontSize=9.5, alignment=TA_CENTER, leading=12, textColor=NEGRO,
+        )
+        s_cell_hdr = ParagraphStyle(
+            "ret_cell_h", parent=estilos["Normal"],
+            fontSize=9.5, fontName="Helvetica-Bold", alignment=TA_CENTER,
+            leading=12, textColor=NEGRO,
+        )
+
+        story = []
+
+        # Encabezado fecha
+        story.append(Paragraph(f"Bogotá D.C., {fecha_expedicion_completa}", s_cuerpo_left))
+        story.append(Spacer(1, 0.7 * cm))
+
+        # Obtener el nombre del responsable de financiera
+        from app.services.parametros_service import ParametrosService
+        try:
+            nombre_responsable = ParametrosService().obtener("nombre_financiera_retefuente")
+        except Exception:
+            nombre_responsable = "sin nombre_financiera_retefuente"
+
+        if not nombre_responsable or not nombre_responsable.strip():
+            nombre_responsable = "sin nombre_financiera_retefuente"
+
+        # Destinatario
+        story.append(Paragraph("Doctor", s_cuerpo_left))
+        story.append(Paragraph(nombre_responsable, s_cuerpo_bold))
+        story.append(Paragraph("Subdirección Financiera - Grupo Cuentas Por Pagar", s_cuerpo_left))
+        story.append(Paragraph("INSTITUTO NACIONAL DE VÍAS", s_cuerpo_bold))
+        story.append(Paragraph("Bogotá D.C", s_cuerpo_left))
+        story.append(Spacer(1, 0.7 * cm))
+
+        # Asunto
+        story.append(Paragraph(f"<b>ASUNTO:</b> Disminución Base Retención en la Fuente Contrato No. {no_contrato}", s_cuerpo_bold))
+        story.append(Spacer(1, 0.7 * cm))
+
+        # Saludo
+        story.append(Paragraph("Respetado Señor Jairo,", s_cuerpo_left))
+        story.append(Spacer(1, 0.15 * cm))
+
+        # Párrafo legal
+        p_legal = (
+            f"<b>{nombre.upper()}</b> identificado como aparece al pie de la firma, solicito realizar la "
+            f"retención en la fuente con fundamento en el Parágrafo 2 del Artículo 17 de la Ley 1819 de 2016, "
+            f"el cual estableció para el artículo 383 del Estatuto Tributario lo siguiente: <i>“Parágrafo 2. La "
+            f"retención en la fuente establecida en el presente artículo será aplicable a los pagos o abonos "
+            f"en cuenta por concepto de ingresos por honorarios y por compensación por servicios personales "
+            f"obtenidos por las personas que informen que no han contratado o vinculado dos (2) o más "
+            f"trabajadores asociados a la actividad”</i>."
+        )
+        story.append(Paragraph(p_legal, s_cuerpo))
+        story.append(Paragraph("Que los datos del contrato son:", s_cuerpo_left))
+        story.append(Spacer(1, 0.1 * cm))
+
+        # Tabla 1: Datos contrato (3 columnas compactas y centradas en la página)
+        t1_data = [
+            [Paragraph("a.", s_cell), Paragraph("Contrato:", s_cell), Paragraph(no_contrato, s_cell)],
+            [Paragraph("b.", s_cell), Paragraph("Razón social:", s_cell), Paragraph("Instituto Nacional de Vías-INVIAS", s_cell)],
+            [Paragraph("c.", s_cell), Paragraph("NIT Entidad:", s_cell), Paragraph("800.215.807-2", s_cell)],
+            [Paragraph("d.", s_cell), Paragraph("Valor del contrato:", s_cell), Paragraph(f"$ {_formatear_pesos(valor_contrato)[:-3]}", s_cell)],
+            [Paragraph("e.", s_cell), Paragraph("Fecha de inicio:", s_cell), Paragraph(fecha_ini_str, s_cell)],
+            [Paragraph("f.", s_cell), Paragraph("Fecha de terminación:", s_cell), Paragraph(fecha_fin_str, s_cell)],
+        ]
+        t1 = Table(t1_data, colWidths=[0.6 * cm, 3.8 * cm, 6.5 * cm], hAlign='CENTER')
+        t1.setStyle(TableStyle([
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0.5),
+            ("TOPPADDING", (0, 0), (-1, -1), 0.5),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        story.append(t1)
+        story.append(Spacer(1, 0.2 * cm))
+
+        # Párrafo Certifico Régimen
+        regimen_db = tributaria.get("regimen") or "NULL"
+        regimen_str = regimen_db.replace("_", " ").upper()
+        rut_str = tributaria.get("rut") or "—"
+        renta_str = "SI RENTA" if declarante_renta else "NO RENTA"
+
+        p_regimen = (
+            f"De igual manera, bajo la gravedad de juramento certifico que: <b>PERTENEZCO AL RÉGIMEN {regimen_str}, "
+            f"CON RUT No. {rut_str} y {renta_str}</b>"
+        )
+        story.append(Paragraph(p_regimen, s_cuerpo))
+
+        # Párrafo Seguridad Social
+        eps_info = seguridad_social.get("eps") or {}
+        afp_info = seguridad_social.get("afp") or {}
+        arl_info = seguridad_social.get("arl") or {}
+
+        eps_name = (eps_info.get("entidad") or "EPS").replace("_", " ").upper()
+        eps_val = eps_info.get("valor") or 0
+
+        afp_name = (afp_info.get("entidad") or "FONDO DE PENSIONES").replace("_", " ").upper()
+        afp_val = afp_info.get("valor") or 0
+
+        arl_name = (arl_info.get("entidad") or "ARL").replace("_", " ").upper()
+        arl_val = arl_info.get("valor") or 0
+
+        p_seg_social = (
+            f"También declaró bajo la gravedad de juramento, que el documento soporte de pago de aportes obligatorios "
+            f"al Sistema General de Seguridad Social, realizados a la Entidad Prestadora de <b>{eps_name}</b> y "
+            f"aporte obligatorio realizados al Fondo de Pensiones <b>{afp_name}</b> correspondiente al periodo del mes de "
+            f"<b>{nombre_mes_exp.upper()}</b> de <b>{año_exp}</b>, corresponde a la suma de:"
+        )
+        story.append(Paragraph(p_seg_social, s_cuerpo))
+        story.append(Spacer(1, 0.1 * cm))
+
+        # Tabla 2: Seguridad Social (más angosta, bordes delgados de 0.25pt y centrada)
+        t2_data = [
+            [Paragraph("<b>Concepto</b>", s_cell_hdr), Paragraph("<b>Valor</b>", s_cell_hdr)],
+            [Paragraph(eps_name, s_cell), Paragraph(f"{_formatear_pesos(eps_val)[:-3]}", s_cell_center)],
+            [Paragraph(afp_name, s_cell), Paragraph(f"{_formatear_pesos(afp_val)[:-3]}", s_cell_center)],
+            [Paragraph(arl_name, s_cell), Paragraph(f"{_formatear_pesos(arl_val)[:-3]}", s_cell_center)],
+        ]
+        t2 = Table(t2_data, colWidths=[8.0 * cm, 3.0 * cm], hAlign='CENTER')
+        t2.setStyle(TableStyle([
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("GRID", (0, 0), (-1, -1), 0.25, HexColor("#999999")),
+            ("BACKGROUND", (0, 0), (-1, 0), HexColor("#F9F9F9")),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        story.append(t2)
+        story.append(Spacer(1, 0.2 * cm))
+
+        # Honorarios
+        val_letras = _numero_a_letras(int(valor_mensual))
+        val_num_fmt = _formatear_pesos(valor_mensual)
+        p_honorarios = (
+            f"Que el valor a cobrar por concepto de honorarios corresponden al periodo del <b>{nombre_mes_exp.upper()}</b> "
+            f"y ascienden a la suma de: <b>{val_letras} ($ {val_num_fmt}) M/Cte.</b>"
+        )
+        story.append(Paragraph(p_honorarios, s_cuerpo))
+        story.append(Spacer(1, 0.3 * cm))
+
+        # Despedida
+        story.append(Paragraph("Atentamente,", s_cuerpo_left))
+        story.append(Spacer(1, 0.1 * cm))
+
+        # Firma
+        from app.services.firma_service import FirmaService
+        firma_bytes = FirmaService().obtener_imagen(usuario_id)
+
+        s_firma_nombre = ParagraphStyle(
+            "ret_fn", parent=estilos["Normal"],
+            fontSize=9.5, fontName="Helvetica-Bold", alignment=TA_CENTER,
+            textColor=NEGRO, leading=13,
+        )
+        s_firma_sub = ParagraphStyle(
+            "ret_fs", parent=estilos["Normal"],
+            fontSize=9, alignment=TA_CENTER, leading=12, textColor=NEGRO,
+        )
+
+        if firma_bytes:
+            firma_img = Image(io.BytesIO(firma_bytes), width=5.2 * cm, height=2.6 * cm, kind="proportional")
+            filas_firma = [
+                [firma_img],
+                [Paragraph(nombre, s_firma_nombre)],
+                [Paragraph(f"{tipo_doc}. {cedula} de {lugar_exp}", s_firma_sub)],
+            ]
+        else:
+            filas_firma = [
+                [""],
+                [Paragraph(nombre, s_firma_nombre)],
+                [Paragraph(f"{tipo_doc}. {cedula} de {lugar_exp}", s_firma_sub)],
+            ]
+
+        firma_tabla = Table(filas_firma, colWidths=[doc.width])
+        firma_tabla.setStyle(TableStyle([
+            ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN",        (0, 0), (-1, -1), "BOTTOM"),
+            ("LINEBELOW",     (0, 0), (-1, 0),  0.5, NEGRO),
+            ("TOPPADDING",    (0, 0), (-1, 0),  0),
+            ("BOTTOMPADDING", (0, 0), (-1, 0),  0),
+            ("TOPPADDING",    (0, 1), (-1, 1),  3),
+        ]))
+        story.append(firma_tabla)
 
         doc.build(story)
         buf.seek(0)
