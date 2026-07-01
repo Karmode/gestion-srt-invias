@@ -1,3 +1,20 @@
+# Sub-esquema reutilizable: afiliación a una entidad de seguridad social
+# (EPS / ARL / AFP / CCF). El aporte lo paga el contratista (registra 'valor')
+# o la entidad (registra 'radicado'); 'paga' indica cuál de los dos casos aplica.
+_ESQUEMA_AFILIACION = {
+    "bsonType": ["object", "null"],
+    "properties": {
+        "entidad": {"bsonType": ["string", "null"], "description": "Clave del catálogo correspondiente"},
+        "paga": {
+            "bsonType": ["string", "null"],
+            "enum": ["contratista", "entidad", None],
+            "description": "Quién paga el aporte: 'contratista' (registra valor) o 'entidad' (registra radicado)",
+        },
+        "valor": {"bsonType": ["int", "long", "double", "null"], "description": "Valor mensual del aporte (COP), cuando lo paga el contratista"},
+        "radicado": {"bsonType": ["string", "null"], "description": "Número de radicado del pago, cuando lo paga la entidad"},
+    },
+}
+
 ESQUEMA_USUARIOS = {
     "bsonType": "object",
     "required": [
@@ -20,6 +37,10 @@ ESQUEMA_USUARIOS = {
             "description": "CC=Cédula de Ciudadanía, CE=Cédula de Extranjería, TI=Tarjeta de Identidad, PA=Pasaporte, RC=Registro Civil, PEP=Permiso Especial de Permanencia, PPT=Permiso por Protección Temporal",
         },
         "numero_documento": {"bsonType": ["string", "null"]},
+        "lugar_expedicion_documento": {
+            "bsonType": ["string", "null"],
+            "description": "Ciudad de expedición del documento de identidad (texto libre)",
+        },
         "contratos": {
             "bsonType": ["array", "null"],
             "items": {
@@ -33,8 +54,67 @@ ESQUEMA_USUARIOS = {
                     },
                     "objeto": {"bsonType": ["string", "null"]},
                     "valor": {"bsonType": ["int", "long", "double", "null"]},
+                    "valor_mensual": {"bsonType": ["int", "long", "double", "null"]},
+                    "rp_compromiso_presupuestal": {
+                        "bsonType": ["string", "null"],
+                        "description": "Código de Registro Presupuestal / compromiso presupuestal (alfanumérico)",
+                    },
+                    "fecha_recurso_presupuestal": {"bsonType": ["date", "null"]},
                     "fecha_inicio": {"bsonType": ["date", "null"]},
                     "fecha_fin": {"bsonType": ["date", "null"]},
+                },
+            },
+        },
+        "informacion_laboral": {
+            "bsonType": ["object", "null"],
+            "description": "Datos de seguridad social, bancarios, tributarios y dependientes. Opcional (no aplica a todos los usuarios).",
+            "properties": {
+                "es_pensionado": {
+                    "bsonType": ["bool", "null"],
+                    "description": "Si es True, AFP y CCF no aplican y no se validan para descarga de formatos",
+                },
+                "seguridad_social": {
+                    "bsonType": ["object", "null"],
+                    "properties": {
+                        "eps": _ESQUEMA_AFILIACION,
+                        "arl": _ESQUEMA_AFILIACION,
+                        "afp": _ESQUEMA_AFILIACION,
+                        "ccf": _ESQUEMA_AFILIACION,
+                    },
+                },
+                "bancaria": {
+                    "bsonType": ["object", "null"],
+                    "properties": {
+                        "banco": {"bsonType": ["string", "null"], "description": "Clave del catálogo 'banco'"},
+                        "numero_cuenta": {
+                            "bsonType": ["string", "null"],
+                            "description": "Número de cuenta (string para preservar ceros a la izquierda)",
+                        },
+                    },
+                },
+                "tributaria": {
+                    "bsonType": ["object", "null"],
+                    "properties": {
+                        "rut": {"bsonType": ["string", "null"], "description": "Número de RUT (alfanumérico, admite símbolos)"},
+                        "declarante_renta": {"bsonType": ["bool", "null"]},
+                    },
+                },
+                "dependientes": {
+                    "bsonType": ["array", "null"],
+                    "description": "Dependientes económicos; lista vacía = sin dependientes",
+                    "items": {
+                        "bsonType": "object",
+                        "required": ["nombre"],
+                        "properties": {
+                            "nombre": {"bsonType": "string", "minLength": 1},
+                            "tipo_documento": {
+                                "bsonType": ["string", "null"],
+                                "enum": ["CC", "TI", "CE", None],
+                            },
+                            "numero_documento": {"bsonType": ["string", "null"]},
+                            "tipo": {"bsonType": ["string", "null"], "description": "Clave del catálogo 'tipo_dependiente'"},
+                        },
+                    },
                 },
             },
         },
@@ -216,6 +296,43 @@ ESQUEMA_ACEPTACIONES_POLITICA = {
         "email": {"bsonType": ["string", "null"]},
         "sesion_id": {"bsonType": ["string", "null"]},
         "metodo": {"bsonType": "string"},
+    },
+}
+
+ESQUEMA_INSTRUCTIVOS = {
+    "bsonType": "object",
+    "required": ["titulo", "url", "tipo", "activo", "orden", "fecha_creacion"],
+    "properties": {
+        "titulo": {"bsonType": "string", "minLength": 1},
+        "descripcion": {"bsonType": ["string", "null"]},
+        "url": {"bsonType": "string", "minLength": 1},
+        "tipo": {
+            "enum": ["pdf", "video", "enlace"],
+            "description": "pdf y video se incrustan en iframe; enlace solo muestra botón externo",
+        },
+        "icono": {"bsonType": ["string", "null"], "description": "Emoji o texto corto para el botón"},
+        "activo": {"bsonType": "bool"},
+        "orden": {"bsonType": "int", "minimum": 1},
+        "embed_height": {"bsonType": ["int", "null"], "description": "Altura del iframe en px"},
+        "fecha_creacion": {"bsonType": "date"},
+        "fecha_actualizacion": {"bsonType": ["date", "null"]},
+        "creado_por": {"bsonType": ["string", "null"]},
+        "actualizado_por": {"bsonType": ["string", "null"]},
+    },
+}
+
+ESQUEMA_FIRMAS = {
+    "bsonType": "object",
+    "required": ["usuario_id", "imagen", "bytes", "actualizado_en"],
+    "description": "Firma del usuario como PNG procesado (fondo transparente). Colección aparte para no inflar el documento usuario.",
+    "properties": {
+        "usuario_id": {"bsonType": "objectId"},
+        "imagen": {"bsonType": "binData", "description": "PNG con transparencia, ya procesado y optimizado"},
+        "ancho": {"bsonType": ["int", "null"]},
+        "alto": {"bsonType": ["int", "null"]},
+        "bytes": {"bsonType": ["int", "long"], "description": "Tamaño del PNG procesado"},
+        "actualizado_en": {"bsonType": "date"},
+        "actualizado_por": {"bsonType": ["string", "null"]},
     },
 }
 

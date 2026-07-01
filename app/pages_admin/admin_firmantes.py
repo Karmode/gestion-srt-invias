@@ -6,6 +6,7 @@ Accesible para los 3 firmantes designados y para el administrador.
 """
 
 import streamlit as st
+from app.core.ui_titulos import mostrar_titulo_decorado
 
 from app.core.sesion import obtener_sesion
 from app.core.zona_horaria import formato_fecha_bogota
@@ -133,13 +134,14 @@ def render(sesion=None):
     nombre_mes = MESES_ES[mes - 1]
     es_anterior = servicio.es_mes_anterior()
 
-    st.title("✍️ Aprobaciones de Certificaciones")
+    mostrar_titulo_decorado("Sup. Formatos")
     st.caption(f"Período certificable: **{nombre_mes} {año}**")
 
     if es_anterior:
+        _dia_cierre = servicio._dia_inicio_periodo() - 1
         st.warning(
             f"Estás aprobando el **mes anterior: {nombre_mes} {año}** "
-            f"(ventana disponible hasta el día 24 del mes en curso)."
+            f"(ventana disponible hasta el día {_dia_cierre} del mes en curso)."
         )
 
     # Selector de rol cuando el usuario tiene más de un permiso de firma

@@ -1,5 +1,6 @@
 import datetime
 import streamlit as st
+from app.core.ui_titulos import mostrar_titulo_decorado
 
 from app.core.autorizacion import validar_permiso, ValidacionAutorizacion
 from app.core.sesion import obtener_sesion
@@ -22,7 +23,7 @@ except ValidacionAutorizacion:
 # --- Encabezado ---
 col_title, col_btn = st.columns([5, 1])
 with col_title:
-    st.title("📄 Reportes y Evidencias")
+    mostrar_titulo_decorado("📄 Reportes y Evidencias")
     st.markdown("Generación de reportes de correspondencia oficiales y evidencias estructuradas para el sistema KAWAK.")
 with col_btn:
     st.write("") # Espaciador para alineación

@@ -10,6 +10,8 @@ from app.core.esquemas import (
     ESQUEMA_CERTIFICACIONES,
     ESQUEMA_POLITICAS_DATOS,
     ESQUEMA_ACEPTACIONES_POLITICA,
+    ESQUEMA_FIRMAS,
+    ESQUEMA_INSTRUCTIVOS,
 )
 from app.db.mongo import obtener_base_datos
 
@@ -30,6 +32,8 @@ class MongoBootstrapService:
         self._asegurar_coleccion("certificaciones", ESQUEMA_CERTIFICACIONES)
         self._asegurar_coleccion("politicas_datos", ESQUEMA_POLITICAS_DATOS)
         self._asegurar_coleccion("aceptaciones_politica", ESQUEMA_ACEPTACIONES_POLITICA)
+        self._asegurar_coleccion("firmas", ESQUEMA_FIRMAS)
+        self._asegurar_coleccion("instructivos", ESQUEMA_INSTRUCTIVOS)
 
         self.db["usuarios"].create_index(
             "usuario", unique=True, name="idx_usuarios_usuario_unico"
@@ -103,6 +107,11 @@ class MongoBootstrapService:
         self.db["aceptaciones_politica"].create_index(
             "politica_id", name="idx_aceptaciones_politica"
         )
+        self.db["firmas"].create_index(
+            "usuario_id", unique=True, name="idx_firmas_usuario_unico"
+        )
+        self.db["instructivos"].create_index("activo", name="idx_instructivos_activo")
+        self.db["instructivos"].create_index("orden", name="idx_instructivos_orden")
 
     def _asegurar_coleccion(self, nombre: str, esquema: dict) -> None:
         if nombre not in self.db.list_collection_names():

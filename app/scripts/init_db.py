@@ -16,7 +16,9 @@ from app.services.mongo_bootstrap_service import MongoBootstrapService
 from app.services.catalogo_service import CatalogoService
 from app.services.usuario_service import UsuarioService
 from app.services.politica_service import PoliticaService
+from app.services.instructivo_service import InstructivoService
 from app.db.mongo import obtener_base_datos
+from app.config import configuracion
 
 CONTENIDO_POLITICA_V1 = """
 <p style="font-size:14.5px; line-height:1.75; color:#222222; text-align:justify; margin-bottom:14px;">
@@ -81,6 +83,42 @@ def _asegurar_politica_v1() -> None:
     print("  Política de tratamiento de datos v1 sembrada.")
 
 
+def _asegurar_instructivos_iniciales() -> None:
+    """Migra los instructivos del .env a MongoDB si la colección está vacía."""
+    svc = InstructivoService()
+    if svc.hay_instructivos():
+        print("  Instructivos ya existen en la BD. No se siembran de nuevo.")
+        return
+
+    sembrados = 0
+    if configuracion.instructivo_pdf_url:
+        svc.crear(
+            titulo="Instructivo Matriz de correspondencia SRTI",
+            url=configuracion.instructivo_pdf_url,
+            tipo="pdf",
+            icono="📄",
+            embed_height=850,
+            creado_por="sistema",
+        )
+        sembrados += 1
+
+    if configuracion.instructivo_video_url:
+        svc.crear(
+            titulo="Capacitación Matriz de correspondencia SRTI",
+            url=configuracion.instructivo_video_url,
+            tipo="video",
+            icono="▶️",
+            embed_height=540,
+            creado_por="sistema",
+        )
+        sembrados += 1
+
+    if sembrados:
+        print(f"  {sembrados} instructivo(s) sembrado(s) desde configuración .env.")
+    else:
+        print("  No hay URLs de instructivos en .env; colección queda vacía.")
+
+
 def main():
     print("Arrancando bootstrap de MongoDB...")
     mb = MongoBootstrapService()
@@ -101,13 +139,16 @@ def main():
     print("Sembrando catálogos de política de datos...")
     _asegurar_politica_v1()
 
+    print("Sembrando instructivos iniciales...")
+    _asegurar_instructivos_iniciales()
+
     # Resumen de conteos
     db = obtener_base_datos()
     print("Conteos por colección:")
     colecciones = [
         "usuarios", "roles", "permisos", "sesiones",
         "opciones_configuracion", "certificaciones",
-        "politicas_datos", "aceptaciones_politica",
+        "politicas_datos", "aceptaciones_politica", "firmas", "instructivos",
     ]
     for nombre in colecciones:
         try:

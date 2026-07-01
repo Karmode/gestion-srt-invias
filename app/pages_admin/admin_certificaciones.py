@@ -6,6 +6,7 @@ y el contratista cumple: sin vencidas + contrato activo.
 """
 
 import streamlit as st
+from app.core.ui_titulos import mostrar_titulo_decorado
 
 from app.core.sesion import obtener_sesion
 from app.core.ui_certificado import render_preview_cert
@@ -169,7 +170,7 @@ def render(sesion=None):
     nombre_mes = MESES_ES[mes - 1]
     es_anterior = servicio.es_mes_anterior()
 
-    st.title("Certificaciones Mensuales")
+    mostrar_titulo_decorado("Seguimiento - Formatos")
     st.caption(
         "Revisa el estado de correspondencia, firmas y contrato de cada colaborador "
         "y emite las certificaciones del período."
@@ -178,13 +179,13 @@ def render(sesion=None):
     if es_anterior:
         st.warning(
             f"Estás certificando el **mes anterior: {nombre_mes} {año}** "
-            f"(ventana disponible hasta el día 24 del mes en curso). "
-            f"A partir del día 25 solo podrás certificar el mes actual."
+            f"(ventana disponible hasta el día 28 del mes en curso). "
+            f"A partir del día 29 solo podrás certificar el mes actual."
         )
     else:
         st.success(
             f"Período de certificación abierto: **{nombre_mes} {año}** "
-            f"(días 25 al fin de mes)"
+            f"(días 29 al fin de mes)"
         )
 
     # Resumen de firmantes designados

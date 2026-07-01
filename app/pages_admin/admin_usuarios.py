@@ -2,10 +2,19 @@ from datetime import datetime, timezone
 
 import pandas as pd
 import streamlit as st
+from app.core.ui_titulos import mostrar_titulo_decorado
 
 from app.core.autorizacion import validar_permiso, ValidacionAutorizacion
 from app.core.catalogos import TIPOS_CONTRATO
 from app.core.sesion import obtener_sesion
+from app.core.ui_laboral import (
+    boton_guardar_laboral,
+    construir_mapas_catalogos,
+    inputs_informacion_laboral,
+    laboral_vacia,
+    limpiar_estado_laboral,
+    render_seccion_firma,
+)
 from app.services.usuario_service import UsuarioService
 
 TIPOS_DOCUMENTO = {
@@ -23,7 +32,7 @@ TIPOS_DOCUMENTO = {
 # ── MODAL DE EDICIÓN ────────────────────────────────────────────────────────────
 
 @st.dialog("Editar usuario", width="large")
-def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permisos_disponibles, servicio):
+def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permisos_disponibles, servicio, mapas):
     uo = usuario_doc
 
     # Cabecera
@@ -102,12 +111,19 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                 placeholder="Solo letras y números",
             )
 
+        lugar_expedicion_editado = st.text_input(
+            "Lugar de expedición del documento",
+            value=uo.get("lugar_expedicion_documento", "") or "",
+            placeholder="Ciudad de expedición de la cédula",
+        )
+
         roles_sel = st.multiselect("Roles", options=roles_disponibles, default=uo.get("roles", []))
         permisos_sel = st.multiselect(
             "Permisos extra", options=permisos_disponibles, default=uo.get("permisos_extra", [])
         )
 
-        enviar = st.form_submit_button("💾 Guardar cambios", use_container_width=True)
+        st.caption("Los cambios se guardan solo al pulsar el botón.")
+        enviar = st.form_submit_button("💾 Guardar cambios", use_container_width=True, type="primary")
 
     if enviar:
         try:
@@ -123,6 +139,7 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                     "permisos_extra": permisos_sel,
                     "tipo_documento": tipo_documento_editado.strip(),
                     "numero_documento": numero_documento_editado.strip(),
+                    "lugar_expedicion_documento": lugar_expedicion_editado.strip(),
                     "actualizado_por": sesion["usuario"],
                 },
                 permisos_usuario=permisos,
@@ -132,6 +149,38 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
             st.rerun()
         except ValueError as e:
             st.error(str(e))
+
+    # ── Información laboral ───────────────────────────────────────────────────
+    st.divider()
+    st.subheader("💼 Información laboral")
+    _pref = f"edit_{uo['_id']}"
+    _uid = str(uo["_id"])
+    _il_actual = uo.get("informacion_laboral") or {}
+    _il_raw = inputs_informacion_laboral(_pref, _il_actual, mapas)
+    st.divider()
+    if boton_guardar_laboral(_pref, _il_raw, key=f"save_lab_{_uid}"):
+        try:
+            servicio.actualizar_usuario(
+                _uid,
+                {"informacion_laboral": _il_raw, "actualizado_por": sesion["usuario"]},
+                permisos_usuario=permisos,
+            )
+            limpiar_estado_laboral(_pref)
+            st.session_state["mensaje_exito_usuarios"] = "Información laboral actualizada."
+            st.session_state["last_opened_usuario_id"] = None
+            st.rerun()
+        except ValueError as e:
+            st.error(str(e))
+
+    # ── Firma ─────────────────────────────────────────────────────────────────
+    st.divider()
+    st.subheader("✍️ Firma")
+
+    def _cerrar_con_mensaje(mensaje):
+        st.session_state["mensaje_exito_usuarios"] = mensaje
+        st.session_state["last_opened_usuario_id"] = None
+
+    render_seccion_firma(_uid, sesion["usuario"], f"adm_{_uid}", al_terminar=_cerrar_con_mensaje)
 
     # ── Gestión de contratos ─────────────────────────────────────────────────
     st.divider()
@@ -153,10 +202,19 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
             _d1, _d2 = st.columns(2)
             with _d1:
                 st.write(f"**Tipo:** {TIPOS_CONTRATO.get(_c.get('tipo') or '', '—')}")
-                st.write(f"**Inicio:** {_c_fi.strftime('%d/%m/%Y') if _c_fi else '—'}")
-            with _d2:
                 _v = _c.get("valor")
                 st.write(f"**Valor:** {'${:,.0f}'.format(_v) if _v else '—'}")
+            with _d2:
+                _vm = _c.get("valor_mensual")
+                st.write(f"**Valor mensual:** {'${:,.0f}'.format(_vm) if _vm else '—'}")
+                st.write(f"**RP / compromiso presupuestal:** {_c.get('rp_compromiso_presupuestal') or '—'}")
+            _d3, _d4, _d5 = st.columns(3)
+            with _d3:
+                _frp = _c.get("fecha_recurso_presupuestal")
+                st.write(f"**Fecha RP:** {_frp.strftime('%d/%m/%Y') if _frp else '—'}")
+            with _d4:
+                st.write(f"**Inicio:** {_c_fi.strftime('%d/%m/%Y') if _c_fi else '—'}")
+            with _d5:
                 st.write(f"**Fin:** {_c_ff.strftime('%d/%m/%Y') if _c_ff else '—'}")
             if _c.get("objeto"):
                 st.write(f"**Objeto:** {_c.get('objeto')}")
@@ -171,12 +229,18 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                         _e_tipo_idx = list(TIPOS_CONTRATO.keys()).index(_c.get("tipo") or "") if (_c.get("tipo") or "") in TIPOS_CONTRATO else 0
                         _e_tipo = st.selectbox("Tipo", options=list(TIPOS_CONTRATO.keys()), format_func=lambda k: TIPOS_CONTRATO[k], index=_e_tipo_idx, key=f"e_tipo_{_c_num}")
                     with _ec2:
-                        # _e_valor = st.number_input("Valor (COP)", min_value=0, value=int(_c.get("valor") or 0), step=100000, format="%d", key=f"e_val_{_c_num}")
-                        _e_valor = int(_c.get("valor") or 0)  # campo oculto, preserva valor existente
-                    _ec3, _ec4 = st.columns(2)
+                        _e_valor = st.number_input("Valor (COP)", min_value=0, value=int(_c.get("valor") or 0), step=100000, format="%d", key=f"e_val_{_c_num}")
+                        _e_vm = st.number_input("Valor mensual (COP)", min_value=0, value=int(_c.get("valor_mensual") or 0), step=100000, format="%d", key=f"e_vm_{_c_num}")
+                    _e_rp = st.text_input("RP / compromiso presupuestal", value=_c.get("rp_compromiso_presupuestal") or "", key=f"e_rp_{_c_num}", placeholder="Código alfanumérico")
+                    _ec3, _ec4, _ec5 = st.columns(3)
                     with _ec3:
-                        _e_fi = st.date_input("Inicio", value=_fi_ed, format="DD/MM/YYYY", key=f"e_fi_{_c_num}")
+                        _e_frp_ed = _c.get("fecha_recurso_presupuestal")
+                        if _e_frp_ed and hasattr(_e_frp_ed, "date"):
+                            _e_frp_ed = _e_frp_ed.date()
+                        _e_frp = st.date_input("Fecha recurso presupuestal (opcional)", value=_e_frp_ed, format="DD/MM/YYYY", key=f"e_frp_{_c_num}")
                     with _ec4:
+                        _e_fi = st.date_input("Inicio", value=_fi_ed, format="DD/MM/YYYY", key=f"e_fi_{_c_num}")
+                    with _ec5:
                         _e_ff = st.date_input("Fin (opcional)", value=_ff_ed, format="DD/MM/YYYY", key=f"e_ff_{_c_num}")
                     _e_obj = st.text_area("Objeto", value=_c.get("objeto") or "", key=f"e_obj_{_c_num}")
                     _e_env = st.form_submit_button("💾 Guardar", use_container_width=True)
@@ -186,8 +250,11 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                             "numero": _e_num.strip(),
                             "tipo": _e_tipo,
                             "valor": _e_valor if _e_valor > 0 else None,
+                            "rp_compromiso_presupuestal": _e_rp.strip(),
                             "fecha_inicio": _e_fi,
                             "fecha_fin": _e_ff,
+                            "fecha_recurso_presupuestal": _e_frp,
+                            "valor_mensual": _e_vm if _e_vm > 0 else None,
                             "objeto": _e_obj.strip(),
                         })
                         st.session_state["mensaje_exito_usuarios"] = f"Contrato {_c_num} actualizado."
@@ -203,12 +270,15 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                 _n_num = st.text_input("Número de contrato *")
                 _n_tipo = st.selectbox("Tipo", options=list(TIPOS_CONTRATO.keys()), format_func=lambda k: TIPOS_CONTRATO[k])
             with _nc2:
-                # _n_valor = st.number_input("Valor (COP)", min_value=0, step=100000, format="%d")
-                _n_valor = 0  # campo oculto temporalmente
-            _nc3, _nc4 = st.columns(2)
+                _n_valor = st.number_input("Valor (COP)", min_value=0, step=100000, format="%d")
+                _n_vm = st.number_input("Valor mensual (COP)", min_value=0, step=100000, format="%d")
+            _n_rp = st.text_input("RP / compromiso presupuestal", placeholder="Código alfanumérico")
+            _nc3, _nc4, _nc5 = st.columns(3)
             with _nc3:
-                _n_fi = st.date_input("Fecha inicio", value=None, format="DD/MM/YYYY")
+                _n_frp = st.date_input("Fecha recurso presupuestal (opcional)", value=None, format="DD/MM/YYYY")
             with _nc4:
+                _n_fi = st.date_input("Fecha inicio", value=None, format="DD/MM/YYYY")
+            with _nc5:
                 _n_ff = st.date_input("Fecha fin (opcional)", value=None, format="DD/MM/YYYY")
             _n_obj = st.text_area("Objeto del contrato")
             _n_env = st.form_submit_button("Agregar contrato", use_container_width=True)
@@ -218,8 +288,11 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                     "numero": _n_num.strip(),
                     "tipo": _n_tipo,
                     "valor": _n_valor if _n_valor > 0 else None,
+                    "rp_compromiso_presupuestal": _n_rp.strip(),
                     "fecha_inicio": _n_fi,
                     "fecha_fin": _n_ff,
+                    "fecha_recurso_presupuestal": _n_frp,
+                    "valor_mensual": _n_vm if _n_vm > 0 else None,
                     "objeto": _n_obj.strip(),
                 })
                 st.session_state["mensaje_exito_usuarios"] = "Contrato agregado correctamente."
@@ -235,7 +308,7 @@ def render(sesion=None):
     servicio = UsuarioService()
     sesion = sesion or obtener_sesion()
 
-    st.title("Administración de usuarios")
+    mostrar_titulo_decorado("Administración de usuarios")
 
     if not sesion:
         st.warning("Debes iniciar sesión.")
@@ -257,6 +330,9 @@ def render(sesion=None):
     usuarios = servicio.listar_usuarios()
     roles_disponibles = [r.get("nombre", "") for r in servicio.repositorio.listar_roles()]
     permisos_disponibles = [p.get("clave", "") for p in servicio.repositorio.listar_permisos()]
+
+    # Catálogos para información laboral (EPS/ARL/AFP/CCF/banco/tipo dependiente)
+    mapas = construir_mapas_catalogos()
 
     # Tabs
     tabs_labels = ["👥 Usuarios"]
@@ -393,7 +469,7 @@ def render(sesion=None):
                         st.session_state["last_opened_usuario_id"] = id_sel
                         u_sel = next((u for u in usuarios_filtrados if str(u["_id"]) == id_sel), None)
                         if u_sel:
-                            modal_editar_usuario(u_sel, permisos, sesion, roles_disponibles, permisos_disponibles, servicio)
+                            modal_editar_usuario(u_sel, permisos, sesion, roles_disponibles, permisos_disponibles, servicio, mapas)
                 else:
                     st.session_state["last_opened_usuario_id"] = None
 
@@ -404,50 +480,67 @@ def render(sesion=None):
         with tabs[1]:
             st.subheader("Nuevo usuario")
 
-            with st.form("form_crear_usuario"):
-                col1, col2 = st.columns(2)
-                with col1:
-                    nuevo_usuario = st.text_input("Usuario")
-                    nuevo_email = st.text_input("Correo electrónico")
-                    nuevo_activo = st.checkbox("Activo", value=True)
-                with col2:
-                    nuevo_nombre = st.text_input("Nombre completo")
-                    nuevo_password = st.text_input("Contraseña", type="password")
+            # Sin st.form: la sección laboral lleva el selector dinámico de
+            # dependientes, que necesita re-renderizar al cambiar (no admitido
+            # dentro de un form). Los valores se leen al pulsar "Crear usuario".
+            st.markdown("##### 🔑 Cuenta y acceso")
+            col1, col2 = st.columns(2)
+            with col1:
+                nuevo_usuario = st.text_input("Usuario", key="crear_usuario")
+                nuevo_email = st.text_input("Correo electrónico", key="crear_email")
+                nuevo_activo = st.checkbox("Activo", value=True, key="crear_activo")
+            with col2:
+                nuevo_nombre = st.text_input("Nombre completo", key="crear_nombre")
+                nuevo_password = st.text_input("Contraseña", type="password", key="crear_password")
 
-                col_tdoc, col_ndoc = st.columns(2)
-                with col_tdoc:
-                    nuevo_tipo_doc = st.selectbox(
-                        "Tipo de documento (opcional)",
-                        options=list(TIPOS_DOCUMENTO.keys()),
-                        format_func=lambda k: TIPOS_DOCUMENTO[k],
-                    )
-                with col_ndoc:
-                    nuevo_num_doc = st.text_input(
-                        "Número de documento (opcional)",
-                        placeholder="Solo letras y números",
-                    )
+            st.markdown("##### 🪪 Identificación")
+            col_tdoc, col_ndoc = st.columns(2)
+            with col_tdoc:
+                nuevo_tipo_doc = st.selectbox(
+                    "Tipo de documento (opcional)",
+                    options=list(TIPOS_DOCUMENTO.keys()),
+                    format_func=lambda k: TIPOS_DOCUMENTO[k],
+                    key="crear_tipo_doc",
+                )
+            with col_ndoc:
+                nuevo_num_doc = st.text_input(
+                    "Número de documento (opcional)",
+                    placeholder="Solo letras y números",
+                    key="crear_num_doc",
+                )
+            nuevo_lugar_exp = st.text_input(
+                "Lugar de expedición del documento (opcional)",
+                placeholder="Ciudad de expedición de la cédula",
+                key="crear_lugar_exp",
+            )
 
-                nuevos_roles = st.multiselect("Roles", options=roles_disponibles)
-                nuevos_permisos = st.multiselect("Permisos extra", options=permisos_disponibles)
-                enviar = st.form_submit_button("Crear usuario", use_container_width=True)
+            st.markdown("##### 🛡️ Roles y permisos")
+            nuevos_roles = st.multiselect("Roles", options=roles_disponibles, key="crear_roles")
+            nuevos_permisos = st.multiselect("Permisos extra", options=permisos_disponibles, key="crear_permisos")
 
-            if enviar:
+            st.divider()
+            st.markdown("#### 💼 Información laboral")
+            il_raw_nuevo = inputs_informacion_laboral("crear", {}, mapas)
+
+            if st.button("Crear usuario", use_container_width=True, type="primary", key="crear_submit"):
                 try:
-                    servicio.crear_usuario(
-                        {
-                            "usuario": nuevo_usuario.strip(),
-                            "nombre_completo": nuevo_nombre.strip(),
-                            "email": nuevo_email.strip(),
-                            "password": nuevo_password,
-                            "activo": nuevo_activo,
-                            "tipo_documento": nuevo_tipo_doc.strip(),
-                            "numero_documento": nuevo_num_doc.strip(),
-                            "roles": nuevos_roles,
-                            "permisos_extra": nuevos_permisos,
-                            "creado_por": sesion["usuario"],
-                        },
-                        permisos_usuario=permisos,
-                    )
+                    datos_nuevo = {
+                        "usuario": nuevo_usuario.strip(),
+                        "nombre_completo": nuevo_nombre.strip(),
+                        "email": nuevo_email.strip(),
+                        "password": nuevo_password,
+                        "activo": nuevo_activo,
+                        "tipo_documento": nuevo_tipo_doc.strip(),
+                        "numero_documento": nuevo_num_doc.strip(),
+                        "lugar_expedicion_documento": nuevo_lugar_exp.strip(),
+                        "roles": nuevos_roles,
+                        "permisos_extra": nuevos_permisos,
+                        "creado_por": sesion["usuario"],
+                    }
+                    if not laboral_vacia(il_raw_nuevo):
+                        datos_nuevo["informacion_laboral"] = il_raw_nuevo
+                    servicio.crear_usuario(datos_nuevo, permisos_usuario=permisos)
+                    limpiar_estado_laboral("crear")
                     st.session_state["mensaje_exito_usuarios"] = "Usuario creado correctamente."
                     st.rerun()
                 except ValueError as e:
