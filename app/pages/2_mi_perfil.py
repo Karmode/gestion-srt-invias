@@ -6,6 +6,7 @@ from app.core.ui_titulos import mostrar_titulo_decorado
 from app.core.catalogos import TIPOS_CONTRATO
 from app.core.sesion import obtener_sesion
 from app.core.ui_laboral import (
+    boton_guardar_laboral,
     construir_mapas_catalogos,
     inputs_informacion_laboral,
     limpiar_estado_laboral,
@@ -21,6 +22,16 @@ sesion = obtener_sesion()
 if not sesion:
     st.warning("Debes iniciar sesión.")
     st.stop()
+
+
+def _feedback(tipo: str, mensaje: str) -> None:
+    """Guarda un mensaje de feedback para mostrarlo tras el rerun (persiste, no es toast)."""
+    st.session_state["_perfil_msg"] = (tipo, mensaje)
+
+
+# Mensaje de éxito/error persistente entre reruns (visible en cualquier pestaña).
+if _msg := st.session_state.pop("_perfil_msg", None):
+    getattr(st, _msg[0])(_msg[1])
 
 TIPOS_DOCUMENTO = {
     "": "— Sin especificar —",
@@ -68,7 +79,8 @@ with tab_perfil:
             value=_usuario_doc.get("lugar_expedicion_documento") or "",
             placeholder="Ciudad de expedición de la cédula",
         )
-        guardar_perfil = st.form_submit_button("💾 Guardar cambios", use_container_width=True)
+        st.caption("Los cambios se guardan solo al pulsar el botón. Si sales sin pulsarlo, no se conservan.")
+        guardar_perfil = st.form_submit_button("💾 Guardar cambios", use_container_width=True, type="primary")
 
     if guardar_perfil:
         try:
@@ -90,7 +102,8 @@ with tab_perfil:
                 "tipo_documento": nuevo_tipo_doc.strip(),
                 "numero_documento": nuevo_num_doc.strip(),
             })
-            st.success("Datos actualizados correctamente.")
+            _feedback("success", "✅ Datos personales actualizados correctamente.")
+            st.rerun()
         except ValueError as e:
             st.error(str(e))
 
@@ -104,7 +117,8 @@ with tab_laboral:
     _il_actual = _usuario_doc.get("informacion_laboral") or {}
     _il_raw = inputs_informacion_laboral("perfil_lab", _il_actual, _mapas)
 
-    if st.button("💾 Guardar información laboral", use_container_width=True, key="guardar_lab_perfil"):
+    st.divider()
+    if boton_guardar_laboral("perfil_lab", _il_raw, key="guardar_lab_perfil"):
         try:
             _servicio.actualizar_usuario(
                 sesion["id"],
@@ -112,7 +126,7 @@ with tab_laboral:
                 validar_permisos=False,
             )
             limpiar_estado_laboral("perfil_lab")
-            st.toast("Información laboral actualizada.")
+            _feedback("success", "✅ Información laboral guardada correctamente.")
             st.rerun()
         except ValueError as e:
             st.error(str(e))
@@ -122,7 +136,10 @@ with tab_laboral:
 with tab_firma:
     st.subheader("Firma")
     st.caption("Sube una foto o escaneo de tu firma sobre papel blanco; se procesa para quitar el fondo.")
-    render_seccion_firma(sesion["id"], sesion["usuario"], "perfil_firma")
+    render_seccion_firma(
+        sesion["id"], sesion["usuario"], "perfil_firma",
+        al_terminar=lambda m: _feedback("success", f"✅ {m}"),
+    )
 
 # ── TAB: CONTRATOS ────────────────────────────────────────────────────────────
 
@@ -156,7 +173,8 @@ with tab_contrato:
             with _nc5:
                 _n_ff = st.date_input("Fecha de finalización (opcional)", value=None, format="DD/MM/YYYY")
             _n_obj = st.text_area("Objeto del contrato")
-            _n_env = st.form_submit_button("Agregar contrato", use_container_width=True)
+            st.caption("El contrato se registra solo al pulsar el botón.")
+            _n_env = st.form_submit_button("➕ Agregar contrato", use_container_width=True, type="primary")
 
         if _n_env:
             try:
@@ -171,7 +189,7 @@ with tab_contrato:
                     "valor_mensual": _n_vm if _n_vm > 0 else None,
                     "objeto": _n_obj.strip(),
                 })
-                st.success("Contrato agregado correctamente.")
+                _feedback("success", "✅ Contrato agregado correctamente.")
                 st.rerun()
             except ValueError as e:
                 st.error(str(e))
@@ -248,7 +266,8 @@ with tab_contrato:
                         with _ec5:
                             _e_ff = st.date_input("Fin (opcional)", value=_ff_ed, format="DD/MM/YYYY", key=f"e_ff_{_c_num}")
                         _e_obj = st.text_area("Objeto", value=_c.get("objeto") or "", key=f"e_obj_{_c_num}")
-                        _e_env = st.form_submit_button("💾 Guardar cambios", use_container_width=True)
+                        st.caption("Los cambios se guardan solo al pulsar el botón.")
+                        _e_env = st.form_submit_button("💾 Guardar cambios", use_container_width=True, type="primary")
 
                     if _e_env:
                         try:
@@ -263,7 +282,7 @@ with tab_contrato:
                                 "valor_mensual": _e_vm if _e_vm > 0 else None,
                                 "objeto": _e_obj.strip(),
                             })
-                            st.success(f"Contrato {_c_num} actualizado correctamente.")
+                            _feedback("success", f"✅ Contrato {_c_num} actualizado correctamente.")
                             st.rerun()
                         except ValueError as e:
                             st.error(str(e))
@@ -277,15 +296,16 @@ with tab_password:
         pwd_actual = st.text_input("Contraseña actual", type="password")
         pwd_nueva = st.text_input("Contraseña nueva", type="password")
         pwd_confirmar = st.text_input("Confirmar contraseña nueva", type="password")
-        enviar_pwd = st.form_submit_button("Cambiar contraseña")
+        enviar_pwd = st.form_submit_button("🔒 Cambiar contraseña", type="primary")
 
     if enviar_pwd:
         if pwd_nueva != pwd_confirmar:
-            st.error("Las contraseñas nuevas no coinciden")
+            st.error("❌ Las contraseñas nuevas no coinciden.")
         else:
             auth_service = AuthService()
             exito, mensaje = auth_service.cambiar_password(sesion["id"], pwd_actual, pwd_nueva)
             if exito:
-                st.success(mensaje)
+                _feedback("success", f"✅ {mensaje}")
+                st.rerun()
             else:
-                st.error(mensaje)
+                st.error(f"❌ {mensaje}")
