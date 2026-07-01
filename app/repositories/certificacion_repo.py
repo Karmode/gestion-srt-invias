@@ -29,8 +29,16 @@ class CertificacionRepositorio:
             .sort([("año", -1), ("mes", -1)])
         )
 
-    def listar_por_periodo(self, año: int, mes: int):
-        return list(self.coleccion.find({"año": año, "mes": mes}))
+    def listar_por_periodo(self, año: int, mes: int, tipo_formato: str = None):
+        query = {
+            "año": año,
+            "mes": mes,
+        }
+        if tipo_formato:
+            query["tipo_formato"] = tipo_formato
+        else:
+            query["tipo_formato"] = {"$in": [None, "gestion_correspondencia"]}
+        return list(self.coleccion.find(query))
 
     def buscar_por_hash(self, hash_code: str):
         return self.coleccion.find_one({"hash_verificacion": hash_code})
@@ -56,7 +64,12 @@ class CertificacionRepositorio:
     ) -> bool:
         ahora = datetime.now(timezone.utc)
         self.coleccion.update_one(
-            {"usuario_id": ObjectId(usuario_id), "año": año, "mes": mes},
+            {
+                "usuario_id": ObjectId(usuario_id),
+                "año": año,
+                "mes": mes,
+                "tipo_formato": {"$in": [None, "gestion_correspondencia"]},
+            },
             {
                 "$set": {
                     f"firmas.{tipo}": {
@@ -68,6 +81,7 @@ class CertificacionRepositorio:
                 "$setOnInsert": {
                     "nombre_usuario": nombre_usuario,
                     "estado": "pendiente",
+                    "tipo_formato": "gestion_correspondencia",
                     "creado_en": ahora,
                 },
             },
@@ -77,7 +91,12 @@ class CertificacionRepositorio:
 
     def revocar_firma(self, usuario_id: str, año: int, mes: int, tipo: str) -> bool:
         self.coleccion.update_one(
-            {"usuario_id": ObjectId(usuario_id), "año": año, "mes": mes},
+            {
+                "usuario_id": ObjectId(usuario_id),
+                "año": año,
+                "mes": mes,
+                "tipo_formato": {"$in": [None, "gestion_correspondencia"]},
+            },
             {"$unset": {f"firmas.{tipo}": ""}},
         )
         return True
