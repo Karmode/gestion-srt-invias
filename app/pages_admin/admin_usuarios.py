@@ -8,6 +8,7 @@ from app.core.autorizacion import validar_permiso, ValidacionAutorizacion
 from app.core.catalogos import TIPOS_CONTRATO
 from app.core.sesion import obtener_sesion
 from app.core.ui_laboral import (
+    boton_guardar_laboral,
     construir_mapas_catalogos,
     inputs_informacion_laboral,
     laboral_vacia,
@@ -121,7 +122,8 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
             "Permisos extra", options=permisos_disponibles, default=uo.get("permisos_extra", [])
         )
 
-        enviar = st.form_submit_button("💾 Guardar cambios", use_container_width=True)
+        st.caption("Los cambios se guardan solo al pulsar el botón.")
+        enviar = st.form_submit_button("💾 Guardar cambios", use_container_width=True, type="primary")
 
     if enviar:
         try:
@@ -155,7 +157,8 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
     _uid = str(uo["_id"])
     _il_actual = uo.get("informacion_laboral") or {}
     _il_raw = inputs_informacion_laboral(_pref, _il_actual, mapas)
-    if st.button("💾 Guardar información laboral", use_container_width=True, key=f"save_lab_{_uid}"):
+    st.divider()
+    if boton_guardar_laboral(_pref, _il_raw, key=f"save_lab_{_uid}"):
         try:
             servicio.actualizar_usuario(
                 _uid,

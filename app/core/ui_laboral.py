@@ -219,6 +219,49 @@ def _inputs_dependientes(prefijo, deps, mapas):
     return dependientes
 
 
+def hay_cambios_laboral(prefijo, il_raw) -> bool:
+    """True si el formulario laboral difiere de su estado inicial en pantalla.
+
+    En el primer render guarda una "foto" normalizada del formulario en
+    session_state (clave ``{prefijo}_snapshot_il``) y en renders posteriores
+    compara los valores actuales contra ella. Se normaliza con la misma rutina
+    del servicio para que la comparación refleje exactamente lo que se guardaría
+    (evita falsos positivos por None/0/campos ausentes o registros antiguos).
+    El snapshot se borra junto con el resto del estado del prefijo al guardar
+    (ver ``limpiar_estado_laboral``), así que tras guardar se toma uno nuevo.
+    """
+    from app.services.usuario_service import UsuarioService
+    actual = UsuarioService._construir_informacion_laboral(il_raw)
+    snap_key = f"{prefijo}_snapshot_il"
+    if snap_key not in st.session_state:
+        st.session_state[snap_key] = actual
+        return False
+    return st.session_state[snap_key] != actual
+
+
+def boton_guardar_laboral(prefijo, il_raw, key) -> bool:
+    """Aviso de estado ("cambios sin guardar" / "al día") + botón de guardado.
+
+    Centraliza el indicador para que el perfil propio y la administración se
+    comporten igual. Devuelve True cuando el usuario pulsa el botón.
+    """
+    cambios = hay_cambios_laboral(prefijo, il_raw)
+    if cambios:
+        st.warning(
+            "⚠️ **Tienes cambios sin guardar.** Lo que ves aquí todavía **no está "
+            "registrado**. Pulsa **💾 Guardar información laboral** para conservarlo; "
+            "de lo contrario se perderá al recargar la página o cerrar sesión."
+        )
+    else:
+        st.caption("✔️ Información laboral al día — no hay cambios pendientes por guardar.")
+    return st.button(
+        "💾 Guardar información laboral",
+        use_container_width=True,
+        type="primary" if cambios else "secondary",
+        key=key,
+    )
+
+
 def laboral_vacia(il):
     """True si el bloque de información laboral no tiene ningún dato diligenciado."""
     ss = il.get("seguridad_social") or {}
@@ -270,7 +313,11 @@ def render_seccion_firma(usuario_id, actualizado_por, prefijo, al_terminar=None)
             png = validar_y_procesar(archivo.name, archivo.getvalue())
             st.markdown("**Vista previa** (los cuadros indican transparencia; si ves un bloque sólido tapándolos, el fondo no se eliminó bien):")
             st.image(componer_sobre_fondo(png), width=240)
-            if st.button("💾 Guardar firma", key=f"{prefijo}_save_firma"):
+            st.warning(
+                "⚠️ Esta firma **aún no está guardada** — solo es una vista previa. "
+                "Pulsa **💾 Guardar firma** para registrarla."
+            )
+            if st.button("💾 Guardar firma", key=f"{prefijo}_save_firma", type="primary"):
                 servicio.guardar_firma(usuario_id, archivo.name, archivo.getvalue(), usuario_actual=actualizado_por)
                 _finalizar("Firma guardada correctamente.")
         except ValueError as e:
