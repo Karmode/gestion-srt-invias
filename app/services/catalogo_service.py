@@ -136,11 +136,23 @@ class CatalogoService:
             )
 
         for opcion in OPCIONES_BASE:
-            self.coleccion_opciones.update_one(
-                {"categoria": opcion["categoria"]},
-                {"$set": opcion},
-                upsert=True,
-            )
+            categoria = opcion["categoria"]
+            doc_existente = self.coleccion_opciones.find_one({"categoria": categoria})
+            if doc_existente is None:
+                self.coleccion_opciones.insert_one(opcion)
+                continue
+
+            claves_existentes = {
+                o.get("clave") for o in doc_existente.get("opciones", [])
+            }
+            nuevas = [
+                o for o in opcion["opciones"] if o.get("clave") not in claves_existentes
+            ]
+            if nuevas:
+                self.coleccion_opciones.update_one(
+                    {"categoria": categoria},
+                    {"$push": {"opciones": {"$each": nuevas}}},
+                )
 
         # Configuración inicial de firmantes designados para certificaciones
         self.coleccion_opciones.update_one(

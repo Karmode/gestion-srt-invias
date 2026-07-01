@@ -50,8 +50,9 @@ PARAMETROS: Dict[str, dict] = {
             "Financiera encargado de recibir el formato de retención en la fuente."
         ),
         "impacto": (
-            "Actualiza el destinatario (John Jairo Aguilar Ardilla u otro) de forma inmediata "
-            "para todas las futuras descargas del formato de retención en la fuente."
+            "Este nombre aparece como destinatario (\"Doctor <nombre>\") en el encabezado "
+            "de todo formato de retención en la fuente que se genere a partir de ahora. "
+            "El cambio aplica de inmediato a las nuevas descargas."
         ),
     },
 }
