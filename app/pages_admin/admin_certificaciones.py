@@ -9,7 +9,7 @@ import streamlit as st
 from app.core.ui_titulos import mostrar_titulo_decorado
 
 from app.core.sesion import obtener_sesion
-from app.core.ui_certificado import render_preview_cert
+from app.core.ui_certificado import obtener_pdf_certificado_cacheado, render_preview_cert
 from app.core.zona_horaria import formato_fecha_bogota
 from app.services.certificacion_service import CertificacionService, MESES_ES
 
@@ -143,7 +143,9 @@ def _dialog_preview(servicio: CertificacionService) -> None:
     año = data["año"]
     nombre_mes = data["nombre_mes"]
 
-    pdf_bytes = servicio.generar_pdf(cert)
+    pdf_bytes = obtener_pdf_certificado_cacheado(
+        servicio, str(cert["_id"]), cert.get("hash_verificacion", ""), cert
+    )
     render_preview_cert(
         pdf_bytes=pdf_bytes,
         caption=f"{nombre} — {nombre_mes} {año}",
@@ -369,7 +371,9 @@ def render(sesion=None):
 
                 with c_btn:
                     if estado_cert == "aprobado":
-                        pdf_bytes = servicio.generar_pdf(cert)
+                        pdf_bytes = obtener_pdf_certificado_cacheado(
+                            servicio, str(cert["_id"]), cert.get("hash_verificacion", ""), cert
+                        )
                         st.download_button(
                             "⬇️ Descargar",
                             data=pdf_bytes,

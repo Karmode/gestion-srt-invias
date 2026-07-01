@@ -9,6 +9,7 @@ import streamlit as st
 from app.core.ui_titulos import mostrar_titulo_decorado
 
 from app.core.sesion import obtener_sesion
+from app.core.ui_certificado import obtener_pdf_certificado_cacheado
 from app.core.zona_horaria import formato_fecha_bogota
 from app.services.certificacion_service import CertificacionService, MESES_ES
 
@@ -344,7 +345,12 @@ def render(sesion=None):
                             ya_certificado = cert_emp.get("estado") == "aprobado"
 
                             if ya_certificado:
-                                pdf_bytes = servicio.generar_pdf(cert_emp)
+                                pdf_bytes = obtener_pdf_certificado_cacheado(
+                                    servicio,
+                                    str(cert_emp["_id"]),
+                                    cert_emp.get("hash_verificacion", ""),
+                                    cert_emp,
+                                )
                                 st.download_button(
                                     "⬇️ Certificado",
                                     data=pdf_bytes,
