@@ -19,7 +19,7 @@ _AFILIACIONES = [
     ("afp", "Fondo de pensiones (AFP)", "afp"),
     ("ccf", "Caja de compensación (CCF)", "ccf"),
 ]
-_CATEGORIAS = ["eps", "arl", "afp", "ccf", "banco", "tipo_dependiente"]
+_CATEGORIAS = ["eps", "arl", "afp", "ccf", "banco", "tipo_dependiente", "regimen_tributario"]
 
 # Cómo se cubre el aporte de seguridad social (no es catálogo: opciones fijas).
 # El valor interno "entidad" se conserva por compatibilidad; la etiqueta visible
@@ -139,6 +139,10 @@ def inputs_informacion_laboral(prefijo, il, mapas):
     with ct1:
         _preseed(f"{prefijo}_rut", tributaria.get("rut") or "")
         rut = st.text_input("RUT", key=f"{prefijo}_rut")
+        regimen = _select_keyed(
+            "Régimen tributario", mapas["regimen_tributario"],
+            tributaria.get("regimen") or "", f"{prefijo}_regimen",
+        )
     with ct2:
         _preseed(f"{prefijo}_declarante", bool(tributaria.get("declarante_renta")))
         declarante = st.checkbox("¿Declarante de renta?", key=f"{prefijo}_declarante")
@@ -150,13 +154,154 @@ def inputs_informacion_laboral(prefijo, il, mapas):
         "es_pensionado": es_pensionado,
         "seguridad_social": resultado_ss,
         "bancaria": {"banco": banco, "numero_cuenta": num_cuenta},
-        "tributaria": {"rut": rut, "declarante_renta": declarante},
+        "tributaria": {"rut": rut, "declarante_renta": declarante, "regimen": regimen},
         "dependientes": dependientes,
     }
 
 
 def _inputs_dependientes(prefijo, deps, mapas):
     """Lista dinámica de dependientes con agregar/eliminar por fila (IDs estables)."""
+    st.markdown(
+        """
+        <style>
+        /* Contenedor del Tooltip */
+        .srti-tooltip-container {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            margin-top: 10px;
+            margin-bottom: 4px;
+        }
+
+        /* Ícono de información */
+        .srti-tooltip-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #FF8C00;
+            font-size: 14px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background-color: rgba(255, 140, 0, 0.1);
+            transition: background-color 0.2s, transform 0.2s;
+            user-select: none;
+            outline: none;
+        }
+
+        .srti-tooltip-icon:hover, .srti-tooltip-icon:focus {
+            background-color: rgba(255, 140, 0, 0.25);
+            transform: scale(1.1);
+        }
+
+        /* Contenido del Tooltip */
+        .srti-tooltip-content {
+            display: none;
+            position: absolute;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 500px;
+            max-width: 90vw;
+            background-color: #ffffff !important;
+            color: #2D3748 !important;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.08);
+            border: 1px solid #E2E8F0;
+            z-index: 999999;
+            max-height: 450px;
+            overflow-y: auto;
+            font-size: 13px;
+            font-weight: normal;
+            line-height: 1.5;
+            text-align: left;
+            white-space: normal;
+        }
+
+        /* Flecha apuntando hacia abajo */
+        .srti-tooltip-content::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 6px;
+            border-style: solid;
+            border-color: #ffffff transparent transparent transparent;
+        }
+
+        /* Mostrar tooltip al pasar el cursor o hacer focus */
+        .srti-tooltip-icon:hover .srti-tooltip-content,
+        .srti-tooltip-icon:focus .srti-tooltip-content,
+        .srti-tooltip-icon:focus-within .srti-tooltip-content {
+            display: block;
+        }
+
+        /* Estilos de texto en el tooltip */
+        .srti-tooltip-content h4 {
+            margin-top: 0;
+            margin-bottom: 12px;
+            color: #FF8C00 !important;
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid #EDF2F7;
+            padding-bottom: 8px;
+        }
+
+        .srti-tooltip-content ul {
+            margin: 0;
+            padding-left: 0;
+            list-style-type: none;
+            background-color: transparent !important;
+        }
+
+        .srti-tooltip-content li {
+            margin-bottom: 10px;
+            color: #2D3748 !important;
+            background-color: transparent !important;
+        }
+
+        .srti-tooltip-content li:last-child {
+            margin-bottom: 0;
+        }
+
+        .srti-tooltip-content strong {
+            color: #1A202C !important;
+            background-color: transparent !important;
+        }
+
+        /* Forzar que las columnas de Streamlit permitan ver elementos flotantes sin recorte */
+        div[data-testid="column"] {
+            overflow: visible !important;
+        }
+
+        /* Ajustes Responsive y posicionamiento */
+        @media (max-width: 768px) {
+            .srti-tooltip-content {
+                position: fixed;
+                bottom: auto;
+                top: 20%;
+                left: 5%;
+                right: 5%;
+                width: auto;
+                max-width: 90%;
+                transform: none;
+                box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+            }
+            .srti-tooltip-content::after {
+                display: none;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
     ids_key = f"{prefijo}_dep_ids"
     seq_key = f"{prefijo}_dep_seq"
     tdoc_keys = list(TIPOS_DOC_DEPENDIENTE.keys())
@@ -201,9 +346,30 @@ def _inputs_dependientes(prefijo, deps, mapas):
             )
         with cd2:
             ndoc = st.text_input("Número de documento", key=f"{prefijo}_dep_ndoc_{rid}")
+            st.markdown(
+                """
+                <div class="srti-tooltip-container">
+                  <span>Tipo de dependiente</span>
+                  <span class="srti-tooltip-icon" tabindex="0">ⓘ
+                    <div class="srti-tooltip-content">
+                      <h4 style="color: #FF8C00 !important;">TIPOS DE DEPENDIENTES</h4>
+                      <ul>
+                        <li><strong>A.</strong> Hijo(s) que tiene(n) hasta 18 años de edad y depende(n) económicamente del declarante.</li>
+                        <li><strong>B.</strong> Hijo(s) entre 18 y 23 años, cuya educación está a cargo del declarante en instituciones formales de educación superior certificadas por el ICFES o la autoridad competente, o en programas técnicos de educación no formal debidamente acreditados.</li>
+                        <li><strong>C.</strong> Hijo(s) mayores de 23 años que se encuentren en situación de dependencia por condiciones físicas o psicológicas certificadas por Medicina Legal.</li>
+                        <li><strong>D.</strong> Cónyuge o compañero(a) permanente en situación de dependencia por ausencia de ingresos o ingresos anuales inferiores a 260 UVT, certificados por contador público, o por dependencia originada por factores físicos o psicológicos certificados por Medicina Legal.</li>
+                        <li><strong>E.</strong> Padres y/o hermanos en situación de dependencia por ausencia de ingresos o ingresos anuales inferiores a 260 UVT, certificados por contador público, o por dependencia originada por factores físicos o psicológicos certificados por Medicina Legal.</li>
+                      </ul>
+                    </div>
+                  </span>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
             tipo = st.selectbox(
                 "Tipo de dependiente", options=tipo_keys,
                 format_func=lambda k: tipo_mapa[k], key=f"{prefijo}_dep_tipo_{rid}",
+                label_visibility="collapsed"
             )
         dependientes.append({
             "nombre": nombre, "tipo_documento": tdoc,

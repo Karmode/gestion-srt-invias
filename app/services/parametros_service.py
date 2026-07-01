@@ -40,6 +40,21 @@ PARAMETROS: Dict[str, dict] = {
             "contratistas y firmantes de inmediato."
         ),
     },
+    "nombre_financiera_retefuente": {
+        "etiqueta": "Responsable de la Subdirección Financiera - Retención en la Fuente",
+        "tipo": "str",
+        "default": "sin nombre_financiera_retefuente",
+        "unidad": "Nombre completo",
+        "descripcion": (
+            "Nombre del responsable del Grupo Cuentas Por Pagar de la Subdirección "
+            "Financiera encargado de recibir el formato de retención en la fuente."
+        ),
+        "impacto": (
+            "Este nombre aparece como destinatario (\"Doctor <nombre>\") en el encabezado "
+            "de todo formato de retención en la fuente que se genere a partir de ahora. "
+            "El cambio aplica de inmediato a las nuevas descargas."
+        ),
+    },
 }
 
 CATEGORIA = "parametros_sistema"
@@ -64,6 +79,10 @@ class ParametrosService:
                     f"{meta['etiqueta']} debe estar entre {meta['min']} y {meta['max']}."
                 )
             return valor
+        if meta["tipo"] == "str":
+            if not valor or not str(valor).strip():
+                return meta["default"]
+            return str(valor).strip()
         return valor
 
     def obtener(self, clave: str) -> Any:
