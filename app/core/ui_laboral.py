@@ -19,7 +19,7 @@ _AFILIACIONES = [
     ("afp", "Fondo de pensiones (AFP)", "afp"),
     ("ccf", "Caja de compensación (CCF)", "ccf"),
 ]
-_CATEGORIAS = ["eps", "arl", "afp", "ccf", "banco", "tipo_dependiente"]
+_CATEGORIAS = ["eps", "arl", "afp", "ccf", "banco", "tipo_dependiente", "regimen_tributario"]
 
 # Cómo se cubre el aporte de seguridad social (no es catálogo: opciones fijas).
 # El valor interno "entidad" se conserva por compatibilidad; la etiqueta visible
@@ -139,6 +139,10 @@ def inputs_informacion_laboral(prefijo, il, mapas):
     with ct1:
         _preseed(f"{prefijo}_rut", tributaria.get("rut") or "")
         rut = st.text_input("RUT", key=f"{prefijo}_rut")
+        regimen = _select_keyed(
+            "Régimen tributario", mapas["regimen_tributario"],
+            tributaria.get("regimen") or "", f"{prefijo}_regimen",
+        )
     with ct2:
         _preseed(f"{prefijo}_declarante", bool(tributaria.get("declarante_renta")))
         declarante = st.checkbox("¿Declarante de renta?", key=f"{prefijo}_declarante")
@@ -150,7 +154,7 @@ def inputs_informacion_laboral(prefijo, il, mapas):
         "es_pensionado": es_pensionado,
         "seguridad_social": resultado_ss,
         "bancaria": {"banco": banco, "numero_cuenta": num_cuenta},
-        "tributaria": {"rut": rut, "declarante_renta": declarante},
+        "tributaria": {"rut": rut, "declarante_renta": declarante, "regimen": regimen},
         "dependientes": dependientes,
     }
 

@@ -97,6 +97,7 @@ ESQUEMA_USUARIOS = {
                     "properties": {
                         "rut": {"bsonType": ["string", "null"], "description": "Número de RUT (alfanumérico, admite símbolos)"},
                         "declarante_renta": {"bsonType": ["bool", "null"]},
+                        "regimen": {"bsonType": ["string", "null"], "description": "Clave del catálogo 'regimen_tributario'"},
                     },
                 },
                 "dependientes": {

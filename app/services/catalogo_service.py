@@ -52,6 +52,13 @@ _BANCOS = [
 ]
 # Categorías de dependiente económico (placeholder; ajustar etiquetas a las categorías reales).
 _TIPO_DEPENDIENTE = ["TIPO A", "TIPO B", "TIPO C", "TIPO D", "TIPO E"]
+# Claves cortas (no derivadas de la etiqueta completa) porque el PDF de certificación
+# antepone la palabra "RÉGIMEN" al texto de la clave (ver certificacion_service.py).
+_REGIMEN_TRIBUTARIO = [
+    {"clave": "ordinario", "etiqueta": "Régimen Ordinario", "activo": True},
+    {"clave": "simple_rst", "etiqueta": "Régimen Simple de Tributación (RST)", "activo": True},
+    {"clave": "especial", "etiqueta": "Régimen Especial", "activo": True},
+]
 
 
 OPCIONES_BASE = [
@@ -111,6 +118,7 @@ OPCIONES_BASE = [
     {"categoria": "ccf", "opciones": _opciones_desde_etiquetas(_CCF)},
     {"categoria": "banco", "opciones": _opciones_desde_etiquetas(_BANCOS)},
     {"categoria": "tipo_dependiente", "opciones": _opciones_desde_etiquetas(_TIPO_DEPENDIENTE)},
+    {"categoria": "regimen_tributario", "opciones": _REGIMEN_TRIBUTARIO},
 ]
 
 

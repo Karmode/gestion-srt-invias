@@ -127,6 +127,7 @@ class UsuarioService:
             "tributaria": {
                 "rut": (tributaria.get("rut") or "").strip() or None,
                 "declarante_renta": bool(tributaria.get("declarante_renta")),
+                "regimen": (tributaria.get("regimen") or "").strip() or None,
             },
             "dependientes": dependientes,
         }
@@ -422,6 +423,8 @@ class UsuarioService:
             faltan_laboral.append("Número de cuenta")
         if self._vacio(tributaria.get("rut")):
             faltan_laboral.append("RUT")
+        if self._vacio(tributaria.get("regimen")):
+            faltan_laboral.append("Régimen tributario")
         if faltan_laboral:
             secciones.append({
                 "titulo": "Información laboral",

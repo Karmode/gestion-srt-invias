@@ -483,7 +483,15 @@ def _render_opcion_3_retencion_segunda(servicio, sesion, año_cert, mes_cert, no
         renta_str = "Declarante de Renta" if declarante_renta else "No Declarante de Renta"
         st.write(f"**Condición Tributaria:** {renta_str}")
         st.write(f"**RUT:** {tributaria.get('rut') or 'No registrado'}")
-        
+
+        from app.services.opciones_service import OpcionesService
+        regimen_clave = tributaria.get("regimen")
+        regimen_etiqueta = (
+            OpcionesService().obtener_etiqueta_por_clave("regimen_tributario", regimen_clave)
+            if regimen_clave else "No registrado"
+        )
+        st.write(f"**Régimen tributario:** {regimen_etiqueta}")
+
         if contrato_vig:
             st.write(f"**Contrato:** {contrato_vig.get('numero', '')}")
             st.write(f"**Valor total contrato:** $ {contrato_vig.get('valor', 0):,}")
