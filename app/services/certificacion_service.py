@@ -356,6 +356,7 @@ class CertificacionService:
                 "nombre_usuario": nombre_empleado,
                 "año": año,
                 "mes": mes,
+                "tipo_formato": "gestion_correspondencia",
                 "creado_en": ahora_utc,
             })
             self.repo.crear(campos)
