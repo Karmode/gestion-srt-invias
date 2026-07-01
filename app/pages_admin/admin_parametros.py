@@ -14,6 +14,7 @@ import streamlit as st
 
 from app.core.sesion import obtener_sesion
 from app.core.ui_titulos import mostrar_titulo_decorado
+from app.services.opciones_service import OpcionesService
 from app.services.parametros_service import ParametrosService, PARAMETROS
 
 
@@ -119,9 +120,27 @@ def render(sesion=None):
                     st.session_state["_param_pendiente"] = {"clave": clave, "valor": nuevo}
                     st.rerun()
 
-            st.caption(
-                f"Valor actual: **{actual}** · Rango permitido: {meta['min']}–{meta['max']}"
-            )
+            if meta["tipo"] == "int":
+                st.caption(
+                    f"Valor actual: **{actual}** · Rango permitido: {meta['min']}–{meta['max']}"
+                )
+            else:
+                st.caption(
+                    f"Valor actual: **{actual}**"
+                )
 
     if st.session_state.get("_param_pendiente"):
         _dialog_confirmar(servicio, sesion)
+
+    st.divider()
+    with st.container(border=True):
+        st.markdown("**Caché de catálogos (opciones de configuración)**")
+        st.caption(
+            "Los catálogos como EPS, ARL, bancos, etc. se cachean en memoria mientras "
+            "la aplicación está en ejecución. Si agregaste o editaste una opción "
+            "directamente en la base de datos, límpiala aquí para que se refleje sin "
+            "reiniciar el servidor."
+        )
+        if st.button("Limpiar caché de catálogos", key="btn_limpiar_cache_opciones"):
+            OpcionesService().limpiar_cache()
+            st.success("Caché de catálogos limpiada. Los cambios en la base de datos ya se reflejarán.")
