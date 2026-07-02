@@ -9,17 +9,30 @@ class ReporteService:
     def __init__(self) -> None:
         self.repo = CorrespondenciaRepositorio()
 
-    def resumen_operativo(self) -> dict:
+    def resumen_operativo(self, usuario_id: str = None) -> dict:
         """Obtiene métricas clave de alto nivel."""
-        total = self.repo.contar({})
-        activos = self.repo.contar({"estado_actual": {"$in": ["pendiente", "en_tramite", "en_revision"]}})
-        finalizados = self.repo.contar({"estado_actual": {"$in": ["respondido", "archivado", "traslado_competencia"]}})
+        from bson import ObjectId
+        query = {}
+        if usuario_id:
+            query["responsable_actual.usuario_id"] = ObjectId(usuario_id)
+
+        total = self.repo.contar(query)
+        
+        activos_query = {"estado_actual": {"$in": ["pendiente", "en_tramite", "en_revision"]}}
+        activos_query.update(query)
+        activos = self.repo.contar(activos_query)
+        
+        finalizados_query = {"estado_actual": {"$in": ["respondido", "archivado", "traslado_competencia"]}}
+        finalizados_query.update(query)
+        finalizados = self.repo.contar(finalizados_query)
         
         hoy = datetime.now(timezone.utc)
-        vencidos = self.repo.contar({
+        vencidos_query = {
             "estado_actual": {"$in": ["pendiente", "en_tramite", "en_revision"]},
             "fecha_vencimiento": {"$lt": hoy}
-        })
+        }
+        vencidos_query.update(query)
+        vencidos = self.repo.contar(vencidos_query)
 
         return {
             "total_historico": total,
@@ -29,12 +42,20 @@ class ReporteService:
             "porcentaje_cumplimiento": round((finalizados / total * 100), 1) if total > 0 else 0
         }
 
-    def distribucion_por_estado(self) -> pd.DataFrame:
+    def distribucion_por_estado(self, usuario_id: str = None) -> pd.DataFrame:
         """Datos para gráfico de torta de estados."""
-        pipeline = [
+        from bson import ObjectId
+        match_stage = {}
+        if usuario_id:
+            match_stage["responsable_actual.usuario_id"] = ObjectId(usuario_id)
+
+        pipeline = []
+        if match_stage:
+            pipeline.append({"$match": match_stage})
+        pipeline.extend([
             {"$group": {"_id": "$estado_actual", "cantidad": {"$sum": 1}}},
             {"$project": {"estado": "$_id", "cantidad": 1, "_id": 0}}
-        ]
+        ])
         datos = list(self.repo.coleccion.aggregate(pipeline))
         if not datos:
             return pd.DataFrame(columns=["estado", "cantidad"])
@@ -42,10 +63,15 @@ class ReporteService:
         df["estado"] = df["estado"].apply(lambda x: x.replace("_", " ").title())
         return df
 
-    def carga_por_usuario(self) -> pd.DataFrame:
+    def carga_por_usuario(self, usuario_id: str = None) -> pd.DataFrame:
         """Datos para gráfico de barras de carga de trabajo por usuario (solo activos)."""
+        from bson import ObjectId
+        match_stage = {"estado_actual": {"$in": ["pendiente", "en_tramite", "en_revision"]}}
+        if usuario_id:
+            match_stage["responsable_actual.usuario_id"] = ObjectId(usuario_id)
+
         pipeline = [
-            {"$match": {"estado_actual": {"$in": ["pendiente", "en_tramite", "en_revision"]}}},
+            {"$match": match_stage},
             {"$group": {"_id": "$responsable_actual.nombre", "cantidad": {"$sum": 1}}},
             {"$project": {"usuario": {"$ifNull": ["$_id", "Sin Asignar"]}, "cantidad": 1, "_id": 0}},
             {"$sort": {"cantidad": -1}}
@@ -53,10 +79,15 @@ class ReporteService:
         datos = list(self.repo.coleccion.aggregate(pipeline))
         return pd.DataFrame(datos) if datos else pd.DataFrame(columns=["usuario", "cantidad"])
 
-    def analisis_vencimiento(self) -> pd.DataFrame:
+    def analisis_vencimiento(self, usuario_id: str = None) -> pd.DataFrame:
         """Clasifica los trámites activos por su proximidad al vencimiento."""
+        from bson import ObjectId
         hoy = datetime.now(timezone.utc)
-        activos = self.repo.listar({"estado_actual": {"$in": ["pendiente", "en_tramite", "en_revision"]}}, limit=10000)
+        query = {"estado_actual": {"$in": ["pendiente", "en_tramite", "en_revision"]}}
+        if usuario_id:
+            query["responsable_actual.usuario_id"] = ObjectId(usuario_id)
+
+        activos = self.repo.listar(query, limit=10000)
         
         categorias = {"Vencidos": 0, "Urgentes (0-5d)": 0, "A Tiempo (>5d)": 0}
         
@@ -76,11 +107,16 @@ class ReporteService:
         
         return pd.DataFrame([{"categoria": k, "cantidad": v} for k, v in categorias.items()])
 
-    def tendencia_diaria(self, dias: int = 30) -> pd.DataFrame:
+    def tendencia_diaria(self, dias: int = 30, usuario_id: str = None) -> pd.DataFrame:
         """Tendencia de radicación diaria en los últimos N días."""
+        from bson import ObjectId
         fecha_desde = datetime.now(timezone.utc) - timedelta(days=dias)
+        match_stage = {"fecha_radicacion": {"$gte": fecha_desde}}
+        if usuario_id:
+            match_stage["responsable_actual.usuario_id"] = ObjectId(usuario_id)
+
         pipeline = [
-            {"$match": {"fecha_radicacion": {"$gte": fecha_desde}}},
+            {"$match": match_stage},
             {"$group": {
                 "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$fecha_radicacion"}},
                 "cantidad": {"$sum": 1}
@@ -91,9 +127,14 @@ class ReporteService:
         resultado = [{"fecha": d["_id"], "radicados": d["cantidad"]} for d in datos]
         return pd.DataFrame(resultado) if resultado else pd.DataFrame(columns=["fecha", "radicados"])
 
-    def analisis_tiempos_respuesta(self) -> pd.DataFrame:
+    def analisis_tiempos_respuesta(self, usuario_id: str = None) -> pd.DataFrame:
         """Calcula el tiempo promedio de respuesta/cierre por tipo de correspondencia."""
-        finalizados = self.repo.listar({"estado_actual": {"$in": ["respondido", "archivado", "traslado_competencia"]}}, limit=5000)
+        from bson import ObjectId
+        query = {"estado_actual": {"$in": ["respondido", "archivado", "traslado_competencia"]}}
+        if usuario_id:
+            query["responsable_actual.usuario_id"] = ObjectId(usuario_id)
+
+        finalizados = self.repo.listar(query, limit=5000)
         if not finalizados:
             return pd.DataFrame(columns=["tipo", "dias_promedio"])
         
@@ -128,5 +169,3 @@ class ReporteService:
         resumen.columns = ["Tipo", "Días Promedio"]
         resumen["Días Promedio"] = resumen["Días Promedio"].round(1)
         return resumen
-
-

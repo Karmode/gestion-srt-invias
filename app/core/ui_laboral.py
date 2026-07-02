@@ -66,10 +66,10 @@ def _preseed(key, value):
         st.session_state[key] = value
 
 
-def _select_keyed(label, mapa, valor_inicial, key):
+def _select_keyed(label, mapa, valor_inicial, key, **kwargs):
     claves = list(mapa.keys())
     _preseed(key, valor_inicial if valor_inicial in claves else "")
-    return st.selectbox(label, options=claves, format_func=lambda k: mapa[k], key=key)
+    return st.selectbox(label, options=claves, format_func=lambda k: mapa[k], key=key, **kwargs)
 
 
 def limpiar_estado_laboral(prefijo):
@@ -90,6 +90,165 @@ def inputs_informacion_laboral(prefijo, il, mapas):
     bancaria = il.get("bancaria") or {}
     tributaria = il.get("tributaria") or {}
     deps = il.get("dependientes") or []
+
+    dark_mode = st.session_state.get("dark_mode", False)
+    bg_color = "#202030" if dark_mode else "#ffffff"
+    text_color = "#E2E8F0" if dark_mode else "#2D3748"
+    border_color = "#3F3F5F" if dark_mode else "#E2E8F0"
+    strong_color = "#FFFFFF" if dark_mode else "#1A202C"
+
+    st.markdown(
+        f"""
+        <style>
+        /* Contenedor del Tooltip */
+        .srti-tooltip-container {{
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            margin-top: 10px;
+            margin-bottom: 4px;
+        }}
+
+        /* Ícono de información */
+        .srti-tooltip-icon {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            cursor: pointer;
+            color: #FF8C00;
+            font-size: 14px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background-color: rgba(255, 140, 0, 0.1);
+            transition: background-color 0.2s, transform 0.2s;
+            user-select: none;
+            outline: none;
+        }}
+
+        .srti-tooltip-icon:hover, .srti-tooltip-icon:focus {{
+            background-color: rgba(255, 140, 0, 0.25);
+            transform: scale(1.1);
+        }}
+
+        /* Contenido del Tooltip */
+        .srti-tooltip-content {{
+            display: none;
+            position: absolute;
+            bottom: 125%;
+            left: 0;
+            transform: none;
+            width: 500px;
+            max-width: 90vw;
+            background-color: {bg_color} !important;
+            color: {text_color} !important;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.08);
+            border: 1px solid {border_color};
+            z-index: 999999;
+            max-height: 450px;
+            overflow-y: auto;
+            font-size: 13px;
+            font-weight: normal;
+            line-height: 1.5;
+            text-align: left;
+            white-space: normal;
+        }}
+
+        /* Flecha apuntando hacia abajo */
+        .srti-tooltip-content::after {{
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 4px;
+            transform: none;
+            border-width: 6px;
+            border-style: solid;
+            border-color: {bg_color} transparent transparent transparent;
+        }}
+
+        /* Mostrar tooltip al pasar el cursor o hacer focus */
+        .srti-tooltip-icon:hover .srti-tooltip-content,
+        .srti-tooltip-icon:focus .srti-tooltip-content,
+        .srti-tooltip-icon:focus-within .srti-tooltip-content {{
+            display: block;
+        }}
+
+        /* Estilos de texto en el tooltip */
+        .srti-tooltip-content h4 {{
+            margin-top: 0;
+            margin-bottom: 12px;
+            color: #FF8C00 !important;
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid {border_color};
+            padding-bottom: 8px;
+        }}
+
+        .srti-tooltip-content ul {{
+            margin: 0;
+            padding-left: 0;
+            list-style-type: none;
+            background-color: transparent !important;
+        }}
+
+        .srti-tooltip-content li {{
+            margin-bottom: 10px;
+            color: {text_color} !important;
+            background-color: transparent !important;
+        }}
+
+        .srti-tooltip-content li:last-child {{
+            margin-bottom: 0;
+        }}
+
+        .srti-tooltip-content strong {{
+            color: {strong_color} !important;
+            background-color: transparent !important;
+        }}
+
+        .srti-tooltip-content p {{
+            margin-top: 0;
+            margin-bottom: 10px;
+            color: {text_color} !important;
+            background-color: transparent !important;
+        }}
+
+        .srti-tooltip-content p:last-child {{
+            margin-bottom: 0;
+        }}
+
+        /* Forzar que las columnas de Streamlit permitan ver elementos flotantes sin recorte */
+        div[data-testid="column"] {{
+            overflow: visible !important;
+        }}
+
+        /* Ajustes Responsive y posicionamiento */
+        @media (max-width: 768px) {{
+            .srti-tooltip-content {{
+                position: fixed;
+                bottom: auto;
+                top: 20%;
+                left: 5%;
+                right: 5%;
+                width: auto;
+                max-width: 90%;
+                transform: none;
+                box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+            }}
+            .srti-tooltip-content::after {{
+                display: none;
+            }}
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
     _preseed(f"{prefijo}_es_pensionado", bool(il.get("es_pensionado")))
     es_pensionado = st.checkbox(
@@ -139,9 +298,29 @@ def inputs_informacion_laboral(prefijo, il, mapas):
     with ct1:
         _preseed(f"{prefijo}_rut", tributaria.get("rut") or "")
         rut = st.text_input("RUT", key=f"{prefijo}_rut")
+        st.markdown(
+            """
+            <div class="srti-tooltip-container">
+              <span>Tipo de régimen</span>
+              <span class="srti-tooltip-icon" tabindex="0">ⓘ
+                <div class="srti-tooltip-content">
+                  <h4 style="color: #FF8C00 !important; margin-bottom: 12px; font-weight: 700;">TIPOS DE RÉGIMEN</h4>
+                  <p><strong>Ordinario</strong><br>
+                  Corresponde al régimen general del impuesto sobre la renta. Aplica para la mayoría de personas naturales y jurídicas que cumplen con las obligaciones tributarias bajo el sistema tradicional establecido en el Estatuto Tributario.</p>
+                  <p><strong>Simple (RST)</strong><br>
+                  Régimen Simple de Tributación. Es un sistema opcional diseñado para facilitar el cumplimiento de las obligaciones tributarias mediante el pago unificado de varios impuestos, dirigido principalmente a pequeños y medianos empresarios que cumplen los requisitos legales.</p>
+                  <p><strong>Especial</strong><br>
+                  Aplica a entidades pertenecientes al Régimen Tributario Especial, como fundaciones, corporaciones, asociaciones y demás entidades sin ánimo de lucro que cumplen las condiciones establecidas por la legislación tributaria para acceder a este tratamiento.</p>
+                </div>
+              </span>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
         regimen = _select_keyed(
-            "Régimen tributario", mapas["regimen_tributario"],
+            "Tipo de régimen", mapas["regimen_tributario"],
             tributaria.get("regimen") or "", f"{prefijo}_regimen",
+            label_visibility="collapsed"
         )
     with ct2:
         _preseed(f"{prefijo}_declarante", bool(tributaria.get("declarante_renta")))
@@ -161,146 +340,7 @@ def inputs_informacion_laboral(prefijo, il, mapas):
 
 def _inputs_dependientes(prefijo, deps, mapas):
     """Lista dinámica de dependientes con agregar/eliminar por fila (IDs estables)."""
-    st.markdown(
-        """
-        <style>
-        /* Contenedor del Tooltip */
-        .srti-tooltip-container {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 14px;
-            font-weight: 500;
-            margin-top: 10px;
-            margin-bottom: 4px;
-        }
-
-        /* Ícono de información */
-        .srti-tooltip-icon {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            color: #FF8C00;
-            font-size: 14px;
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            background-color: rgba(255, 140, 0, 0.1);
-            transition: background-color 0.2s, transform 0.2s;
-            user-select: none;
-            outline: none;
-        }
-
-        .srti-tooltip-icon:hover, .srti-tooltip-icon:focus {
-            background-color: rgba(255, 140, 0, 0.25);
-            transform: scale(1.1);
-        }
-
-        /* Contenido del Tooltip */
-        .srti-tooltip-content {
-            display: none;
-            position: absolute;
-            bottom: 125%;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 500px;
-            max-width: 90vw;
-            background-color: #ffffff !important;
-            color: #2D3748 !important;
-            padding: 16px;
-            border-radius: 8px;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.08);
-            border: 1px solid #E2E8F0;
-            z-index: 999999;
-            max-height: 450px;
-            overflow-y: auto;
-            font-size: 13px;
-            font-weight: normal;
-            line-height: 1.5;
-            text-align: left;
-            white-space: normal;
-        }
-
-        /* Flecha apuntando hacia abajo */
-        .srti-tooltip-content::after {
-            content: "";
-            position: absolute;
-            top: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            border-width: 6px;
-            border-style: solid;
-            border-color: #ffffff transparent transparent transparent;
-        }
-
-        /* Mostrar tooltip al pasar el cursor o hacer focus */
-        .srti-tooltip-icon:hover .srti-tooltip-content,
-        .srti-tooltip-icon:focus .srti-tooltip-content,
-        .srti-tooltip-icon:focus-within .srti-tooltip-content {
-            display: block;
-        }
-
-        /* Estilos de texto en el tooltip */
-        .srti-tooltip-content h4 {
-            margin-top: 0;
-            margin-bottom: 12px;
-            color: #FF8C00 !important;
-            font-size: 14px;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-            border-bottom: 1px solid #EDF2F7;
-            padding-bottom: 8px;
-        }
-
-        .srti-tooltip-content ul {
-            margin: 0;
-            padding-left: 0;
-            list-style-type: none;
-            background-color: transparent !important;
-        }
-
-        .srti-tooltip-content li {
-            margin-bottom: 10px;
-            color: #2D3748 !important;
-            background-color: transparent !important;
-        }
-
-        .srti-tooltip-content li:last-child {
-            margin-bottom: 0;
-        }
-
-        .srti-tooltip-content strong {
-            color: #1A202C !important;
-            background-color: transparent !important;
-        }
-
-        /* Forzar que las columnas de Streamlit permitan ver elementos flotantes sin recorte */
-        div[data-testid="column"] {
-            overflow: visible !important;
-        }
-
-        /* Ajustes Responsive y posicionamiento */
-        @media (max-width: 768px) {
-            .srti-tooltip-content {
-                position: fixed;
-                bottom: auto;
-                top: 20%;
-                left: 5%;
-                right: 5%;
-                width: auto;
-                max-width: 90%;
-                transform: none;
-                box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
-            }
-            .srti-tooltip-content::after {
-                display: none;
-            }
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
+    # Estilos CSS ahora se cargan dinámicamente al inicio de inputs_informacion_laboral.
 
     ids_key = f"{prefijo}_dep_ids"
     seq_key = f"{prefijo}_dep_seq"
