@@ -110,7 +110,7 @@ ESQUEMA_USUARIOS = {
                             "nombre": {"bsonType": "string", "minLength": 1},
                             "tipo_documento": {
                                 "bsonType": ["string", "null"],
-                                "enum": ["CC", "TI", "CE", None],
+                                "enum": ["CC", "TI", "CE", "RC", "OTRO", None],
                             },
                             "numero_documento": {"bsonType": ["string", "null"]},
                             "tipo": {"bsonType": ["string", "null"], "description": "Clave del catálogo 'tipo_dependiente'"},

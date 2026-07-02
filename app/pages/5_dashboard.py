@@ -26,20 +26,38 @@ with col_title:
 with col_btn:
     st.write("") # Espaciador para alineación vertical
     st.write("") 
-    if st.button("🔄 Actualizar", width="stretch", key="refresh_dashboard"):
+    if st.button("🔄 Actualizar", use_container_width=True, key="refresh_dashboard"):
         st.rerun()
 
 st.divider()
 
+# --- Filtros superiores ---
+from app.repositories.usuario_repo import UsuarioRepositorio
+usuarios_activos = sorted(
+    [u for u in UsuarioRepositorio().listar() if u.get("activo", True)],
+    key=lambda x: x.get("nombre_completo", "").lower()
+)
+opciones_gestores = ["Todos"] + [u["nombre_completo"] for u in usuarios_activos]
+nombre_a_id = {u["nombre_completo"]: str(u["_id"]) for u in usuarios_activos}
+
+gestor_seleccionado = st.selectbox(
+    "Por usuario gestor",
+    options=opciones_gestores,
+    index=0,
+    key="dashboard_filtro_gestor"
+)
+
+usuario_id_filtro = nombre_a_id.get(gestor_seleccionado) if gestor_seleccionado != "Todos" else None
+
 # --- Carga de Servicios ---
 try:
     reporte_service = ReporteService()
-    resumen = reporte_service.resumen_operativo()
-    dist_estado = reporte_service.distribucion_por_estado()
-    carga_usuarios = reporte_service.carga_por_usuario()
-    vencimientos = reporte_service.analisis_vencimiento()
-    tendencia_d = reporte_service.tendencia_diaria(dias=30)
-    tiempos_resp = reporte_service.analisis_tiempos_respuesta()
+    resumen = reporte_service.resumen_operativo(usuario_id=usuario_id_filtro)
+    dist_estado = reporte_service.distribucion_por_estado(usuario_id=usuario_id_filtro)
+    carga_usuarios = reporte_service.carga_por_usuario(usuario_id=usuario_id_filtro)
+    vencimientos = reporte_service.analisis_vencimiento(usuario_id=usuario_id_filtro)
+    tendencia_d = reporte_service.tendencia_diaria(dias=30, usuario_id=usuario_id_filtro)
+    tiempos_resp = reporte_service.analisis_tiempos_respuesta(usuario_id=usuario_id_filtro)
 except Exception as e:
     st.error(f"Error al cargar las métricas: {e}")
     st.stop()
