@@ -1196,8 +1196,7 @@ class CertificacionService:
         rp_compromiso = contrato_vig.get("rp_compromiso_presupuestal") or "—"
         fecha_rp_raw = contrato_vig.get("fecha_recurso_presupuestal")
         if fecha_rp_raw:
-            fecha_rp_bog = utc_a_bogota(fecha_rp_raw)
-            fecha_rp_str = f"{fecha_rp_bog.day} de {MESES_ES[fecha_rp_bog.month - 1].lower()} de {fecha_rp_bog.year}"
+            fecha_rp_str = f"{fecha_rp_raw.day} de {MESES_ES[fecha_rp_raw.month - 1].lower()} de {fecha_rp_raw.year}"
         else:
             fecha_rp_str = "—"
 
@@ -1208,8 +1207,7 @@ class CertificacionService:
 
         # Calcular número de cuenta de cobro
         if fecha_ini_raw:
-            fecha_ini_bog = utc_a_bogota(fecha_ini_raw)
-            mes_num = (cert_year - fecha_ini_bog.year) * 12 + (cert_month - fecha_ini_bog.month) + 1
+            mes_num = (cert_year - fecha_ini_raw.year) * 12 + (cert_month - fecha_ini_raw.month) + 1
         else:
             mes_num = 1
 
@@ -1471,14 +1469,13 @@ class CertificacionService:
         fecha_ini_raw = contrato_vig.get("fecha_inicio")
         fecha_fin_raw = contrato_vig.get("fecha_fin")
         
-        fecha_ini_str = utc_a_bogota(fecha_ini_raw).strftime("%d/%m/%Y") if fecha_ini_raw else "—"
-        fecha_fin_str = utc_a_bogota(fecha_fin_raw).strftime("%d/%m/%Y") if fecha_fin_raw else "—"
+        fecha_ini_str = fecha_ini_raw.strftime("%d/%m/%Y") if fecha_ini_raw else "—"
+        fecha_fin_str = fecha_fin_raw.strftime("%d/%m/%Y") if fecha_fin_raw else "—"
 
         if fecha_ini_raw:
-            fecha_ini_bog = utc_a_bogota(fecha_ini_raw)
-            dia_ini = str(fecha_ini_bog.day)
-            mes_ini = MESES_ES[fecha_ini_bog.month - 1].lower()
-            año_ini = str(fecha_ini_bog.year)
+            dia_ini = str(fecha_ini_raw.day)
+            mes_ini = MESES_ES[fecha_ini_raw.month - 1].lower()
+            año_ini = str(fecha_ini_raw.year)
         else:
             dia_ini = "—"
             mes_ini = "—"
@@ -1797,8 +1794,8 @@ class CertificacionService:
         fecha_ini_raw = contrato_vig.get("fecha_inicio")
         fecha_fin_raw = contrato_vig.get("fecha_fin")
         
-        fecha_ini_str = utc_a_bogota(fecha_ini_raw).strftime("%d/%m/%Y") if fecha_ini_raw else "—"
-        fecha_fin_str = utc_a_bogota(fecha_fin_raw).strftime("%d/%m/%Y") if fecha_fin_raw else "—"
+        fecha_ini_str = fecha_ini_raw.strftime("%d/%m/%Y") if fecha_ini_raw else "—"
+        fecha_fin_str = fecha_fin_raw.strftime("%d/%m/%Y") if fecha_fin_raw else "—"
 
         # Fechas de expedición del documento (mes/año parameter)
         mes_num = certificacion.get("mes", 1)
