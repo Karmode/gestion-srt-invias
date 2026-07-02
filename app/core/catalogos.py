@@ -13,6 +13,8 @@ TIPOS_DOC_DEPENDIENTE = {
     "CC": "CC — Cédula de Ciudadanía",
     "TI": "TI — Tarjeta de Identidad",
     "CE": "CE — Cédula de Extranjería",
+    "RC": "RC — Registro Civil",
+    "OTRO": "Otro",
 }
 
 PERMISOS_BASE = [
