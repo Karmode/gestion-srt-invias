@@ -35,64 +35,7 @@ class CertificacionService:
     def __init__(self) -> None:
         self.repo = CertificacionRepositorio()
 
-    def _registrar_arial_narrow(self) -> None:
-        """Registra la tipografía Arial Narrow en ReportLab.
-        Busca primero en la carpeta app/assets/fonts/ y luego en C:\\Windows\\Fonts\\
-        como fallback. Si no se encuentra, registra Helvetica como alias.
-        """
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.ttfonts import TTFont
-        
-        try:
-            pdfmetrics.getFont('ArialNarrow')
-            return
-        except KeyError:
-            pass
 
-        import os
-        rutas_busqueda = [
-            os.path.join("app", "assets", "fonts"),
-            os.path.join("C:\\", "Windows", "Fonts"),
-        ]
-        
-        archivos = {
-            'ArialNarrow': 'arialn.ttf',
-            'ArialNarrow-Bold': 'arialnb.ttf',
-            'ArialNarrow-Italic': 'arialni.ttf',
-            'ArialNarrow-BoldItalic': 'arialnbi.ttf',
-        }
-        
-        exito = True
-        for font_name, filename in archivos.items():
-            path_encontrado = None
-            for ruta in rutas_busqueda:
-                test_path = os.path.join(ruta, filename)
-                if os.path.exists(test_path):
-                    path_encontrado = test_path
-                    break
-            
-            if path_encontrado:
-                try:
-                    pdfmetrics.registerFont(TTFont(font_name, path_encontrado))
-                except Exception:
-                    exito = False
-                    break
-            else:
-                exito = False
-                break
-        
-        if exito:
-            try:
-                from reportlab.pdfbase.pdfmetrics import registerFontFamily
-                registerFontFamily('ArialNarrow', normal='ArialNarrow', bold='ArialNarrow-Bold', italic='ArialNarrow-Italic', boldItalic='ArialNarrow-BoldItalic')
-            except Exception:
-                pass
-        else:
-            try:
-                from reportlab.pdfbase.pdfmetrics import registerFontFamily
-                registerFontFamily('ArialNarrow', normal='Helvetica', bold='Helvetica-Bold', italic='Helvetica-Oblique', boldItalic='Helvetica-BoldOblique')
-            except Exception:
-                pass
 
     # ──────────────────────────────────────────────────────────────
     # Helpers de período
@@ -1296,7 +1239,6 @@ class CertificacionService:
             return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
         # ── Documento — márgenes ──
-        self._registrar_arial_narrow()
         buf = io.BytesIO()
         doc = SimpleDocTemplate(
             buf,
@@ -1312,22 +1254,22 @@ class CertificacionService:
         s_cuerpo = ParagraphStyle(
             "cc_cuerpo", parent=estilos["Normal"],
             fontSize=11.5, alignment=TA_JUSTIFY, leading=16, spaceAfter=10,
-            textColor=NEGRO, fontName="ArialNarrow",
+            textColor=NEGRO, fontName="Helvetica",
         )
         s_cuerpo_left = ParagraphStyle(
             "cc_cuerpo_l", parent=estilos["Normal"],
             fontSize=11.5, alignment=TA_LEFT, leading=16, spaceAfter=2,
-            textColor=NEGRO, fontName="ArialNarrow",
+            textColor=NEGRO, fontName="Helvetica",
         )
         s_cuerpo_center = ParagraphStyle(
             "cc_cuerpo_c", parent=estilos["Normal"],
             fontSize=11.5, alignment=TA_CENTER, leading=16, spaceAfter=6,
-            textColor=NEGRO, fontName="ArialNarrow",
+            textColor=NEGRO, fontName="Helvetica",
         )
         s_cuerpo_bold_center = ParagraphStyle(
             "cc_cuerpo_bc", parent=estilos["Normal"],
             fontSize=12.5, alignment=TA_CENTER, leading=17, spaceAfter=6,
-            fontName="ArialNarrow-Bold", textColor=NEGRO,
+            fontName="Helvetica-Bold", textColor=NEGRO,
         )
 
         story = []
@@ -1384,13 +1326,13 @@ class CertificacionService:
 
         s_firma_nombre = ParagraphStyle(
             "cc_fn", parent=estilos["Normal"],
-            fontSize=11, fontName="ArialNarrow-Bold", alignment=TA_CENTER,
+            fontSize=11, fontName="Helvetica-Bold", alignment=TA_CENTER,
             textColor=NEGRO, leading=15,
         )
         s_firma_sub = ParagraphStyle(
             "cc_fs", parent=estilos["Normal"],
             fontSize=10.5, alignment=TA_CENTER, leading=14.5, textColor=NEGRO,
-            fontName="ArialNarrow",
+            fontName="Helvetica",
         )
 
         if firma_bytes:
@@ -1567,7 +1509,6 @@ class CertificacionService:
             return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
         # ── Documento — márgenes ──
-        self._registrar_arial_narrow()
         buf = io.BytesIO()
         doc = SimpleDocTemplate(
             buf,
@@ -1583,22 +1524,22 @@ class CertificacionService:
         s_cuerpo = ParagraphStyle(
             "ret_cuerpo_prim", parent=estilos["Normal"],
             fontSize=9.5, alignment=TA_JUSTIFY, leading=12.5, spaceAfter=4,
-            textColor=NEGRO, fontName="ArialNarrow",
+            textColor=NEGRO, fontName="Helvetica",
         )
         s_cuerpo_left = ParagraphStyle(
             "ret_cuerpo_l_prim", parent=estilos["Normal"],
             fontSize=9.5, alignment=TA_LEFT, leading=12.5, spaceAfter=1,
-            textColor=NEGRO, fontName="ArialNarrow",
+            textColor=NEGRO, fontName="Helvetica",
         )
         s_cuerpo_bold = ParagraphStyle(
             "ret_cuerpo_b_prim", parent=estilos["Normal"],
             fontSize=9.5, alignment=TA_LEFT, leading=12.5, spaceAfter=1,
-            fontName="ArialNarrow-Bold", textColor=NEGRO,
+            fontName="Helvetica-Bold", textColor=NEGRO,
         )
         s_cell = ParagraphStyle(
             "ret_cell_prim", parent=estilos["Normal"],
             fontSize=9.5, alignment=TA_LEFT, leading=12, textColor=NEGRO,
-            fontName="ArialNarrow",
+            fontName="Helvetica",
         )
 
         story = []
@@ -1708,13 +1649,13 @@ class CertificacionService:
 
         s_firma_nombre = ParagraphStyle(
             "ret_fn_prim", parent=estilos["Normal"],
-            fontSize=9.5, fontName="ArialNarrow-Bold", alignment=TA_CENTER,
+            fontSize=9.5, fontName="Helvetica-Bold", alignment=TA_CENTER,
             textColor=NEGRO, leading=13,
         )
         s_firma_sub = ParagraphStyle(
             "ret_fs_prim", parent=estilos["Normal"],
             fontSize=9, alignment=TA_CENTER, leading=12, textColor=NEGRO,
-            fontName="ArialNarrow",
+            fontName="Helvetica",
         )
 
         if firma_bytes:
@@ -1883,7 +1824,6 @@ class CertificacionService:
             return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
         # ── Documento — márgenes ──
-        self._registrar_arial_narrow()
         buf = io.BytesIO()
         doc = SimpleDocTemplate(
             buf,
@@ -1899,31 +1839,31 @@ class CertificacionService:
         s_cuerpo = ParagraphStyle(
             "ret_cuerpo", parent=estilos["Normal"],
             fontSize=9.5, alignment=TA_JUSTIFY, leading=12.5, spaceAfter=4,
-            textColor=NEGRO, fontName="ArialNarrow",
+            textColor=NEGRO, fontName="Helvetica",
         )
         s_cuerpo_left = ParagraphStyle(
             "ret_cuerpo_l", parent=estilos["Normal"],
             fontSize=9.5, alignment=TA_LEFT, leading=12.5, spaceAfter=1,
-            textColor=NEGRO, fontName="ArialNarrow",
+            textColor=NEGRO, fontName="Helvetica",
         )
         s_cuerpo_bold = ParagraphStyle(
             "ret_cuerpo_b", parent=estilos["Normal"],
             fontSize=9.5, alignment=TA_LEFT, leading=12.5, spaceAfter=1,
-            fontName="ArialNarrow-Bold", textColor=NEGRO,
+            fontName="Helvetica-Bold", textColor=NEGRO,
         )
         s_cell = ParagraphStyle(
             "ret_cell", parent=estilos["Normal"],
             fontSize=9.5, alignment=TA_LEFT, leading=12, textColor=NEGRO,
-            fontName="ArialNarrow",
+            fontName="Helvetica",
         )
         s_cell_center = ParagraphStyle(
             "ret_cell_c", parent=estilos["Normal"],
             fontSize=9.5, alignment=TA_CENTER, leading=12, textColor=NEGRO,
-            fontName="ArialNarrow",
+            fontName="Helvetica",
         )
         s_cell_hdr = ParagraphStyle(
             "ret_cell_h", parent=estilos["Normal"],
-            fontSize=9.5, fontName="ArialNarrow-Bold", alignment=TA_CENTER,
+            fontSize=9.5, fontName="Helvetica-Bold", alignment=TA_CENTER,
             leading=12, textColor=NEGRO,
         )
 
@@ -2068,13 +2008,13 @@ class CertificacionService:
 
         s_firma_nombre = ParagraphStyle(
             "ret_fn", parent=estilos["Normal"],
-            fontSize=9.5, fontName="ArialNarrow-Bold", alignment=TA_CENTER,
+            fontSize=9.5, fontName="Helvetica-Bold", alignment=TA_CENTER,
             textColor=NEGRO, leading=13,
         )
         s_firma_sub = ParagraphStyle(
             "ret_fs", parent=estilos["Normal"],
             fontSize=9, alignment=TA_CENTER, leading=12, textColor=NEGRO,
-            fontName="ArialNarrow",
+            fontName="Helvetica",
         )
 
         if firma_bytes:
