@@ -231,7 +231,7 @@ def _render_opcion_7_herramientas():
     """Viñeta 7 — acceso a plataformas externas (ADRES, SECOP II, KLIC 2, AZ Digital, Her. PDF)."""
     import base64
 
-    mostrar_titulo_decorado("🌐 ADRES · SECOP II · KLIC 2 · AZ Digital · Her. PDF")
+    mostrar_titulo_decorado("🌐 Otros certificados · Herramientas")
     st.caption("Haz clic en cualquier imagen para abrir la plataforma en una nueva pestaña.")
     st.write("")
 
@@ -265,6 +265,36 @@ def _render_opcion_7_herramientas():
             "name": "Her. PDF",
             "desc": "Herramienta de edición y gestión PDF",
             "url": configuracion.pdf_h_url,
+        },
+        {
+            "img": os.path.join("app", "assets", "procuraduria_logo.png"),
+            "name": "Procuraduría",
+            "desc": "Certificado de antecedentes disciplinarios",
+            "url": configuracion.url_procuraduria,
+        },
+        {
+            "img": os.path.join("app", "assets", "contraloria_logo.png"),
+            "name": "Contraloría",
+            "desc": "Certificado de antecedentes fiscales",
+            "url": configuracion.url_contraloria,
+        },
+        {
+            "img": os.path.join("app", "assets", "policia_logo.png"),
+            "name": "Policía Antecedentes",
+            "desc": "Certificado de antecedentes judiciales (Policía).",
+            "url": configuracion.url_pol_antecedentes,
+        },
+        {
+            "img": os.path.join("app", "assets", "policia_RCMC.png"),
+            "name": "Policía RNMC",
+            "desc": "Certificado de medidas correctivas (RNMC)",
+            "url": configuracion.url_pol_rcmc,
+        },
+        {
+            "img": os.path.join("app", "assets", "rut_dian.png"),
+            "name": "RUT (DIAN)",
+            "desc": 'Descargar Rut (Virtual) "Requiere cuenta Virtual en la DIAN"',
+            "url": configuracion.url_rut,
         },
     ]
 
@@ -324,19 +354,14 @@ def _render_opcion_7_herramientas():
         unsafe_allow_html=True,
     )
 
-    # ── Primera fila: 3 plataformas ──────────────────────────────────────────
-    cols1 = st.columns(3, gap="medium")
-    for i, plat in enumerate(PLATAFORMAS[:3]):
-        with cols1[i]:
-            st.markdown(_card(plat, delay_ms=i * 80), unsafe_allow_html=True)
-
-    st.write("")
-
-    # ── Segunda fila: 2 plataformas centradas ───────────────────────────────
-    _, col_d, col_e, _ = st.columns([0.5, 1, 1, 0.5], gap="medium")
-    for col, plat, delay in zip([col_d, col_e], PLATAFORMAS[3:], [240, 320]):
-        with col:
-            st.markdown(_card(plat, delay_ms=delay), unsafe_allow_html=True)
+    # ── Renderizado en filas de 3 columnas ──────────────────────────────────────────
+    for r in range(0, len(PLATAFORMAS), 3):
+        cols = st.columns(3, gap="medium")
+        row_plats = PLATAFORMAS[r:r+3]
+        for c_idx, plat in enumerate(row_plats):
+            with cols[c_idx]:
+                st.markdown(_card(plat, delay_ms=(r + c_idx) * 80), unsafe_allow_html=True)
+        st.write("")
 
 
 def _render_opcion_8_historial(servicio, usuario_id, año_cert, mes_cert, bloqueado=False):
@@ -921,7 +946,7 @@ def render(sesion=None):
                 st.session_state["tab_formato_activo"] = 6
                 st.rerun()
 
-            if st.button("7– ADRES · SECOP II · KLIC 2 · AZ · Her. PDF.", type="primary", disabled=False, use_container_width=True):
+            if st.button("7- Otros certificados - Herramientas", type="primary", disabled=False, use_container_width=True):
                 st.session_state["tab_formato_activo"] = 7
                 st.rerun()
             

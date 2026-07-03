@@ -80,9 +80,19 @@ def _render_recursos() -> None:
             st.link_button("🔗 Abrir enlace", url)
         else:
             embed_url = _embed_url(url)
+            
+            st.info(
+                "💡 **¿No puedes visualizar el recurso aquí abajo?**\n\n"
+                "Esto suele ocurrir si tu navegador bloquea cookies de terceros (o estás en modo incógnito) "
+                "o si tienes múltiples cuentas de Google iniciadas. "
+                "Haz clic en el botón de abajo para abrirlo directamente en una pestaña nueva sin restricciones."
+            )
+            
+            st.link_button("Abrir instructivo", url, type="primary", use_container_width=True)
+            st.divider()
+            
             altura = item.get("embed_height") or (850 if tipo == "pdf" else 540)
             st.iframe(embed_url, height=altura + 10)
-            st.link_button("🔗 Abrir en Google Drive", url)
 
 
 # ---------- Dialog de edición ----------

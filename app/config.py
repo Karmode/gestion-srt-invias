@@ -20,6 +20,13 @@ class Configuracion:
     adres_url: str = os.getenv("ADRES", "")
     secop_url: str = os.getenv("SECOP", "")
     pdf_h_url: str = os.getenv("PDF_H", "")
+    
+    # Nuevas variables de antecedentes/control
+    url_procuraduria: str = os.getenv("URL_PROCURADURIA", "")
+    url_contraloria: str = os.getenv("URL_CONTRALORIA", "")
+    url_pol_antecedentes: str = os.getenv("URL_POL_ANTECEDENTES", "")
+    url_pol_rcmc: str = os.getenv("URL_POL_RCMC", "")
+    url_rut: str = os.getenv("URL_RUT", "")
 
 
 configuracion = Configuracion()
