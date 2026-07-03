@@ -1300,7 +1300,7 @@ class CertificacionService:
         
         p_valor = (
             f"La suma de <b>{val_letras}</b> /Cte <b>(${val_num_fmt})</b> <b>MONEDA CORRIENTE</b> "
-            f"por concepto del Contrato de Prestación de Servicios No. <b>{no_contrato}</b> de <b>{fecha_ini_bog.year if fecha_ini_raw else dt.year}</b> "
+            f"por concepto del Contrato de Prestación de Servicios No. <b>{no_contrato}</b> de <b>{fecha_ini_raw.year if fecha_ini_raw else dt.year}</b> "
             f"cuyo objeto es: “<b>{objeto_sostenida}</b>”, en el periodo correspondiente de <b>{mes_nombre_upper}</b> del <b>{cert_year}</b>."
         )
         story.append(Paragraph(p_valor, s_cuerpo))
