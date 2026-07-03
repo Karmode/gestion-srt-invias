@@ -73,6 +73,10 @@ ESQUEMA_USUARIOS = {
                     "bsonType": ["bool", "null"],
                     "description": "Si es True, AFP y CCF no aplican y no se validan para descarga de formatos",
                 },
+                "ibc_prestaciones_sociales": {
+                    "bsonType": ["int", "long", "double", "null"],
+                    "description": "Ingreso Base de Cotización - Prestaciones sociales (valor numérico)",
+                },
                 "seguridad_social": {
                     "bsonType": ["object", "null"],
                     "properties": {
@@ -89,6 +93,11 @@ ESQUEMA_USUARIOS = {
                         "numero_cuenta": {
                             "bsonType": ["string", "null"],
                             "description": "Número de cuenta (string para preservar ceros a la izquierda)",
+                        },
+                        "tipo_cuenta": {
+                            "bsonType": ["string", "null"],
+                            "enum": ["ahorros", "corriente", "cts", None],
+                            "description": "ahorros=Cuenta de Ahorros, corriente=Cuenta Corriente, cts=Cuentas de Trámite Simplificado",
                         },
                     },
                 },

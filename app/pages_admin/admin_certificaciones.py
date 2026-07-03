@@ -193,20 +193,147 @@ def render(sesion=None):
     # Inicializar estado para mostrar/ocultar el formato de control
     if "ver_formato_control_seg" not in st.session_state:
         st.session_state["ver_formato_control_seg"] = False
+    if "ver_actas_compromiso_seg" not in st.session_state:
+        st.session_state["ver_actas_compromiso_seg"] = False
 
     # Botones de navegación
     st.write("")
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
-        if st.button("1- Supervisión Formato de control Corr-GD-SECOP", type="primary", use_container_width=True, key="btn_formato_control_seg"):
+        if st.button("1- Supervisión Formato de control Corr-GD-SECOP", type="primary" if st.session_state["ver_formato_control_seg"] else "secondary", use_container_width=True, key="btn_formato_control_seg"):
             st.session_state["ver_formato_control_seg"] = not st.session_state["ver_formato_control_seg"]
+            st.session_state["ver_actas_compromiso_seg"] = False
             st.rerun()
     with col2:
         st.button("2- Supervisión Formato de acta de recibo y entrega CPS", disabled=True, use_container_width=True, key="btn_acta_recibo_seg")
     with col3:
         st.button("3- Supervisión Balance General CPS", disabled=True, use_container_width=True, key="btn_balance_general_seg")
+    with col4:
+        if st.button("4- Gestion Actas compromiso", type="primary" if st.session_state["ver_actas_compromiso_seg"] else "secondary", use_container_width=True, key="btn_actas_compromiso_seg"):
+            st.session_state["ver_actas_compromiso_seg"] = not st.session_state["ver_actas_compromiso_seg"]
+            st.session_state["ver_formato_control_seg"] = False
+            st.rerun()
 
     st.write("")
+
+    if st.session_state.get("ver_actas_compromiso_seg"):
+        # Resumen rápido y filtros para actas de compromiso
+        with st.spinner("Consultando estado de actas de compromiso…"):
+            empleados = servicio.obtener_empleados_para_certificar(tipo_formato="acta_compromiso")
+
+        if not empleados:
+            st.info("No hay colaboradores registrados.")
+        else:
+            total = len(empleados)
+            firmados = sum(
+                1 for e in empleados
+                if e.get("certificacion") and e["certificacion"].get("estado") == "aprobado"
+            )
+            pendientes = total - firmados
+
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Total colaboradores", total)
+            m2.metric("Actas firmadas", firmados)
+            m3.metric("Pendientes", pendientes)
+
+            st.divider()
+
+            # Filtros
+            fc1, fc2 = st.columns(2)
+            with fc1:
+                contratistas_unicos = sorted(list(set(e["nombre"] for e in empleados)))
+                buscar = st.selectbox(
+                    "Filtro por Gestor",
+                    options=["Todos"] + contratistas_unicos,
+                    index=0,
+                    key="filtro_gestor_actas",
+                )
+            with fc2:
+                filtro_aprobados = st.selectbox(
+                    "Filtro por Estado",
+                    options=["Todos", "Firmadas", "Pendientes"],
+                    index=0,
+                    key="filtro_estado_actas",
+                )
+
+            lista = empleados
+            if buscar != "Todos":
+                lista = [e for e in lista if e["nombre"] == buscar]
+
+            if filtro_aprobados == "Firmadas":
+                lista = [
+                    e for e in lista
+                    if e.get("certificacion") and e["certificacion"].get("estado") == "aprobado"
+                ]
+            elif filtro_aprobados == "Pendientes":
+                lista = [
+                    e for e in lista
+                    if not (e.get("certificacion") and e["certificacion"].get("estado") == "aprobado")
+                ]
+
+            lista = sorted(lista, key=lambda e: e["nombre"].lower())
+            st.caption(f"Mostrando {len(lista)} de {total} colaboradores")
+
+            if not lista:
+                st.info("Ningún colaborador coincide con los filtros aplicados.")
+            else:
+                for emp in lista:
+                    uid = emp["usuario_id"]
+                    nombre = emp["nombre"]
+                    cert = emp.get("certificacion")
+                    estado_cert = cert.get("estado") if cert else None
+                    tiene_contrato = emp.get("tiene_contrato", False)
+
+                    with st.container(border=True):
+                        c_nom, c_badges, c_btn = st.columns([3, 5, 2])
+
+                        with c_nom:
+                            st.markdown(f"**{nombre}**")
+                            if estado_cert == "aprobado":
+                                fecha_ap = cert.get("fecha_corte")
+                                fecha_str = formato_fecha_bogota(fecha_ap, "%d/%m/%Y %H:%M") if fecha_ap else "—"
+                                st.caption(f"Firmado el {fecha_str}")
+                            else:
+                                st.caption("Pendiente de firma por el contratista")
+
+                        with c_badges:
+                            if estado_cert == "aprobado":
+                                badge_html = '<span style="background-color: #2E7D32; color: white; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">FIRMADO</span>'
+                            else:
+                                badge_html = '<span style="background-color: #E65100; color: white; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">PENDIENTE</span>'
+                            
+                            badge_contrato_html = (
+                                '<span style="background-color: #1976D2; color: white; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">CON CONTRATO</span>'
+                                if tiene_contrato
+                                else '<span style="background-color: #D32F2F; color: white; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">SIN CONTRATO</span>'
+                            )
+                            st.markdown(f"{badge_html} &nbsp;&nbsp; {badge_contrato_html}", unsafe_allow_html=True)
+
+                        with c_btn:
+                            if estado_cert == "aprobado":
+                                pdf_bytes = obtener_pdf_certificado_cacheado(
+                                    servicio, str(cert["_id"]), cert.get("hash_verificacion", ""), cert
+                                )
+                                st.download_button(
+                                    "⬇️ Descargar",
+                                    data=pdf_bytes,
+                                    file_name=f"Acta_Compromiso_{nombre.replace(' ', '_')}_{nombre_mes}_{año}.pdf",
+                                    mime="application/pdf",
+                                    key=f"dl_acta_{uid}",
+                                    type="primary",
+                                    use_container_width=True,
+                                )
+                                if st.button("👁️ Ver", key=f"prev_acta_{uid}", use_container_width=True):
+                                    st.session_state["_preview_cert"] = {
+                                        "cert": cert,
+                                        "nombre": nombre,
+                                        "año": año,
+                                        "nombre_mes": nombre_mes,
+                                    }
+                                    st.rerun()
+
+    if st.session_state.get("_preview_cert"):
+        _dialog_preview(servicio)
 
     if st.session_state["ver_formato_control_seg"]:
         # Resumen de firmantes designados
