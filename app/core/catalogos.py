@@ -17,6 +17,14 @@ TIPOS_DOC_DEPENDIENTE = {
     "OTRO": "Otro",
 }
 
+# Tipos de cuenta bancaria admitidos
+TIPOS_CUENTA_BANCARIA = {
+    "": "— Sin especificar —",
+    "ahorros": "Cuenta de Ahorros",
+    "corriente": "Cuenta Corriente",
+    "cts": "Cuenta de Trámite Simplificado (CTS/ Depósitos Electrónicos)",
+}
+
 PERMISOS_BASE = [
     {"clave": "usuario.ver", "descripcion": "Ver usuarios", "modulo": "usuarios"},
     {"clave": "usuario.crear", "descripcion": "Crear usuarios", "modulo": "usuarios"},

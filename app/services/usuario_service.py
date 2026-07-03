@@ -112,8 +112,18 @@ class UsuarioService:
                 "tipo": (dep.get("tipo") or "").strip() or None,
             })
 
+        ibc_ps = datos.get("ibc_prestaciones_sociales")
+        if ibc_ps is not None:
+            try:
+                ibc_ps = int(ibc_ps)
+            except (ValueError, TypeError):
+                ibc_ps = None
+        else:
+            ibc_ps = None
+
         return {
             "es_pensionado": bool(datos.get("es_pensionado")),
+            "ibc_prestaciones_sociales": ibc_ps if ibc_ps and ibc_ps > 0 else None,
             "seguridad_social": {
                 "eps": UsuarioService._afiliacion(ss.get("eps")),
                 "arl": UsuarioService._afiliacion(ss.get("arl")),
@@ -123,6 +133,7 @@ class UsuarioService:
             "bancaria": {
                 "banco": (bancaria.get("banco") or "").strip() or None,
                 "numero_cuenta": (bancaria.get("numero_cuenta") or "").strip() or None,
+                "tipo_cuenta": (bancaria.get("tipo_cuenta") or "").strip() or None,
             },
             "tributaria": {
                 "rut": (tributaria.get("rut") or "").strip() or None,
@@ -421,6 +432,8 @@ class UsuarioService:
             faltan_laboral.append("Banco")
         if self._vacio(bancaria.get("numero_cuenta")):
             faltan_laboral.append("Número de cuenta")
+        if self._vacio(bancaria.get("tipo_cuenta")):
+            faltan_laboral.append("Tipo de cuenta bancaria")
         if self._vacio(tributaria.get("rut")):
             faltan_laboral.append("RUT")
         if self._vacio(tributaria.get("regimen")):

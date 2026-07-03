@@ -109,6 +109,13 @@ def inputs_informacion_laboral(prefijo, il, mapas):
             font-weight: 500;
             margin-top: 10px;
             margin-bottom: 4px;
+            position: relative;
+            z-index: 99;
+        }}
+
+        .srti-tooltip-container:hover,
+        .srti-tooltip-container:focus-within {{
+            z-index: 999999 !important;
         }}
 
         /* Ícono de información */
@@ -127,18 +134,20 @@ def inputs_informacion_laboral(prefijo, il, mapas):
             transition: background-color 0.2s, transform 0.2s;
             user-select: none;
             outline: none;
+            z-index: 99999;
         }}
 
         .srti-tooltip-icon:hover, .srti-tooltip-icon:focus {{
             background-color: rgba(255, 140, 0, 0.25);
             transform: scale(1.1);
+            z-index: 999999 !important;
         }}
 
         /* Contenido del Tooltip */
         .srti-tooltip-content {{
             display: none;
             position: absolute;
-            bottom: 125%;
+            top: 125%;
             left: 0;
             transform: none;
             width: 500px;
@@ -159,16 +168,16 @@ def inputs_informacion_laboral(prefijo, il, mapas):
             white-space: normal;
         }}
 
-        /* Flecha apuntando hacia abajo */
+        /* Flecha apuntando hacia arriba */
         .srti-tooltip-content::after {{
             content: "";
             position: absolute;
-            top: 100%;
+            bottom: 100%;
             left: 4px;
             transform: none;
             border-width: 6px;
             border-style: solid;
-            border-color: {bg_color} transparent transparent transparent;
+            border-color: transparent transparent {bg_color} transparent;
         }}
 
         /* Mostrar tooltip al pasar el cursor o hacer focus */
@@ -223,26 +232,26 @@ def inputs_informacion_laboral(prefijo, il, mapas):
             margin-bottom: 0;
         }}
 
-        /* Forzar que las columnas de Streamlit permitan ver elementos flotantes sin recorte */
-        div[data-testid="column"] {{
+        /* Forzar que las columnas y bloques de Streamlit permitan ver elementos flotantes sin recorte */
+        div[data-testid="column"], div.element-container, div[data-testid="stVerticalBlock"], div[data-testid="stBlock"] {{
             overflow: visible !important;
         }}
 
         /* Ajustes Responsive y posicionamiento */
         @media (max-width: 768px) {{
             .srti-tooltip-content {{
-                position: fixed;
-                bottom: auto;
-                top: 20%;
-                left: 5%;
-                right: 5%;
-                width: auto;
-                max-width: 90%;
-                transform: none;
-                box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+                position: fixed !important;
+                bottom: auto !important;
+                top: 20% !important;
+                left: 5% !important;
+                right: 5% !important;
+                width: auto !important;
+                max-width: 90% !important;
+                transform: none !important;
+                box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2) !important;
             }}
             .srti-tooltip-content::after {{
-                display: none;
+                display: none !important;
             }}
         }}
         </style>
@@ -259,6 +268,44 @@ def inputs_informacion_laboral(prefijo, il, mapas):
 
     st.markdown("##### 🏥 Seguridad social y aportes")
     st.caption("Indica si el aporte lo pagas tú (registra el valor mensual) o se paga por otro medio (registra el número de radicado).")
+    
+    st.markdown(
+        """<div class="srti-tooltip-container">
+<span>Ingreso Base de Cotización - Prestaciones sociales (opcional)</span>
+<span class="srti-tooltip-icon" tabindex="0">ⓘ
+<div class="srti-tooltip-content">
+<h4 style="color: #FF8C00 !important; margin-top: 0; margin-bottom: 12px; font-weight: 700; font-size: 14px; border-bottom: 1px solid #E2E8F0; padding-bottom: 8px;">GUÍA RÁPIDA: CÁLCULO DEL IBC</h4>
+<p style="margin-bottom: 10px;">El <strong>Ingreso Base de Cotización (IBC)</strong> para contratistas independientes en Colombia se calcula con la regla del <strong>40%</strong> del valor mensualizado del contrato (sin incluir IVA).</p>
+<p style="margin-bottom: 10px;"><strong>1. Mensualiza el contrato</strong><br>
+Divide el valor total del contrato por el número de meses de ejecución.<br>
+Fórmula: <code>Valor total ÷ Meses de duración = Ingreso Mensual</code><br>
+<em>Ejemplo: Contrato de $30.000.000 a 6 meses = $5.000.000 mensuales.</em></p>
+<p style="margin-bottom: 10px;"><strong>2. Aplica el 40%</strong><br>
+El IBC mínimo legal sobre el cual debes cotizar es el 40% de ese valor mensual.<br>
+Fórmula: <code>Ingreso Mensual × 40% = IBC</code><br>
+<em>Ejemplo: $5.000.000 × 40% = $2.000.000 (Este es tu IBC).</em></p>
+<p style="margin-bottom: 10px;"><strong>3. Verifica los topes legales</strong><br>
+• <strong>Piso mínimo:</strong> No puede ser menor a 1 Salario Mínimo Mensual Legal Vigente (SMMLV). Si el 40% es menor, cotizas sobre 1 SMMLV.<br>
+• <strong>Techo máximo:</strong> No puede superar los 25 SMMLV.</p>
+<p style="margin-bottom: 10px;"><strong>4. Calcula tus aportes de ley (sobre el IBC)</strong><br>
+• <strong>Salud (12.5%):</strong> IBC × 12.5% (Ej: $2.000.000 × 12.5% = $250.000)<br>
+• <strong>Pensión (16%):</strong> IBC × 16% (Ej: $2.000.000 × 16% = $320.000)<br>
+• <strong>ARL (Varía según riesgo):</strong> Lo paga el contratista, excepto si es nivel de riesgo IV o V, que lo asume el contratante.</p>
+</div>
+</span>
+</div>""",
+        unsafe_allow_html=True
+    )
+    _preseed(f"{prefijo}_ibc_prestaciones_sociales", int(il.get("ibc_prestaciones_sociales") or 0))
+    ibc_ps = st.number_input(
+        "Ingreso Base de Cotización - Prestaciones sociales (opcional)",
+        min_value=0,
+        step=100000,
+        format="%d",
+        key=f"{prefijo}_ibc_prestaciones_sociales",
+        label_visibility="collapsed"
+    )
+    
     resultado_ss = {}
     for cod, etiqueta, cat in _AFILIACIONES:
         af = ss.get(cod) or {}
@@ -286,12 +333,20 @@ def inputs_informacion_laboral(prefijo, il, mapas):
         resultado_ss[cod] = {"entidad": entidad, "paga": paga, "valor": valor, "radicado": radicado}
 
     st.markdown("##### 🏦 Información bancaria")
-    cb1, cb2 = st.columns(2)
+    cb1, cb2, cb3 = st.columns(3)
     with cb1:
         banco = _select_keyed("Banco", mapas["banco"], bancaria.get("banco") or "", f"{prefijo}_banco")
     with cb2:
         _preseed(f"{prefijo}_num_cuenta", bancaria.get("numero_cuenta") or "")
         num_cuenta = st.text_input("Número de cuenta", key=f"{prefijo}_num_cuenta", placeholder="Sin puntos ni espacios")
+    with cb3:
+        from app.core.catalogos import TIPOS_CUENTA_BANCARIA
+        tipo_cuenta = _select_keyed(
+            "Tipo de cuenta",
+            TIPOS_CUENTA_BANCARIA,
+            bancaria.get("tipo_cuenta") or "",
+            f"{prefijo}_tipo_cuenta"
+        )
 
     st.markdown("##### 🧾 Información tributaria")
     ct1, ct2 = st.columns(2)
@@ -331,8 +386,9 @@ def inputs_informacion_laboral(prefijo, il, mapas):
 
     return {
         "es_pensionado": es_pensionado,
+        "ibc_prestaciones_sociales": ibc_ps if ibc_ps > 0 else None,
         "seguridad_social": resultado_ss,
-        "bancaria": {"banco": banco, "numero_cuenta": num_cuenta},
+        "bancaria": {"banco": banco, "numero_cuenta": num_cuenta, "tipo_cuenta": tipo_cuenta},
         "tributaria": {"rut": rut, "declarante_renta": declarante, "regimen": regimen},
         "dependientes": dependientes,
     }
