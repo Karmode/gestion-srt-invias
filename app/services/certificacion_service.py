@@ -267,7 +267,7 @@ class CertificacionService:
         codigo_normalizado = codigo.strip().upper().replace(" ", "")
         return self.repo.buscar_por_hash(codigo_normalizado)
 
-    def obtener_empleados_para_certificar(self) -> List[Dict]:
+    def obtener_empleados_para_certificar(self, tipo_formato: str = None) -> List[Dict]:
         """Lista todos los colaboradores con correspondencia, estado de firmas y contrato activo."""
         from app.services.correspondencia_service import CorrespondenciaService
         from app.repositories.usuario_repo import UsuarioRepositorio
@@ -280,7 +280,7 @@ class CertificacionService:
         todos_usuarios = {str(u["_id"]): u for u in usuario_repo.listar()}
         certs_mes = {
             str(c["usuario_id"]): c
-            for c in self.repo.listar_por_periodo(año, mes)
+            for c in self.repo.listar_por_periodo(año, mes, tipo_formato)
         }
 
         resultados = []
@@ -802,7 +802,7 @@ class CertificacionService:
                 ["Néstor Alfonso Navarro Tovar"],
                 ["Contratista Subdirección de Reglamentación Técnica e Innovación"],
             ]
-            firma_tabla = Table(filas_firma, colWidths=[doc.width])
+            firma_tabla = Table(filas_firma, colWidths=[8.5 * cm], hAlign="CENTER")
             firma_tabla.setStyle(TableStyle([
                 ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                 ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
@@ -821,7 +821,7 @@ class CertificacionService:
                 ["Néstor Alfonso Navarro Tovar"],
                 ["Contratista Subdirección de Reglamentación Técnica e Innovación"],
             ]
-            firma_tabla = Table(filas_firma, colWidths=[doc.width], rowHeights=[1.5 * cm, None, None])
+            firma_tabla = Table(filas_firma, colWidths=[8.5 * cm], rowHeights=[1.5 * cm, None, None], hAlign="CENTER")
             firma_tabla.setStyle(TableStyle([
                 ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                 ("FONTNAME", (0, 1), (0, 1), "Helvetica-Bold"),
@@ -1100,7 +1100,7 @@ class CertificacionService:
                 [Paragraph(f"Fecha: Bogotá, <b>{fecha_fmt}</b>", s_firma_sub)],
             ]
 
-        firma_tabla = Table(filas_firma, colWidths=[doc.width])
+        firma_tabla = Table(filas_firma, colWidths=[8.5 * cm], hAlign="CENTER")
         firma_tabla.setStyle(TableStyle([
             ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
             ("VALIGN",        (0, 0), (-1, -1), "BOTTOM"),
@@ -1348,8 +1348,17 @@ class CertificacionService:
         story.append(Paragraph(p_presupuesto, s_cuerpo))
 
         # Párrafo cuenta bancaria
+        tipo_cuenta_clave = bancaria.get("tipo_cuenta")
+        from app.core.catalogos import TIPOS_CUENTA_BANCARIA
+        if tipo_cuenta_clave == "cts":
+            tipo_cuenta_lbl = "cuenta de trámite simplificado (CTS/ Depósitos electrónicos)"
+        elif tipo_cuenta_clave:
+            tipo_cuenta_lbl = TIPOS_CUENTA_BANCARIA.get(tipo_cuenta_clave, "Cuenta de ahorros").lower()
+        else:
+            tipo_cuenta_lbl = "cuenta de ahorros"
+
         p_banco = (
-            f"Autorizo consignar en la cuenta de ahorros No. <b>{cuenta_bancaria}</b> "
+            f"Autorizo consignar en la {tipo_cuenta_lbl} No. <b>{cuenta_bancaria}</b> "
             f"del <b>{banco_nombre}</b>."
         )
         story.append(Paragraph(p_banco, s_cuerpo))
@@ -1386,8 +1395,8 @@ class CertificacionService:
                 [Paragraph("Contratista", s_firma_sub)],
             ]
 
-        # Tabla de firma centrada con ancho completo del documento para centrar la línea
-        firma_tabla = Table(filas_firma, colWidths=[doc.width])
+        # Tabla de firma centrada con un ancho reducido para que la línea no sea tan larga
+        firma_tabla = Table(filas_firma, colWidths=[8.5 * cm], hAlign="CENTER")
         firma_tabla.setStyle(TableStyle([
             ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
             ("VALIGN",        (0, 0), (-1, -1), "BOTTOM"),
@@ -1707,7 +1716,7 @@ class CertificacionService:
                 [Paragraph(f"{tipo_doc}. {cedula} de {lugar_exp}", s_firma_sub)],
             ]
 
-        firma_tabla = Table(filas_firma, colWidths=[doc.width])
+        firma_tabla = Table(filas_firma, colWidths=[8.5 * cm], hAlign="CENTER")
         firma_tabla.setStyle(TableStyle([
             ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
             ("VALIGN",        (0, 0), (-1, -1), "BOTTOM"),
@@ -2066,7 +2075,7 @@ class CertificacionService:
                 [Paragraph(f"{tipo_doc}. {cedula} de {lugar_exp}", s_firma_sub)],
             ]
 
-        firma_tabla = Table(filas_firma, colWidths=[doc.width])
+        firma_tabla = Table(filas_firma, colWidths=[8.5 * cm], hAlign="CENTER")
         firma_tabla.setStyle(TableStyle([
             ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
             ("VALIGN",        (0, 0), (-1, -1), "BOTTOM"),
@@ -2243,7 +2252,13 @@ class CertificacionService:
         story.append(Paragraph(p_decl_3, s_cuerpo))
 
         # Cotizaciones
-        story.append(Paragraph("<b>Ingreso Base de Cotización: $ </b>", s_cuerpo))
+        ibc_val = info_laboral.get("ibc_prestaciones_sociales")
+        if ibc_val is not None:
+            ibc_str = f"{ibc_val:,.0f}".replace(",", ".")
+        else:
+            ibc_str = "—"
+
+        story.append(Paragraph(f"<b>Ingreso Base de Cotización: $ {ibc_str}</b>", s_cuerpo))
         story.append(Paragraph(f"<b>AFP:</b> <b>{afp_str}</b>", s_cuerpo))
         story.append(Paragraph(f"<b>EPS:</b> <b>{eps_str}</b>", s_cuerpo))
         story.append(Paragraph(f"<b>ARL:</b> <b>{arl_str}</b>", s_cuerpo))

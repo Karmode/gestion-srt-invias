@@ -159,7 +159,7 @@ def render(sesion=None):
 
     # Botones de navegación
     st.write("")
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         if st.button("1-Formato de control Corr-GP-SECOP", type="primary", use_container_width=True, key="btn_formato_control"):
             st.session_state["ver_formato_control"] = not st.session_state["ver_formato_control"]
@@ -168,6 +168,8 @@ def render(sesion=None):
         st.button("2- Formato de acta de recibo y entrega CPS", disabled=True, use_container_width=True, key="btn_acta_recibo")
     with col3:
         st.button("3- Balance General CPS", disabled=True, use_container_width=True, key="btn_balance_general")
+    with col4:
+        st.button("4- Gestion Actas compromiso", disabled=True, use_container_width=True, key="btn_gestion_actas_compromiso")
 
     st.write("")
 

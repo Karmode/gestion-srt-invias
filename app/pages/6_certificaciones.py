@@ -950,6 +950,11 @@ def _render_opcion_5_acta_compromiso(servicio, sesion, año_cert, mes_cert, nomb
         arl_val = arl_obj.get("valor")
         arl_str = f"$ {arl_val:,.0f}" if arl_val is not None else (arl_obj.get("entidad") or "No registrada")
 
+        # IBC
+        ibc_val = info_laboral.get("ibc_prestaciones_sociales")
+        ibc_str = f"$ {ibc_val:,.0f}" if ibc_val is not None else "No registrado"
+
+        st.write(f"**Ingreso Base de Cotización:** {ibc_str}")
         st.write(f"**AFP:** {afp_str}")
         st.write(f"**EPS:** {eps_str}")
         st.write(f"**ARL:** {arl_str}")
