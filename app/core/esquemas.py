@@ -113,6 +113,11 @@ ESQUEMA_USUARIOS = {
                     "bsonType": ["bool", "null"],
                     "description": "Si es True, AFP y CCF no aplican y no se validan para descarga de formatos",
                 },
+                "grupo_trabajo": {
+                    "bsonType": ["string", "null"],
+                    "enum": ["despacho", "normativa_tecnica", "innovacion_tecnica", "permisos", "", None],
+                    "description": "Grupo de trabajo al que pertenece",
+                },
                 "ibc_prestaciones_sociales": {
                     "bsonType": ["int", "long", "double", "null"],
                     "description": "Ingreso Base de Cotización - Prestaciones sociales (valor numérico)",

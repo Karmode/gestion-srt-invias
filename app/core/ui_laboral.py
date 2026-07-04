@@ -260,11 +260,35 @@ def inputs_informacion_laboral(prefijo, il, mapas):
     )
 
     _preseed(f"{prefijo}_es_pensionado", bool(il.get("es_pensionado")))
-    es_pensionado = st.checkbox(
-        "¿Eres pensionado/a?",
-        key=f"{prefijo}_es_pensionado",
-        help="Si estás pensionado/a, los campos de AFP y Caja de Compensación Familiar no aplican y no serán requeridos para descargar los formatos.",
+    es_pensionado = st.session_state.get(f"{prefijo}_es_pensionado", False)
+
+
+    st.markdown(
+        """
+        <div class="srti-tooltip-container">
+          <span>Grupo de trabajo</span>
+          <span class="srti-tooltip-icon" tabindex="0">ⓘ
+            <div class="srti-tooltip-content">
+              <h4 style="color: #FF8C00 !important; margin-bottom: 12px; font-weight: 700;">GRUPOS DE TRABAJO</h4>
+              <p>En la SRTI existen varios sub grupos de trabajo, debe elegir uno segun su funcion en la subdirección. Si pertenece a 2 de ellos elija en el que desempeña su labor principal.</p>
+            </div>
+          </span>
+        </div>
+        """,
+        unsafe_allow_html=True
     )
+    from app.core.catalogos import GRUPOS_TRABAJO
+    grupo_trabajo = _select_keyed(
+        "Grupo de trabajo",
+        GRUPOS_TRABAJO,
+        il.get("grupo_trabajo") or "",
+        f"{prefijo}_grupo_trabajo",
+        label_visibility="collapsed"
+    )
+
+
+
+
 
     st.markdown("##### 🏥 Seguridad social y aportes")
     st.caption("Indica si el aporte lo pagas tú (registra el valor mensual) o se paga por otro medio (registra el número de radicado).")
@@ -403,11 +427,19 @@ Fórmula: <code>Ingreso Mensual × 40% = IBC</code><br>
             help="Marca esta opción si estás obligado/a a facturar y cobrar IVA en tus contratos."
         )
 
+        st.checkbox(
+            "¿Eres pensionado/a?",
+            key=f"{prefijo}_es_pensionado",
+            help="Si estás pensionado/a, los campos de AFP y Caja de Compensación Familiar no aplican y no serán requeridos para descargar los formatos.",
+        )
+
+
     st.markdown("##### 👨‍👩‍👧 Dependientes económicos")
     dependientes = _inputs_dependientes(prefijo, deps, mapas)
 
     return {
         "es_pensionado": es_pensionado,
+        "grupo_trabajo": grupo_trabajo if grupo_trabajo else None,
         "ibc_prestaciones_sociales": ibc_ps if ibc_ps > 0 else None,
         "paga_iva": paga_iva,
         "valor_iva": valor_iva if paga_iva else None,
@@ -550,6 +582,8 @@ def boton_guardar_laboral(prefijo, il_raw, key) -> bool:
 
 def laboral_vacia(il):
     """True si el bloque de información laboral no tiene ningún dato diligenciado."""
+    if il.get("grupo_trabajo"):
+        return False
     ss = il.get("seguridad_social") or {}
     if any((a.get("entidad") or a.get("valor") or a.get("radicado")) for a in ss.values()):
         return False

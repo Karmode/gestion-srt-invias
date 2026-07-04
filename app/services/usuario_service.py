@@ -133,6 +133,7 @@ class UsuarioService:
 
         return {
             "es_pensionado": bool(datos.get("es_pensionado")),
+            "grupo_trabajo": (datos.get("grupo_trabajo") or "").strip() or None,
             "ibc_prestaciones_sociales": ibc_ps if ibc_ps and ibc_ps > 0 else None,
             "paga_iva": paga_iva,
             "valor_iva": valor_iva if paga_iva else None,
@@ -491,6 +492,8 @@ class UsuarioService:
             faltan_laboral.append("RUT")
         if self._vacio(tributaria.get("regimen")):
             faltan_laboral.append("Régimen tributario")
+        if self._vacio(il.get("grupo_trabajo")):
+            faltan_laboral.append("Grupo de trabajo")
         if faltan_laboral:
             secciones.append({
                 "titulo": "Información laboral",

@@ -25,6 +25,16 @@ TIPOS_CUENTA_BANCARIA = {
     "cts": "Cuenta de Trámite Simplificado (CTS/ Depósitos Electrónicos)",
 }
 
+# Grupos de trabajo
+GRUPOS_TRABAJO = {
+    "": "— Sin especificar —",
+    "despacho": "DESPACHO",
+    "normativa_tecnica": "NORMATIVA",
+    "innovacion_tecnica": "INNOVACIÓN",
+    "permisos": "PERMISOS",
+}
+
+
 PERMISOS_BASE = [
     {"clave": "usuario.ver", "descripcion": "Ver usuarios", "modulo": "usuarios"},
     {"clave": "usuario.crear", "descripcion": "Crear usuarios", "modulo": "usuarios"},
