@@ -121,9 +121,21 @@ class UsuarioService:
         else:
             ibc_ps = None
 
+        paga_iva = bool(datos.get("paga_iva"))
+        valor_iva = datos.get("valor_iva")
+        if paga_iva and valor_iva is not None:
+            try:
+                valor_iva = int(valor_iva)
+            except (ValueError, TypeError):
+                valor_iva = None
+        else:
+            valor_iva = None
+
         return {
             "es_pensionado": bool(datos.get("es_pensionado")),
             "ibc_prestaciones_sociales": ibc_ps if ibc_ps and ibc_ps > 0 else None,
+            "paga_iva": paga_iva,
+            "valor_iva": valor_iva if paga_iva else None,
             "seguridad_social": {
                 "eps": UsuarioService._afiliacion(ss.get("eps")),
                 "arl": UsuarioService._afiliacion(ss.get("arl")),
@@ -289,6 +301,47 @@ class UsuarioService:
         valor_mensual = datos.get("valor_mensual")
         if valor_mensual is not None and valor_mensual > 0:
             contrato["valor_mensual"] = int(valor_mensual)
+
+        # NUEVAS VARIABLES DE CONTRATO
+        contrato["tiene_inventario"] = bool(datos.get("tiene_inventario"))
+        contrato["desc_inventario"] = (datos.get("desc_inventario") or "").strip() or None
+        
+        # Valores numéricos
+        for key in ["valor_total_ejecutado_contrato", "saldo_presp_lib_contrato", "valor_total_pagado"]:
+            val = datos.get(key)
+            contrato[key] = int(val) if val is not None else None
+
+        # Prórroga
+        prorroga = datos.get("prorrogra_contrato") or {}
+        tiene_pror = bool(prorroga.get("tiene_prorroga"))
+        f_pror = prorroga.get("fecha_prorrogra")
+        contrato["prorrogra_contrato"] = {
+            "tiene_prorroga": tiene_pror,
+            "fecha_prorrogra": UsuarioService._fecha_a_datetime(f_pror) if tiene_pror and f_pror else None,
+            "radicado_prorrogra": (prorroga.get("radicado_prorrogra") or "").strip() or None
+        }
+
+        # Arreglo de pagos (máximo 20)
+        pagos_entrada = datos.get("pagos") or []
+        pagos_procesados = []
+        for p in pagos_entrada[:20]:
+            num_p = (p.get("numero_pago") or "").strip()
+            if not num_p:
+                continue
+            
+            f_pago = p.get("fecha_pago")
+            pagos_procesados.append({
+                "numero_pago": num_p,
+                "fecha_pago": UsuarioService._fecha_a_datetime(f_pago),
+                "valor_bruto_pago": int(p.get("valor_bruto_pago") or 0),
+                "valor_bruto_total": int(p.get("valor_bruto_total") or 0),
+                "deducciones_pago": int(p.get("deducciones_pago") or 0),
+                "deducciones_pago_total": int(p.get("deducciones_pago_total") or 0),
+                "valor_neto_pago": int(p.get("valor_neto_pago") or 0),
+                "valor_neto_pago_total": int(p.get("valor_neto_pago_total") or 0),
+            })
+        contrato["pagos"] = pagos_procesados
+
         return contrato
 
     def agregar_contrato(self, id_usuario: str, datos_contrato: dict):

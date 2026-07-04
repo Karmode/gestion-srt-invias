@@ -1764,6 +1764,7 @@ else:
     page_perfil = st.Page("pages/2_mi_perfil.py", title="Mi Perfil", icon="👤", url_path="mi_perfil")
     page_correspondencia = st.Page("pages/2_correspondencia.py", title="Correspondencia", icon="📬")
     page_instructivos = st.Page("pages/3_instructivos.py", title="Instructivos", icon="📚")
+    page_permisos_suit = st.Page("pages/11_permisos_suit.py", title="Permisos SUIT", icon="🔑")
     
     permisos_sesion = sesion.get("permisos", [])
 
@@ -1797,6 +1798,7 @@ else:
     menu_dict = {
         "Principal": [page_dashboard, page_correspondencia, page_perfil, page_instructivos],
         "Gestión contratos": supervision_pages,
+        "Permisos": [page_permisos_suit],
     }
 
     if admin_pages:

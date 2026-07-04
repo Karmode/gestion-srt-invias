@@ -377,9 +377,31 @@ Fórmula: <code>Ingreso Mensual × 40% = IBC</code><br>
             tributaria.get("regimen") or "", f"{prefijo}_regimen",
             label_visibility="collapsed"
         )
+        
+        # Si paga IVA, mostramos el input para el valor
+        _preseed(f"{prefijo}_paga_iva", bool(il.get("paga_iva")))
+        paga_iva = st.session_state.get(f"{prefijo}_paga_iva", False)
+        
+        valor_iva = None
+        if paga_iva:
+            _preseed(f"{prefijo}_valor_iva", int(il.get("valor_iva") or 0))
+            valor_iva = st.number_input(
+                "Valor del IVA",
+                min_value=0,
+                step=10000,
+                format="%d",
+                key=f"{prefijo}_valor_iva"
+            )
+            
     with ct2:
         _preseed(f"{prefijo}_declarante", bool(tributaria.get("declarante_renta")))
         declarante = st.checkbox("¿Declarante de renta?", key=f"{prefijo}_declarante")
+        
+        paga_iva = st.checkbox(
+            "¿Paga IVA?",
+            key=f"{prefijo}_paga_iva",
+            help="Marca esta opción si estás obligado/a a facturar y cobrar IVA en tus contratos."
+        )
 
     st.markdown("##### 👨‍👩‍👧 Dependientes económicos")
     dependientes = _inputs_dependientes(prefijo, deps, mapas)
@@ -387,6 +409,8 @@ Fórmula: <code>Ingreso Mensual × 40% = IBC</code><br>
     return {
         "es_pensionado": es_pensionado,
         "ibc_prestaciones_sociales": ibc_ps if ibc_ps > 0 else None,
+        "paga_iva": paga_iva,
+        "valor_iva": valor_iva if paga_iva else None,
         "seguridad_social": resultado_ss,
         "bancaria": {"banco": banco, "numero_cuenta": num_cuenta, "tipo_cuenta": tipo_cuenta},
         "tributaria": {"rut": rut, "declarante_renta": declarante, "regimen": regimen},

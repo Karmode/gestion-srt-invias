@@ -2217,7 +2217,7 @@ class CertificacionService:
         p_inicial = (
             f"Yo <b>{nombre}</b>, identificado con <b>{tipo_doc}</b> No. <b>{cedula}</b> expedida en <b>{lugar_exp}</b>, "
             f"Contratista de Prestación de Servicios profesionales del Instituto Nacional de Vías y Gladys "
-            f"Gutiérrez Buitrago del Contrato No. <b>{no_contrato}</b> de <b>{año_contrato}</b>, para la prestación de los "
+            f"Gutiérrez Buitrago Supervisora del Contrato No. <b>{no_contrato}</b> de <b>{año_contrato}</b>, para la prestación de los "
             f"servicios correspondientes al mes de <b>{mes_nombre_upper}</b> de la citada vigencia y pago de estos."
         )
         story.append(Paragraph(p_inicial, s_cuerpo))
@@ -2305,7 +2305,7 @@ class CertificacionService:
         col_der = [
             firma_gladys_img if firma_gladys_img else "",
             Paragraph("<b>Gladys Gutiérrez Buitrago</b>", s_firma_lbl),
-            Paragraph(f"CONTRATISTA CTO {no_contrato} de {año_contrato}", s_firma_desc),
+            Paragraph("Subdirectora de Reglamentación Técnica e Innovación", s_firma_desc),
             Paragraph(f"SUPERVISOR CTO {no_contrato} de {año_contrato}", s_firma_desc)
         ]
 
