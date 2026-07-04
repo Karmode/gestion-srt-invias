@@ -382,6 +382,18 @@ class CertificacionService:
         )
         return True
 
+    def guardar_observacion(
+        self,
+        empleado_id: str,
+        empleado_nombre: str,
+        texto_observacion: str,
+    ) -> bool:
+        """Guarda la observación del supervisor/firmante para el contratista en el período actual."""
+        año, mes = self.periodo_certificable()
+        return self.repo.guardar_observacion(
+            empleado_id, empleado_nombre, año, mes, texto_observacion
+        )
+
     def _intentar_auto_certificar(
         self,
         empleado_id: str,

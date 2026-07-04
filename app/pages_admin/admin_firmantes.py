@@ -64,6 +64,32 @@ def _badge_corr(pendientes: int, vencidas: int) -> str:
     )
 
 
+# ── Diálogo para agregar u/o editar observación ────────────────
+@st.dialog("Observación", width="small")
+def _dialog_observacion(servicio: CertificacionService) -> None:
+    data = st.session_state.get("_editar_observacion")
+    if not data:
+        return
+    uid = data["uid"]
+    nombre = data["nombre"]
+    obs_actual = data["observacion"]
+
+    st.markdown(f"**Contratista:** {nombre}")
+    nueva_obs = st.text_area("Escribe tu observación:", value=obs_actual, height=120)
+    
+    st.write("")
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Observación", type="primary", use_container_width=True):
+            servicio.guardar_observacion(uid, nombre, nueva_obs)
+            st.session_state.pop("_editar_observacion", None)
+            st.rerun()
+    with c2:
+        if st.button("Cancelar", use_container_width=True):
+            st.session_state.pop("_editar_observacion", None)
+            st.rerun()
+
+
 # ── Diálogo de confirmación para firma de Correspondencia ────────
 
 @st.dialog("Confirmar aprobación — Correspondencia", width="small")
@@ -142,6 +168,25 @@ def render(sesion=None):
     año, mes = servicio.periodo_certificable()
     nombre_mes = MESES_ES[mes - 1]
     es_anterior = servicio.es_mes_anterior()
+
+    # Inyectar CSS para dar fondo verde al botón de certificado
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stDownloadButton"] button {
+            background-color: #2e7d32 !important;
+            color: white !important;
+            border: 1px solid #1b5e20 !important;
+        }
+        div[data-testid="stDownloadButton"] button:hover {
+            background-color: #1b5e20 !important;
+            color: white !important;
+            border-color: #1b5e20 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
     mostrar_titulo_decorado("Sup. Formatos")
     st.caption(f"Período certificable: **{nombre_mes} {año}**")
@@ -252,7 +297,7 @@ def render(sesion=None):
                     key="filtro_contratista_aprob",
                 )
             with fc2:
-                opciones_tipo = ["Todos"] + list(MAPA_TIPOS_CONTRATO.values()) + ["Sin contrato"]
+                opciones_tipo = ["Con contrato activo", "Todos (con y sin contrato)"] + list(MAPA_TIPOS_CONTRATO.values()) + ["Sin contrato"]
                 filtro_tipo = st.selectbox(
                     "Filtro por Contrato",
                     options=opciones_tipo,
@@ -279,13 +324,16 @@ def render(sesion=None):
             if buscar != "Todos":
                 lista = [e for e in lista if e["nombre"] == buscar]
 
-            if filtro_tipo != "Todos":
-                if filtro_tipo == "Sin contrato":
-                    lista = [e for e in lista if not e.get("tiene_contrato")]
-                else:
-                    inv_map = {v: k for k, v in MAPA_TIPOS_CONTRATO.items()}
-                    clave_tecnica = inv_map.get(filtro_tipo)
-                    lista = [e for e in lista if e.get("tipo_contrato") == clave_tecnica]
+            if filtro_tipo == "Con contrato activo":
+                lista = [e for e in lista if e.get("tiene_contrato")]
+            elif filtro_tipo == "Sin contrato":
+                lista = [e for e in lista if not e.get("tiene_contrato")]
+            elif filtro_tipo == "Todos (con y sin contrato)":
+                pass
+            else:
+                inv_map = {v: k for k, v in MAPA_TIPOS_CONTRATO.items()}
+                clave_tecnica = inv_map.get(filtro_tipo)
+                lista = [e for e in lista if e.get("tipo_contrato") == clave_tecnica]
 
             if tipo_mi_firma:
                 if filtro == "Pendientes mi aprobación":
@@ -316,7 +364,11 @@ def render(sesion=None):
                         c_nom, c_badges, c_accion = st.columns([3, 5, 2])
 
                         with c_nom:
+                            cert_emp = emp.get("certificacion") or {}
+                            obs_existente = cert_emp.get("observacion") or ""
                             st.markdown(f"**{nombre}**")
+                            if obs_existente:
+                                st.caption(f"💬 *Obs: {obs_existente}*")
                             if mi_firma_dada:
                                 fecha_firma = mi_firma_dada.get("fecha")
                                 fecha_str = formato_fecha_bogota(fecha_firma, "%d/%m/%Y %H:%M") if fecha_firma else ""
@@ -384,9 +436,28 @@ def render(sesion=None):
                                         st.session_state["_confirmar_firma_corr"] = {"uid": uid, "nombre": nombre}
                                         st.rerun()
                                     else:
-                                        firmante_nombre = sesion.get("nombre_completo") or sesion["usuario"]
-                                        servicio.registrar_firma(uid, nombre, tipo_mi_firma, sesion["id"], firmante_nombre)
-                                        st.rerun()
+                                         firmante_nombre = sesion.get("nombre_completo") or sesion["usuario"]
+                                         servicio.registrar_firma(uid, nombre, tipo_mi_firma, sesion["id"], firmante_nombre)
+                                         st.rerun()
+
+                            # Botón de observación compacto
+                            if tipo_mi_firma or es_admin:
+                                if st.button(
+                                    "💬 Obs",
+                                    key=f"btn_obs_{uid}",
+                                    use_container_width=True,
+                                    help="Agregar/Editar observación del supervisor",
+                                ):
+                                    st.session_state["_editar_observacion"] = {
+                                        "uid": uid,
+                                        "nombre": nombre,
+                                        "observacion": obs_existente
+                                    }
+                                    st.rerun()
 
     if st.session_state.get("_confirmar_firma_corr"):
         _dialog_confirmar_firma_corr(servicio, sesion, año, mes, nombre_mes)
+
+    if st.session_state.get("_editar_observacion"):
+        _dialog_observacion(servicio)
+

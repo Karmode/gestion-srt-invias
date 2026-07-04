@@ -273,6 +273,7 @@ ESQUEMA_CERTIFICACIONES = {
         "fecha_corte": {"bsonType": ["date", "null"]},
         "snapshot_al_dia": {"bsonType": ["bool", "null"]},
         "observaciones": {"bsonType": ["string", "null"]},
+        "observacion": {"bsonType": ["string", "null"]},
         "aprobado_por": {
             "bsonType": "object",
             "required": ["usuario_id", "nombre", "fecha"],
