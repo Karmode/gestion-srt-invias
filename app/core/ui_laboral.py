@@ -260,11 +260,35 @@ def inputs_informacion_laboral(prefijo, il, mapas):
     )
 
     _preseed(f"{prefijo}_es_pensionado", bool(il.get("es_pensionado")))
-    es_pensionado = st.checkbox(
-        "¿Eres pensionado/a?",
-        key=f"{prefijo}_es_pensionado",
-        help="Si estás pensionado/a, los campos de AFP y Caja de Compensación Familiar no aplican y no serán requeridos para descargar los formatos.",
+    es_pensionado = st.session_state.get(f"{prefijo}_es_pensionado", False)
+
+
+    st.markdown(
+        """
+        <div class="srti-tooltip-container">
+          <span>Grupo de trabajo</span>
+          <span class="srti-tooltip-icon" tabindex="0">ⓘ
+            <div class="srti-tooltip-content">
+              <h4 style="color: #FF8C00 !important; margin-bottom: 12px; font-weight: 700;">GRUPOS DE TRABAJO</h4>
+              <p>En la SRTI existen varios sub grupos de trabajo, debe elegir uno segun su funcion en la subdirección. Si pertenece a 2 de ellos elija en el que desempeña su labor principal.</p>
+            </div>
+          </span>
+        </div>
+        """,
+        unsafe_allow_html=True
     )
+    from app.core.catalogos import GRUPOS_TRABAJO
+    grupo_trabajo = _select_keyed(
+        "Grupo de trabajo",
+        GRUPOS_TRABAJO,
+        il.get("grupo_trabajo") or "",
+        f"{prefijo}_grupo_trabajo",
+        label_visibility="collapsed"
+    )
+
+
+
+
 
     st.markdown("##### 🏥 Seguridad social y aportes")
     st.caption("Indica si el aporte lo pagas tú (registra el valor mensual) o se paga por otro medio (registra el número de radicado).")
@@ -377,16 +401,48 @@ Fórmula: <code>Ingreso Mensual × 40% = IBC</code><br>
             tributaria.get("regimen") or "", f"{prefijo}_regimen",
             label_visibility="collapsed"
         )
+        
+        # Si paga IVA, mostramos el input para el valor
+        _preseed(f"{prefijo}_paga_iva", bool(il.get("paga_iva")))
+        paga_iva = st.session_state.get(f"{prefijo}_paga_iva", False)
+        
+        valor_iva = None
+        if paga_iva:
+            _preseed(f"{prefijo}_valor_iva", int(il.get("valor_iva") or 0))
+            valor_iva = st.number_input(
+                "Valor del IVA",
+                min_value=0,
+                step=10000,
+                format="%d",
+                key=f"{prefijo}_valor_iva"
+            )
+            
     with ct2:
         _preseed(f"{prefijo}_declarante", bool(tributaria.get("declarante_renta")))
         declarante = st.checkbox("¿Declarante de renta?", key=f"{prefijo}_declarante")
+        
+        paga_iva = st.checkbox(
+            "¿Paga IVA?",
+            key=f"{prefijo}_paga_iva",
+            help="Marca esta opción si estás obligado/a a facturar y cobrar IVA en tus contratos."
+        )
+
+        st.checkbox(
+            "¿Eres pensionado/a?",
+            key=f"{prefijo}_es_pensionado",
+            help="Si estás pensionado/a, los campos de AFP y Caja de Compensación Familiar no aplican y no serán requeridos para descargar los formatos.",
+        )
+
 
     st.markdown("##### 👨‍👩‍👧 Dependientes económicos")
     dependientes = _inputs_dependientes(prefijo, deps, mapas)
 
     return {
         "es_pensionado": es_pensionado,
+        "grupo_trabajo": grupo_trabajo if grupo_trabajo else None,
         "ibc_prestaciones_sociales": ibc_ps if ibc_ps > 0 else None,
+        "paga_iva": paga_iva,
+        "valor_iva": valor_iva if paga_iva else None,
         "seguridad_social": resultado_ss,
         "bancaria": {"banco": banco, "numero_cuenta": num_cuenta, "tipo_cuenta": tipo_cuenta},
         "tributaria": {"rut": rut, "declarante_renta": declarante, "regimen": regimen},
@@ -400,27 +456,47 @@ def _inputs_dependientes(prefijo, deps, mapas):
 
     ids_key = f"{prefijo}_dep_ids"
     seq_key = f"{prefijo}_dep_seq"
+    datos_key = f"{prefijo}_dep_datos"
     tdoc_keys = list(TIPOS_DOC_DEPENDIENTE.keys())
     tipo_mapa = mapas["tipo_dependiente"]
     tipo_keys = list(tipo_mapa.keys())
 
-    # Inicialización: un ID estable por dependiente existente, sembrando sus valores.
+    # Inicialización: un ID estable por dependiente existente. Los valores se
+    # guardan en un espejo programático (datos_key) además de las claves de
+    # widget: Streamlit borra las claves de widget cuando la sección no se
+    # renderiza (navegar a otra página, o un st.rerun() que interrumpe el run
+    # antes de dibujar la fila); el espejo sobrevive y permite re-sembrarlas.
+    # Sin él, las filas quedaban vacías y el siguiente guardado borraba los
+    # dependientes en la BD.
     if ids_key not in st.session_state:
         st.session_state[seq_key] = 0
         ids = []
+        datos = {}
         for dep in deps:
             rid = st.session_state[seq_key]
             st.session_state[seq_key] += 1
             ids.append(rid)
             tdoc = dep.get("tipo_documento") or ""
             tipo = dep.get("tipo") or ""
-            st.session_state[f"{prefijo}_dep_nombre_{rid}"] = dep.get("nombre") or ""
-            st.session_state[f"{prefijo}_dep_ndoc_{rid}"] = dep.get("numero_documento") or ""
-            st.session_state[f"{prefijo}_dep_tdoc_{rid}"] = tdoc if tdoc in tdoc_keys else ""
-            st.session_state[f"{prefijo}_dep_tipo_{rid}"] = tipo if tipo in tipo_keys else ""
+            datos[rid] = {
+                "nombre": dep.get("nombre") or "",
+                "ndoc": dep.get("numero_documento") or "",
+                "tdoc": tdoc if tdoc in tdoc_keys else "",
+                "tipo": tipo if tipo in tipo_keys else "",
+            }
         st.session_state[ids_key] = ids
+        st.session_state[datos_key] = datos
 
     ids = st.session_state[ids_key]
+    datos = st.session_state[datos_key]
+
+    # Re-sembrar desde el espejo toda clave de widget que Streamlit haya limpiado.
+    for rid in ids:
+        fila = datos.get(rid) or {"nombre": "", "ndoc": "", "tdoc": "", "tipo": ""}
+        _preseed(f"{prefijo}_dep_nombre_{rid}", fila["nombre"])
+        _preseed(f"{prefijo}_dep_ndoc_{rid}", fila["ndoc"])
+        _preseed(f"{prefijo}_dep_tdoc_{rid}", fila["tdoc"])
+        _preseed(f"{prefijo}_dep_tipo_{rid}", fila["tipo"])
     if not ids:
         st.caption("Sin dependientes. Usa “➕ Agregar dependiente” si necesitas registrar alguno.")
 
@@ -432,6 +508,7 @@ def _inputs_dependientes(prefijo, deps, mapas):
         with bdel:
             if st.button("🗑️", key=f"{prefijo}_dep_del_{rid}", help="Eliminar este dependiente"):
                 st.session_state[ids_key].remove(rid)
+                datos.pop(rid, None)
                 st.rerun()
         cd1, cd2 = st.columns(2)
         with cd1:
@@ -442,6 +519,8 @@ def _inputs_dependientes(prefijo, deps, mapas):
             )
         with cd2:
             ndoc = st.text_input("Número de documento", key=f"{prefijo}_dep_ndoc_{rid}")
+            if ndoc and not ndoc.strip().isdigit():
+                st.error("El número de documento debe contener únicamente números.")
             st.markdown(
                 """
                 <div class="srti-tooltip-container">
@@ -467,6 +546,8 @@ def _inputs_dependientes(prefijo, deps, mapas):
                 format_func=lambda k: tipo_mapa[k], key=f"{prefijo}_dep_tipo_{rid}",
                 label_visibility="collapsed"
             )
+        # Actualizar el espejo con lo tecleado en este render.
+        datos[rid] = {"nombre": nombre, "ndoc": ndoc, "tdoc": tdoc, "tipo": tipo}
         dependientes.append({
             "nombre": nombre, "tipo_documento": tdoc,
             "numero_documento": ndoc, "tipo": tipo,
@@ -475,6 +556,7 @@ def _inputs_dependientes(prefijo, deps, mapas):
     if st.button("➕ Agregar dependiente", key=f"{prefijo}_dep_add"):
         nid = st.session_state[seq_key]
         st.session_state[seq_key] += 1
+        datos[nid] = {"nombre": "", "ndoc": "", "tdoc": "", "tipo": ""}
         st.session_state[ids_key].append(nid)
         st.rerun()
 
@@ -526,6 +608,8 @@ def boton_guardar_laboral(prefijo, il_raw, key) -> bool:
 
 def laboral_vacia(il):
     """True si el bloque de información laboral no tiene ningún dato diligenciado."""
+    if il.get("grupo_trabajo"):
+        return False
     ss = il.get("seguridad_social") or {}
     if any((a.get("entidad") or a.get("valor") or a.get("radicado")) for a in ss.values()):
         return False

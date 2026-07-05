@@ -12,7 +12,6 @@ from app.services.mongo_bootstrap_service import MongoBootstrapService
 from app.services.auth_service import AuthService
 from app.services.sesion_service import SesionService
 from app.services.usuario_service import UsuarioService
-from app.services.correspondencia_service import CorrespondenciaService
 from app.services.politica_service import PoliticaService
 from app.core.ui_titulos import mostrar_titulo_decorado
 
@@ -1354,18 +1353,15 @@ def pantalla_login() -> None:
 def pantalla_politica_datos() -> None:
     """Muestra la política de tratamiento de datos como pantalla bloqueante."""
 
-    import base64
     import os
+
+    from app.core.recursos import imagen_b64
 
     politica = st.session_state.get("politica_vigente") or {}
     sesion = obtener_sesion()
-    
+
     # Codificar el logo en base64 para embeberlo en el HTML
-    logo_path = os.path.join("app", "assets", "INVIAS_login_logo.png")
-    logo_b64 = ""
-    if os.path.exists(logo_path):
-        with open(logo_path, "rb") as image_file:
-            logo_b64 = base64.b64encode(image_file.read()).decode("utf-8")
+    logo_b64 = imagen_b64(os.path.join("app", "assets", "INVIAS_login_logo.png"))
             
     html_logo = f'<img src="data:image/png;base64,{logo_b64}" style="height: 45px; object-fit: contain;">' if logo_b64 else '<div style="font-size: 2.2rem; line-height:1;">🛡️</div>'
 
@@ -1548,9 +1544,8 @@ def pantalla_dashboard() -> None:
     es_admin = any(rol in {"admin", "administrador"} for rol in roles)
     
     # Obtener métricas reales (siempre personales según lo solicitado)
-    servicio_corr = CorrespondenciaService()
-    id_filtro = sesion.get("id")
-    metricas = servicio_corr.obtener_metricas_dashboard(id_usuario=id_filtro)
+    from app.core.cache_datos import metricas_inicio
+    metricas = metricas_inicio(sesion.get("id"))
 
     # 2. Título "Inicio" decorado
     mostrar_titulo_decorado("Inicio")
@@ -1764,6 +1759,7 @@ else:
     page_perfil = st.Page("pages/2_mi_perfil.py", title="Mi Perfil", icon="👤", url_path="mi_perfil")
     page_correspondencia = st.Page("pages/2_correspondencia.py", title="Correspondencia", icon="📬")
     page_instructivos = st.Page("pages/3_instructivos.py", title="Instructivos", icon="📚")
+    page_permisos_suit = st.Page("pages/11_permisos_suit.py", title="Permisos SUIT", icon="🔑")
     
     permisos_sesion = sesion.get("permisos", [])
 
@@ -1797,6 +1793,7 @@ else:
     menu_dict = {
         "Principal": [page_dashboard, page_correspondencia, page_perfil, page_instructivos],
         "Gestión contratos": supervision_pages,
+        "Permisos": [page_permisos_suit],
     }
 
     if admin_pages:
@@ -1855,11 +1852,9 @@ else:
         st.divider()
         st.toggle("🌙 Modo oscuro", key="dark_mode")
 
-        logo_path = os.path.join("app", "assets", "INVIAS_login_logo.png")
-        if os.path.exists(logo_path):
-            import base64
-            with open(logo_path, "rb") as img_file:
-                logo_b64 = base64.b64encode(img_file.read()).decode()
+        from app.core.recursos import imagen_b64
+        logo_b64 = imagen_b64(os.path.join("app", "assets", "INVIAS_login_logo.png"))
+        if logo_b64:
             st.markdown(
                 f'<div class="logo-static-container">'
                 f'<img src="data:image/png;base64,{logo_b64}" alt="INVIAS Logo" />'
@@ -1867,5 +1862,13 @@ else:
                 unsafe_allow_html=True
             )
             
+    # Limpiar estados de diálogos si se cambia de página
+    current_page_title = pg.title
+    last_page = st.session_state.get("_last_active_page")
+    if last_page and last_page != current_page_title:
+        st.session_state.pop("_editar_observacion", None)
+        st.session_state.pop("_confirmar_firma_corr", None)
+    st.session_state["_last_active_page"] = current_page_title
+
     pg.run()
 

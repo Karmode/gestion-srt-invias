@@ -7,6 +7,7 @@ from app.core.ui_titulos import mostrar_titulo_decorado
 from app.core.autorizacion import validar_permiso, ValidacionAutorizacion
 from app.core.catalogos import TIPOS_CONTRATO
 from app.core.sesion import obtener_sesion
+from app.core.cache_datos import limpiar_cache_lecturas
 from app.core.ui_laboral import (
     boton_guardar_laboral,
     construir_mapas_catalogos,
@@ -62,6 +63,7 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                         )
                         st.session_state["mensaje_exito_usuarios"] = "Usuario desactivado correctamente."
                         st.session_state["last_opened_usuario_id"] = None
+                        limpiar_cache_lecturas()
                         st.rerun()
                     except ValueError as e:
                         st.error(str(e))
@@ -75,6 +77,7 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                         )
                         st.session_state["mensaje_exito_usuarios"] = "Usuario activado correctamente."
                         st.session_state["last_opened_usuario_id"] = None
+                        limpiar_cache_lecturas()
                         st.rerun()
                     except ValueError as e:
                         st.error(str(e))
@@ -108,8 +111,10 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
             numero_documento_editado = st.text_input(
                 "Número de documento",
                 value=uo.get("numero_documento", ""),
-                placeholder="Solo letras y números",
+                placeholder="Solo números",
             )
+            if numero_documento_editado and not numero_documento_editado.strip().isdigit():
+                st.error("El número de documento debe contener únicamente números.")
 
         lugar_expedicion_editado = st.text_input(
             "Lugar de expedición del documento",
@@ -146,6 +151,7 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
             )
             st.session_state["mensaje_exito_usuarios"] = "Usuario actualizado correctamente."
             st.session_state["last_opened_usuario_id"] = None
+            limpiar_cache_lecturas()
             st.rerun()
         except ValueError as e:
             st.error(str(e))
@@ -168,6 +174,7 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
             limpiar_estado_laboral(_pref)
             st.session_state["mensaje_exito_usuarios"] = "Información laboral actualizada."
             st.session_state["last_opened_usuario_id"] = None
+            limpiar_cache_lecturas()
             st.rerun()
         except ValueError as e:
             st.error(str(e))
@@ -219,49 +226,59 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
             if _c.get("objeto"):
                 st.write(f"**Objeto:** {_c.get('objeto')}")
 
-            if not _c_fin:
-                _fi_ed = _c_fi.date() if _c_fi and hasattr(_c_fi, "date") else _c_fi
-                _ff_ed = _c_ff.date() if _c_ff and hasattr(_c_ff, "date") else _c_ff
-                with st.form(f"form_edit_c_{_c_num}"):
-                    _ec1, _ec2 = st.columns(2)
-                    with _ec1:
-                        _e_num = st.text_input("Número", value=_c_num, key=f"e_num_{_c_num}")
-                        _e_tipo_idx = list(TIPOS_CONTRATO.keys()).index(_c.get("tipo") or "") if (_c.get("tipo") or "") in TIPOS_CONTRATO else 0
-                        _e_tipo = st.selectbox("Tipo", options=list(TIPOS_CONTRATO.keys()), format_func=lambda k: TIPOS_CONTRATO[k], index=_e_tipo_idx, key=f"e_tipo_{_c_num}")
-                    with _ec2:
-                        _e_valor = st.number_input("Valor (COP)", min_value=0, value=int(_c.get("valor") or 0), step=100000, format="%d", key=f"e_val_{_c_num}")
-                        _e_vm = st.number_input("Valor mensual (COP)", min_value=0, value=int(_c.get("valor_mensual") or 0), step=100000, format="%d", key=f"e_vm_{_c_num}")
-                    _e_rp = st.text_input("RP / compromiso presupuestal", value=_c.get("rp_compromiso_presupuestal") or "", key=f"e_rp_{_c_num}", placeholder="Código alfanumérico")
-                    _ec3, _ec4, _ec5 = st.columns(3)
-                    with _ec3:
-                        _e_frp_ed = _c.get("fecha_recurso_presupuestal")
-                        if _e_frp_ed and hasattr(_e_frp_ed, "date"):
-                            _e_frp_ed = _e_frp_ed.date()
-                        _e_frp = st.date_input("Fecha recurso presupuestal (opcional)", value=_e_frp_ed, format="DD/MM/YYYY", key=f"e_frp_{_c_num}")
-                    with _ec4:
-                        _e_fi = st.date_input("Inicio", value=_fi_ed, format="DD/MM/YYYY", key=f"e_fi_{_c_num}")
-                    with _ec5:
-                        _e_ff = st.date_input("Fin (opcional)", value=_ff_ed, format="DD/MM/YYYY", key=f"e_ff_{_c_num}")
-                    _e_obj = st.text_area("Objeto", value=_c.get("objeto") or "", key=f"e_obj_{_c_num}")
-                    _e_env = st.form_submit_button("💾 Guardar", use_container_width=True)
-                if _e_env:
-                    try:
-                        servicio.editar_contrato(str(uo["_id"]), _c_num, {
-                            "numero": _e_num.strip(),
-                            "tipo": _e_tipo,
-                            "valor": _e_valor if _e_valor > 0 else None,
-                            "rp_compromiso_presupuestal": _e_rp.strip(),
-                            "fecha_inicio": _e_fi,
-                            "fecha_fin": _e_ff,
-                            "fecha_recurso_presupuestal": _e_frp,
-                            "valor_mensual": _e_vm if _e_vm > 0 else None,
-                            "objeto": _e_obj.strip(),
-                        })
-                        st.session_state["mensaje_exito_usuarios"] = f"Contrato {_c_num} actualizado."
-                        st.session_state["last_opened_usuario_id"] = None
-                        st.rerun()
-                    except ValueError as e:
-                        st.error(str(e))
+            _fi_ed = _c_fi.date() if _c_fi and hasattr(_c_fi, "date") else _c_fi
+            _ff_ed = _c_ff.date() if _c_ff and hasattr(_c_ff, "date") else _c_ff
+            
+            # Usamos st.container en vez de st.form por los botones de pagos interactivos
+            with st.container():
+                _ec1, _ec2 = st.columns(2)
+                with _ec1:
+                    _e_num = st.text_input("Número", value=_c_num, key=f"e_num_{_c_num}")
+                    _e_tipo_idx = list(TIPOS_CONTRATO.keys()).index(_c.get("tipo") or "") if (_c.get("tipo") or "") in TIPOS_CONTRATO else 0
+                    _e_tipo = st.selectbox("Tipo", options=list(TIPOS_CONTRATO.keys()), format_func=lambda k: TIPOS_CONTRATO[k], index=_e_tipo_idx, key=f"e_tipo_{_c_num}")
+                with _ec2:
+                    _e_valor = st.number_input("Valor (COP)", min_value=0, value=int(_c.get("valor") or 0), step=100000, format="%d", key=f"e_val_{_c_num}")
+                    _e_vm = st.number_input("Valor mensual (COP)", min_value=0, value=int(_c.get("valor_mensual") or 0), step=100000, format="%d", key=f"e_vm_{_c_num}")
+                _e_rp = st.text_input("RP / compromiso presupuestal", value=_c.get("rp_compromiso_presupuestal") or "", key=f"e_rp_{_c_num}", placeholder="Código alfanumérico")
+                _ec3, _ec4, _ec5 = st.columns(3)
+                with _ec3:
+                    _e_frp_ed = _c.get("fecha_recurso_presupuestal")
+                    if _e_frp_ed and hasattr(_e_frp_ed, "date"):
+                        _e_frp_ed = _e_frp_ed.date()
+                    _e_frp = st.date_input("Fecha recurso presupuestal (opcional)", value=_e_frp_ed, format="DD/MM/YYYY", key=f"e_frp_{_c_num}")
+                with _ec4:
+                    _e_fi = st.date_input("Inicio", value=_fi_ed, format="DD/MM/YYYY", key=f"e_fi_{_c_num}")
+                with _ec5:
+                    _e_ff = st.date_input("Fin (opcional)", value=_ff_ed, format="DD/MM/YYYY", key=f"e_ff_{_c_num}")
+                _e_obj = st.text_area("Objeto", value=_c.get("objeto") or "", key=f"e_obj_{_c_num}")
+                
+                # RENDERIZAMOS EL BALANCE GENERAL Y PLAN DE PAGOS
+                from app.core.ui_contratos import render_balance_y_pagos
+                _balance_pagos_datos = render_balance_y_pagos(f"admin_c_{_c_num}", _c, deshabilitado=_c_fin)
+                
+                _e_env = st.button("💾 Guardar", key=f"btn_save_adm_c_{_c_num}", use_container_width=True, type="primary", disabled=_c_fin)
+                
+            if _e_env:
+                try:
+                    datos_totales = {
+                        "numero": _e_num.strip(),
+                        "tipo": _e_tipo,
+                        "valor": _e_valor if _e_valor > 0 else None,
+                        "rp_compromiso_presupuestal": _e_rp.strip(),
+                        "fecha_inicio": _e_fi,
+                        "fecha_fin": _e_ff,
+                        "fecha_recurso_presupuestal": _e_frp,
+                        "valor_mensual": _e_vm if _e_vm > 0 else None,
+                        "objeto": _e_obj.strip(),
+                    }
+                    datos_totales.update(_balance_pagos_datos)
+                    
+                    servicio.editar_contrato(str(uo["_id"]), _c_num, datos_totales)
+                    st.session_state["mensaje_exito_usuarios"] = f"Contrato {_c_num} actualizado."
+                    st.session_state["last_opened_usuario_id"] = None
+                    st.rerun()
+                except ValueError as e:
+                    st.error(str(e))
 
     with st.expander("➕ Agregar nuevo contrato"):
         with st.form("form_nuevo_contrato_modal"):
@@ -505,9 +522,11 @@ def render(sesion=None):
             with col_ndoc:
                 nuevo_num_doc = st.text_input(
                     "Número de documento (opcional)",
-                    placeholder="Solo letras y números",
+                    placeholder="Solo números",
                     key="crear_num_doc",
                 )
+                if nuevo_num_doc and not nuevo_num_doc.strip().isdigit():
+                    st.error("El número de documento debe contener únicamente números.")
             nuevo_lugar_exp = st.text_input(
                 "Lugar de expedición del documento (opcional)",
                 placeholder="Ciudad de expedición de la cédula",
@@ -542,6 +561,7 @@ def render(sesion=None):
                     servicio.crear_usuario(datos_nuevo, permisos_usuario=permisos)
                     limpiar_estado_laboral("crear")
                     st.session_state["mensaje_exito_usuarios"] = "Usuario creado correctamente."
+                    limpiar_cache_lecturas()
                     st.rerun()
                 except ValueError as e:
                     st.error(str(e))

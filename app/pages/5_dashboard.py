@@ -4,7 +4,7 @@ from app.core.ui_titulos import mostrar_titulo_decorado
 
 from app.core.autorizacion import validar_permiso, ValidacionAutorizacion
 from app.core.sesion import obtener_sesion
-from app.services.reporte_service import ReporteService
+from app.core.cache_datos import usuarios_activos_para_seleccion, datos_dashboard_admin, limpiar_cache_lecturas
 
 sesion = obtener_sesion()
 
@@ -27,18 +27,15 @@ with col_btn:
     st.write("") # Espaciador para alineación vertical
     st.write("") 
     if st.button("🔄 Actualizar", use_container_width=True, key="refresh_dashboard"):
+        limpiar_cache_lecturas()
         st.rerun()
 
 st.divider()
 
 # --- Filtros superiores ---
-from app.repositories.usuario_repo import UsuarioRepositorio
-usuarios_activos = sorted(
-    [u for u in UsuarioRepositorio().listar() if u.get("activo", True)],
-    key=lambda x: x.get("nombre_completo", "").lower()
-)
-opciones_gestores = ["Todos"] + [u["nombre_completo"] for u in usuarios_activos]
-nombre_a_id = {u["nombre_completo"]: str(u["_id"]) for u in usuarios_activos}
+usuarios_map = usuarios_activos_para_seleccion()  # id -> nombre, ya ordenado
+opciones_gestores = ["Todos"] + list(usuarios_map.values())
+nombre_a_id = {nombre: uid for uid, nombre in usuarios_map.items()}
 
 gestor_seleccionado = st.selectbox(
     "Por usuario gestor",
@@ -51,13 +48,13 @@ usuario_id_filtro = nombre_a_id.get(gestor_seleccionado) if gestor_seleccionado 
 
 # --- Carga de Servicios ---
 try:
-    reporte_service = ReporteService()
-    resumen = reporte_service.resumen_operativo(usuario_id=usuario_id_filtro)
-    dist_estado = reporte_service.distribucion_por_estado(usuario_id=usuario_id_filtro)
-    carga_usuarios = reporte_service.carga_por_usuario(usuario_id=usuario_id_filtro)
-    vencimientos = reporte_service.analisis_vencimiento(usuario_id=usuario_id_filtro)
-    tendencia_d = reporte_service.tendencia_diaria(dias=30, usuario_id=usuario_id_filtro)
-    tiempos_resp = reporte_service.analisis_tiempos_respuesta(usuario_id=usuario_id_filtro)
+    datos = datos_dashboard_admin(usuario_id_filtro)
+    resumen = datos["resumen"]
+    dist_estado = datos["dist_estado"]
+    carga_usuarios = datos["carga_usuarios"]
+    vencimientos = datos["vencimientos"]
+    tendencia_d = datos["tendencia_d"]
+    tiempos_resp = datos["tiempos_resp"]
 except Exception as e:
     st.error(f"Error al cargar las métricas: {e}")
     st.stop()

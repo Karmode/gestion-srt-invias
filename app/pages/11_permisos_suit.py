@@ -1,0 +1,19 @@
+import streamlit as st
+from app.core.ui_titulos import mostrar_titulo_decorado
+from app.core.sesion import obtener_sesion
+
+st.set_page_config(
+    page_title="Permisos SUIT",
+    page_icon="app/assets/invias_fav_ico_3.ico",
+    layout="wide",
+)
+
+sesion = obtener_sesion()
+
+if not sesion:
+    st.warning("Debes iniciar sesión.")
+    st.stop()
+
+mostrar_titulo_decorado("Permisos SUIT")
+
+st.info("El módulo de Permisos SUIT se encuentra actualmente en desarrollo.")
