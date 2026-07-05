@@ -3,7 +3,6 @@ from app.core.ui_titulos import mostrar_titulo_decorado
 import pandas as pd
 import json
 from datetime import datetime, timezone, timedelta
-import holidays
 import streamlit.components.v1 as components
 
 from app.core.sesion import obtener_sesion
@@ -14,6 +13,7 @@ from app.core.cache_datos import (
     limpiar_cache_lecturas,
 )
 from app.services.correspondencia_service import CorrespondenciaService
+from app.core.festivos import FESTIVOS_CO
 
 # --- LÓGICA DE REINICIO DE FORMULARIO ---
 if "form_key_idx" not in st.session_state:
@@ -798,7 +798,7 @@ with tab_gestion:
                         fin = hoy.date()
                         dias_habiles = 0
                         actual = inicio + timedelta(days=1)
-                        co_holidays = holidays.CO()
+                        co_holidays = FESTIVOS_CO
                         while actual <= fin:
                             if actual.weekday() < 5 and actual not in co_holidays:
                                 dias_habiles += 1
@@ -812,7 +812,7 @@ with tab_gestion:
                         fin = fecha_venc_utc.date()
                         dias_habiles = 0
                         actual = inicio + timedelta(days=1)
-                        co_holidays = holidays.CO()
+                        co_holidays = FESTIVOS_CO
                         while actual <= fin:
                             if actual.weekday() < 5 and actual not in co_holidays:
                                 dias_habiles += 1

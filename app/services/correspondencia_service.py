@@ -1,16 +1,16 @@
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional
-import holidays
 import re
 from bson import ObjectId
 
 from app.repositories.correspondencia_repo import CorrespondenciaRepositorio
+from app.core.festivos import FESTIVOS_CO
 
 
 class CorrespondenciaService:
     def __init__(self) -> None:
         self.repo = CorrespondenciaRepositorio()
-        self.festivos_co = holidays.CO()
+        self.festivos_co = FESTIVOS_CO
 
     def _usuario_object_id(self, usuario_id: Optional[str]):
         return ObjectId(usuario_id) if usuario_id else None

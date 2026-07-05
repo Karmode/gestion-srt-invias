@@ -2,7 +2,6 @@ import os
 import io
 from datetime import datetime, timezone, timedelta
 import pandas as pd
-import holidays
 
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import (
@@ -19,11 +18,12 @@ from reportlab.lib import colors
 from reportlab.lib.colors import HexColor
 
 from app.repositories.correspondencia_repo import CorrespondenciaRepositorio
+from app.core.festivos import FESTIVOS_CO
 
 class PDFReportService:
     def __init__(self):
         self.repo = CorrespondenciaRepositorio()
-        self.co_holidays = holidays.CO()
+        self.co_holidays = FESTIVOS_CO
         self.ruta_logo = os.path.join("app", "assets", "INVIAS.png")
 
     def _calcular_dias_habiles(self, fecha_inicio: datetime, fecha_fin: datetime) -> int:
