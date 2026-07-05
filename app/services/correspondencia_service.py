@@ -66,17 +66,27 @@ class CorrespondenciaService:
                 query["responsable_actual.usuario_id"] = self._usuario_object_id(filtros["responsable_id"])
 
             if "busqueda" in filtros and filtros["busqueda"]:
-                busqueda_escapada = re.escape(filtros["busqueda"])
-                patron = {"$regex": busqueda_escapada, "$options": "i"}
-                # El buscador hace coincidencia parcial (insensible a mayúsculas) sobre:
-                # número de radicado, número de oficio de la respuesta, peticionario y asunto.
+                texto = filtros["busqueda"].strip()
+
+                # 1) Intento rápido con índice de texto (busca por tokens)
+                query_text = dict(query)
+                query_text["$text"] = {"$search": texto}
+                total_text = self.repo.contar(query_text)
+                if total_text > 0:
+                    return (
+                        self.repo.listar(query_text, skip, limit, projection={"trazabilidad": 0}),
+                        total_text,
+                    )
+
+                # 2) Fallback: coincidencia parcial por subcadena (scan, pero
+                #    solo cuando el índice de texto no encontró nada)
+                patron = {"$regex": re.escape(texto), "$options": "i"}
                 query["$or"] = [
                     {"numero_radicado": patron},
                     {"respuesta.numero_oficio": patron},
                     {"peticionario": patron},
                     {"asunto": patron},
                 ]
-
 
         return (
             self.repo.listar(query, skip, limit, projection={"trazabilidad": 0}),

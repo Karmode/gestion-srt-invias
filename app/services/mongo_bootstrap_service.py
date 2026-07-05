@@ -90,6 +90,16 @@ class MongoBootstrapService:
             ],
             name="idx_correspondencia_resp_estado_venc",
         )
+        self.db["correspondencia"].create_index(
+            [
+                ("numero_radicado", "text"),
+                ("peticionario", "text"),
+                ("asunto", "text"),
+                ("respuesta.numero_oficio", "text"),
+            ],
+            name="idx_correspondencia_texto",
+            default_language="spanish",
+        )
         self.db["certificaciones"].create_index(
             [("usuario_id", 1), ("año", -1), ("mes", -1)],
             name="idx_cert_usuario_periodo",
