@@ -12,7 +12,6 @@ from app.services.mongo_bootstrap_service import MongoBootstrapService
 from app.services.auth_service import AuthService
 from app.services.sesion_service import SesionService
 from app.services.usuario_service import UsuarioService
-from app.services.correspondencia_service import CorrespondenciaService
 from app.services.politica_service import PoliticaService
 from app.core.ui_titulos import mostrar_titulo_decorado
 

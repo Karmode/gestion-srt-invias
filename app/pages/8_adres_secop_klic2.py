@@ -9,6 +9,7 @@ import os
 import streamlit as st
 
 from app.config import configuracion
+from app.core.recursos import imagen_b64
 from app.core.ui_titulos import mostrar_titulo_decorado
 
 st.set_page_config(
@@ -147,7 +148,6 @@ def _render_card(
     delay_ms: int = 0,
 ) -> None:
     """Renderiza una tarjeta de plataforma en la columna dada."""
-    from app.core.recursos import imagen_b64
     img_b64 = imagen_b64(os.path.join("app", "assets", img_file))
     img_tag = (
         f'<img src="data:image/png;base64,{img_b64}" alt="{name}" />'

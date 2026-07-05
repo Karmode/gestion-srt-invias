@@ -615,6 +615,7 @@ if is_asignacion:
 
                     except Exception as e:
                         st.session_state["mensaje_error"] = f"Error al crear: {str(e)}"
+                        limpiar_cache_lecturas()
                         st.rerun()
 
 # Pestaña Búsqueda y Gestión
@@ -629,7 +630,6 @@ with tab_gestion:
             limpiar_cache_lecturas()
             st.rerun()
 
-    
     # --- Filtros ---
     def on_filter_change():
         st.session_state["page_correspondencia"] = 1

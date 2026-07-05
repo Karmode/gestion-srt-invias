@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import streamlit as st
 from app.core.ui_titulos import mostrar_titulo_decorado
 
+from app.core.cache_datos import limpiar_cache_lecturas
 from app.core.catalogos import TIPOS_CONTRATO
 from app.core.sesion import obtener_sesion
 from app.core.ui_laboral import (
@@ -103,6 +104,7 @@ with tab_perfil:
                 "numero_documento": nuevo_num_doc.strip(),
             })
             _feedback("success", "✅ Datos personales actualizados correctamente.")
+            limpiar_cache_lecturas()
             st.rerun()
         except ValueError as e:
             st.error(str(e))
@@ -127,6 +129,7 @@ with tab_laboral:
             )
             limpiar_estado_laboral("perfil_lab")
             _feedback("success", "✅ Información laboral guardada correctamente.")
+            limpiar_cache_lecturas()
             st.rerun()
         except ValueError as e:
             st.error(str(e))
@@ -223,6 +226,7 @@ with tab_contrato:
                     "objeto": _n_obj.strip(),
                 })
                 _feedback("success", "✅ Contrato agregado correctamente.")
+                limpiar_cache_lecturas()
                 st.rerun()
             except ValueError as e:
                 st.error(str(e))
@@ -325,6 +329,7 @@ with tab_contrato:
                         
                         _servicio.editar_contrato(sesion["id"], _c_num, datos_totales)
                         _feedback("success", f"✅ Contrato {_c_num} actualizado correctamente.")
+                        limpiar_cache_lecturas()
                         st.rerun()
                     except ValueError as e:
                         st.error(str(e))
@@ -348,6 +353,7 @@ with tab_password:
             exito, mensaje = auth_service.cambiar_password(sesion["id"], pwd_actual, pwd_nueva)
             if exito:
                 _feedback("success", f"✅ {mensaje}")
+                limpiar_cache_lecturas()
                 st.rerun()
             else:
                 st.error(f"❌ {mensaje}")

@@ -76,3 +76,7 @@ def limpiar_cache_lecturas() -> None:
     opciones_activas.clear()
     metricas_inicio.clear()
     datos_dashboard_admin.clear()
+
+    from app.repositories.opciones_repo import limpiar_cache_opciones
+
+    limpiar_cache_opciones()
