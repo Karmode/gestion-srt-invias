@@ -947,7 +947,7 @@ with tab_gestion:
             id_sel = df.iloc[idx]["_id"]
             if st.session_state.get("last_opened_id") != id_sel:
                 st.session_state["last_opened_id"] = id_sel
-                corr_sel = next((c for c in datos_corr if str(c["_id"]) == id_sel), None)
+                corr_sel = service.buscar_por_id(id_sel)
                 if corr_sel:
                     modal_gestion_correspondencia(corr_sel)
         else:

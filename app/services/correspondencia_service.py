@@ -78,7 +78,10 @@ class CorrespondenciaService:
                 ]
 
 
-        return self.repo.listar(query, skip, limit), self.repo.contar(query)
+        return (
+            self.repo.listar(query, skip, limit, projection={"trazabilidad": 0}),
+            self.repo.contar(query),
+        )
 
     def buscar_por_id(self, id_correspondencia: str) -> Optional[Dict]:
         return self.repo.buscar_por_id(id_correspondencia)

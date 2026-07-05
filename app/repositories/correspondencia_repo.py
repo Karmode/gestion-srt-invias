@@ -14,9 +14,14 @@ class CorrespondenciaRepositorio:
         normalizado = (numero_radicado or "").replace(" ", "").upper()
         return self.coleccion.find_one({"numero_radicado": normalizado})
 
-    def listar(self, query: dict = None, skip: int = 0, limit: int = 10):
+    def listar(self, query: dict = None, skip: int = 0, limit: int = 10, projection: dict = None):
         q = query or {}
-        return list(self.coleccion.find(q).sort("fecha_radicacion", -1).skip(max(0, skip)).limit(limit))
+        return list(
+            self.coleccion.find(q, projection)
+            .sort("fecha_radicacion", -1)
+            .skip(max(0, skip))
+            .limit(limit)
+        )
         
     def contar(self, query: dict = None):
         q = query or {}
