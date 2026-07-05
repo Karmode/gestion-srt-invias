@@ -230,7 +230,7 @@ def _render_opcion_6_gestion_corr(servicio, usuario_id, año_cert, mes_cert, nom
 
 def _render_opcion_7_herramientas():
     """Viñeta 7 — acceso a plataformas externas (ADRES, SECOP II, KLIC 2, AZ Digital, Her. PDF)."""
-    import base64
+    from app.core.recursos import imagen_b64
 
     mostrar_titulo_decorado("🌐 Otros certificados · Herramientas")
     st.caption("Haz clic en cualquier imagen para abrir la plataforma en una nueva pestaña.")
@@ -299,14 +299,8 @@ def _render_opcion_7_herramientas():
         },
     ]
 
-    def _img_b64(path: str) -> str:
-        if not os.path.exists(path):
-            return ""
-        with open(path, "rb") as f:
-            return base64.b64encode(f.read()).decode()
-
     def _card(plat: dict, delay_ms: int = 0) -> str:
-        b64 = _img_b64(plat["img"])
+        b64 = imagen_b64(plat["img"])
         img_tag = (
             f'<img src="data:image/png;base64,{b64}" alt="{plat["name"]}" '
             f'style="max-height:80px;max-width:100%;object-fit:contain;'

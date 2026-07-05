@@ -1,16 +1,16 @@
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional
-import holidays
 import re
 from bson import ObjectId
 
 from app.repositories.correspondencia_repo import CorrespondenciaRepositorio
+from app.core.festivos import FESTIVOS_CO
 
 
 class CorrespondenciaService:
     def __init__(self) -> None:
         self.repo = CorrespondenciaRepositorio()
-        self.festivos_co = holidays.CO()
+        self.festivos_co = FESTIVOS_CO
 
     def _usuario_object_id(self, usuario_id: Optional[str]):
         return ObjectId(usuario_id) if usuario_id else None
@@ -66,10 +66,21 @@ class CorrespondenciaService:
                 query["responsable_actual.usuario_id"] = self._usuario_object_id(filtros["responsable_id"])
 
             if "busqueda" in filtros and filtros["busqueda"]:
-                busqueda_escapada = re.escape(filtros["busqueda"])
-                patron = {"$regex": busqueda_escapada, "$options": "i"}
-                # El buscador hace coincidencia parcial (insensible a mayúsculas) sobre:
-                # número de radicado, número de oficio de la respuesta, peticionario y asunto.
+                texto = filtros["busqueda"].strip()
+
+                # 1) Intento rápido con índice de texto (busca por tokens)
+                query_text = dict(query)
+                query_text["$text"] = {"$search": texto}
+                total_text = self.repo.contar(query_text)
+                if total_text > 0:
+                    return (
+                        self.repo.listar(query_text, skip, limit, projection={"trazabilidad": 0}),
+                        total_text,
+                    )
+
+                # 2) Fallback: coincidencia parcial por subcadena (scan, pero
+                #    solo cuando el índice de texto no encontró nada)
+                patron = {"$regex": re.escape(texto), "$options": "i"}
                 query["$or"] = [
                     {"numero_radicado": patron},
                     {"respuesta.numero_oficio": patron},
@@ -77,8 +88,10 @@ class CorrespondenciaService:
                     {"asunto": patron},
                 ]
 
-
-        return self.repo.listar(query, skip, limit), self.repo.contar(query)
+        return (
+            self.repo.listar(query, skip, limit, projection={"trazabilidad": 0}),
+            self.repo.contar(query),
+        )
 
     def buscar_por_id(self, id_correspondencia: str) -> Optional[Dict]:
         return self.repo.buscar_por_id(id_correspondencia)
@@ -341,76 +354,75 @@ class CorrespondenciaService:
         """Obtiene el estado de correspondencia pendiente de todos los responsables activos."""
         from app.services.usuario_service import UsuarioService
         from app.core.zona_horaria import utc_a_bogota, ZONA_BOGOTA
-        
+
         usuario_service = UsuarioService()
-        
-        # 1. Obtener todos los usuarios activos
+
+        # 1. Usuarios activos
         usuarios = usuario_service.listar_usuarios()
         usuarios_activos = [u for u in usuarios if u.get("activo", True)]
-        
-        # 2. Obtener todas las correspondencias en estado activo
-        query_activos = {"estado_actual": {"$in": ["pendiente", "en_tramite", "en_revision"]}}
-        # Usamos listar con un límite alto para traer todos los documentos activos
-        correspondencias_activas = self.repo.listar(query_activos, limit=100000)
-        
-        # 3. Agrupar por responsable
-        from collections import defaultdict
-        corr_por_responsable = defaultdict(list)
-        for corr in correspondencias_activas:
-            resp_info = corr.get("responsable_actual")
-            if resp_info and "usuario_id" in resp_info:
-                id_resp = str(resp_info["usuario_id"])
-                corr_por_responsable[id_resp].append(corr)
-                
-        # 4. Determinar fecha actual en Bogotá
+
+        # 2. Solo los campos necesarios de las correspondencias activas
+        #    (proyección en servidor: NO viaja trazabilidad ni el documento completo)
+        pipeline = [
+            {"$match": {"estado_actual": {"$in": ["pendiente", "en_tramite", "en_revision"]}}},
+            {"$project": {
+                "_id": 0,
+                "responsable_id": "$responsable_actual.usuario_id",
+                "fecha_vencimiento": 1,
+            }},
+        ]
+        docs = list(self.repo.coleccion.aggregate(pipeline))
+
+        # 3. Fechas de referencia (UNA sola vez, fuera del bucle por usuario)
         hoy_colombia = datetime.now(ZONA_BOGOTA)
-        
+        ultimo_dia_mes = (hoy_colombia.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+        ultimos_dias_habiles = set()
+        dia_actual = ultimo_dia_mes.date()
+        while len(ultimos_dias_habiles) < 3:
+            if dia_actual.weekday() < 5 and dia_actual not in self.festivos_co:
+                ultimos_dias_habiles.add(dia_actual)
+            dia_actual -= timedelta(days=1)
+
+        # 4. Un solo paso sobre los docs proyectados: acumular por responsable
+        from collections import defaultdict
+        acumulado = defaultdict(lambda: {"pendientes": 0, "vencidas": 0, "fin_mes": 0})
+        for doc in docs:
+            resp_id = doc.get("responsable_id")
+            if not resp_id:
+                continue
+            stats = acumulado[str(resp_id)]
+            stats["pendientes"] += 1
+            fecha_venc = doc.get("fecha_vencimiento")
+            if fecha_venc:
+                fecha_venc_bogota = utc_a_bogota(fecha_venc)
+                if fecha_venc_bogota.date() < hoy_colombia.date():
+                    stats["vencidas"] += 1
+                if fecha_venc_bogota.date() in ultimos_dias_habiles:
+                    stats["fin_mes"] += 1
+
+        # 5. Armar resultado por usuario activo
         resultados = []
         for u in usuarios_activos:
             id_usuario = str(u["_id"])
             nombre_completo = u.get("nombre_completo") or u.get("usuario")
-            
-            corrs_usuario = corr_por_responsable.get(id_usuario, [])
-            
-            cantidad_pendientes = len(corrs_usuario)
-            cantidad_vencidas = 0
-            cantidad_vencer_fin_mes = 0
-            
-            # Obtener los últimos 3 días hábiles del mes actual
-            ultimo_dia_mes = (hoy_colombia.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
-            ultimos_dias_habiles = set()
-            dia_actual = ultimo_dia_mes.date()
-            while len(ultimos_dias_habiles) < 3:
-                if dia_actual.weekday() < 5 and dia_actual not in self.festivos_co:
-                    ultimos_dias_habiles.add(dia_actual)
-                dia_actual -= timedelta(days=1)
-            
-            for corr in corrs_usuario:
-                fecha_venc = corr.get("fecha_vencimiento")
-                if fecha_venc:
-                    fecha_venc_bogota = utc_a_bogota(fecha_venc)
-                    if fecha_venc_bogota.date() < hoy_colombia.date():
-                        cantidad_vencidas += 1
-                    if fecha_venc_bogota.date() in ultimos_dias_habiles:
-                        cantidad_vencer_fin_mes += 1
-                        
-            if cantidad_pendientes == 0:
+            stats = acumulado.get(id_usuario, {"pendientes": 0, "vencidas": 0, "fin_mes": 0})
+
+            if stats["pendientes"] == 0:
                 estado_pendiente = "gris"
-            elif cantidad_vencidas > 0:
+            elif stats["vencidas"] > 0:
                 estado_pendiente = "rojo"
             else:
                 estado_pendiente = "verde"
-                
+
             resultados.append({
                 "usuario_id": id_usuario,
                 "responsable": nombre_completo,
                 "estado_pendiente": estado_pendiente,
-                "cantidad_pendientes": cantidad_pendientes,
-                "cantidad_vencidas": cantidad_vencidas,
-                "cantidad_vencer_fin_mes": cantidad_vencer_fin_mes
+                "cantidad_pendientes": stats["pendientes"],
+                "cantidad_vencidas": stats["vencidas"],
+                "cantidad_vencer_fin_mes": stats["fin_mes"],
             })
-            
-        # Ordenar por nombre del responsable
+
         resultados.sort(key=lambda x: x["responsable"].lower())
         return resultados
 

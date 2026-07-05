@@ -47,7 +47,7 @@ class UsuarioRepositorio:
         )
 
     def listar(self):
-        return list(self.coleccion.find().sort("usuario", 1))
+        return list(self.coleccion.find({}, {"password_hash": 0}).sort("usuario", 1))
 
     def crear(self, datos: dict):
         datos["fecha_creacion"] = datetime.now(timezone.utc)

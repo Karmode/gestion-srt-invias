@@ -33,9 +33,14 @@ with col_btn:
         st.session_state.pop("show_excel_download", None)
         st.session_state.pop("excel_kawak_buffer", None)
         st.session_state.pop("excel_kawak_name", None)
+        st.session_state.pop("show_consolidado_download", None)
+        st.session_state.pop("consolidado_buffer", None)
+        st.session_state.pop("consolidado_name", None)
         st.session_state.pop("pdf_pqrd", None)
         st.session_state.pop("pdf_conglomerado", None)
         st.session_state.pop("pdf_total", None)
+        st.session_state.pop("pdf_cargue_cuentas", None)
+        st.session_state.pop("show_cargue_cuentas_download", None)
         st.session_state.pop("pdf_preview_data", None)
         st.session_state.pop("pdf_preview_title", None)
         st.rerun()
@@ -53,13 +58,32 @@ with col_c1:
             "estructuras y codificaciones solicitadas por la plataforma KAWAK para la carga "
             "de evidencias de gestión de correspondencia."
         )
+        # Selector de período para KAWAK
+        anio_actual = datetime.date.today().year
+        col_sel_y, col_sel_q = st.columns(2)
+        with col_sel_y:
+            anio_kawak = st.selectbox(
+                "Año",
+                options=[anio_actual - 1, anio_actual, anio_actual + 1],
+                index=1,
+                key="anio_kawak_sel"
+            )
+        with col_sel_q:
+            trim_kawak = st.selectbox(
+                "Trimestre",
+                options=[1, 2, 3, 4],
+                format_func=lambda x: f"T{x}",
+                index=(datetime.date.today().month - 1) // 3,
+                key="trim_kawak_sel"
+            )
+        
         st.write("") # Relleno visual
         
         if st.button("Generar Excel KAWAK", width="stretch", key="gen_excel", type="primary"):
             with st.spinner("Procesando datos y estructurando hoja Excel..."):
                 try:
                     excel_service = ExcelReportService()
-                    buffer, nombre = excel_service.generar_excel_kawak()
+                    buffer, nombre = excel_service.generar_excel_kawak(anio_kawak, trim_kawak)
                     st.session_state["excel_kawak_buffer"] = buffer
                     st.session_state["excel_kawak_name"] = nombre
                     st.session_state["show_excel_download"] = True
@@ -155,6 +179,102 @@ with col_c2:
                     width="stretch",
                     key="dl_total"
                 )
+
+# --- Fila 2: Reporte Consolidado y Cargue de Cuentas ---
+st.write("")
+col_r2_1, col_r2_2 = st.columns(2)
+
+with col_r2_1:
+    with st.container(border=True):
+        st.markdown("### 📊 Consolidado Correspondencia Anual (Excel)")
+        st.write(
+            "Genera el libro de Excel consolidado con la correspondencia total del año seleccionado. "
+            "Contiene las mismas columnas y el resumen por Clase, sin filtros restrictivos."
+        )
+        
+        # Selector de año para Consolidado Anual
+        anio_actual_c = datetime.date.today().year
+        anio_consolidado = st.selectbox(
+            "Seleccione el año del consolidado",
+            options=[anio_actual_c - 1, anio_actual_c, anio_actual_c + 1],
+            index=1,
+            key="anio_consolidado_sel"
+        )
+        
+        # Validación de contraseña para el reporte
+        password_reporte = st.text_input(
+            "Contraseña de seguridad",
+            type="password",
+            placeholder="Ingrese la contraseña de descarga",
+            key="passwd_consolidado"
+        )
+        
+        if st.button("Generar Consolidado Anual", width="stretch", key="gen_consolidado", type="primary"):
+            if password_reporte != "losmod@5":
+                st.error("Contraseña incorrecta. No tienes autorización para generar este reporte.")
+            else:
+                with st.spinner("Procesando correspondencia total del año..."):
+                    try:
+                        excel_service = ExcelReportService()
+                        buffer, nombre = excel_service.generar_excel_consolidado_anual(anio_consolidado)
+                        st.session_state["consolidado_buffer"] = buffer
+                        st.session_state["consolidado_name"] = nombre
+                        st.session_state["show_consolidado_download"] = True
+                        st.success("¡Consolidado Anual generado con éxito!")
+                    except Exception as e:
+                        st.error(f"Error generando Consolidado: {e}")
+                    
+        if st.session_state.get("show_consolidado_download", False):
+            st.write("")
+            st.download_button(
+                label="⬇️ Descargar Consolidado Anual (Excel)",
+                data=st.session_state.get("consolidado_buffer", b""),
+                file_name=st.session_state.get("consolidado_name", "Consolidado_Correspondencia.xlsx"),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                width="stretch",
+                key="dl_consolidado"
+            )
+
+with col_r2_2:
+    with st.container(border=True):
+        st.markdown("### 📊 Reporte Cargue de Cuentas (SECOP - GD - CORRESPONDENCIA)")
+        st.write(
+            "Genera un reporte consolidado en PDF con orientación horizontal que contiene la trazabilidad "
+            "mensual del cargue de cuentas para todos los usuarios con contrato activo."
+        )
+        
+        # Selector de año
+        anio_actual = datetime.datetime.now().year
+        anio_reporte = st.selectbox("Seleccione el año del reporte", options=[anio_actual - 1, anio_actual, anio_actual + 1], index=1, key="anio_reporte_cargue")
+        
+        if st.button("Generar Reporte Cargue de Cuentas", width="stretch", key="gen_cargue_cuentas", type="primary"):
+            with st.spinner("Generando reporte condicional..."):
+                try:
+                    pdf_service = PDFReportService()
+                    st.session_state["pdf_cargue_cuentas"] = pdf_service.generar_pdf_cargue_cuentas(anio_reporte)
+                    st.session_state["show_cargue_cuentas_download"] = True
+                    st.success("¡Reporte Cargue de Cuentas generado con éxito!")
+                except Exception as e:
+                    st.error(f"Error generando Reporte Cargue de Cuentas: {e}")
+                    
+        if st.session_state.get("show_cargue_cuentas_download", False):
+            st.write("")
+            col_cc_prev, col_cc_dl = st.columns([1, 1])
+            with col_cc_prev:
+                if st.button("🔍 Previsualizar Reporte", width="stretch", key="prev_cargue_cuentas"):
+                    st.session_state["pdf_preview_data"] = st.session_state.get("pdf_cargue_cuentas").getvalue() if hasattr(st.session_state.get("pdf_cargue_cuentas"), "getvalue") else st.session_state.get("pdf_cargue_cuentas", b"")
+                    st.session_state["pdf_preview_title"] = f"Reporte Cargue de Cuentas {anio_reporte}"
+                    st.rerun()
+            with col_cc_dl:
+                st.download_button(
+                    label="⬇️ Descargar Reporte PDF",
+                    data=st.session_state.get("pdf_cargue_cuentas", b""),
+                    file_name=f"Reporte_Cargue_Cuentas_{anio_reporte}_{datetime.datetime.now().strftime('%Y-%m-%d')}.pdf",
+                    mime="application/pdf",
+                    width="stretch",
+                    key="dl_cargue_cuentas"
+                )
+
 
 # --- Visualizador de PDF Incrustado ---
 if st.session_state.get("pdf_preview_data") is not None:

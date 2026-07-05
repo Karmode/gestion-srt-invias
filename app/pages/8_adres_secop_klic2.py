@@ -4,12 +4,12 @@ Acceso rápido a las plataformas externas utilizadas en la gestión de
 contratos de la SRTI. Cada tarjeta abre la URL configurada en el .env.
 """
 
-import base64
 import os
 
 import streamlit as st
 
 from app.config import configuracion
+from app.core.recursos import imagen_b64
 from app.core.ui_titulos import mostrar_titulo_decorado
 
 st.set_page_config(
@@ -138,15 +138,6 @@ st.markdown(
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _img_b64(rel_path: str) -> str:
-    """Convierte una imagen del proyecto en base64 para embeber en HTML."""
-    abs_path = os.path.join("app", "assets", rel_path)
-    if not os.path.exists(abs_path):
-        return ""
-    with open(abs_path, "rb") as f:
-        return base64.b64encode(f.read()).decode()
-
-
 def _render_card(
     col,
     badge: str,
@@ -157,7 +148,7 @@ def _render_card(
     delay_ms: int = 0,
 ) -> None:
     """Renderiza una tarjeta de plataforma en la columna dada."""
-    img_b64 = _img_b64(img_file)
+    img_b64 = imagen_b64(os.path.join("app", "assets", img_file))
     img_tag = (
         f'<img src="data:image/png;base64,{img_b64}" alt="{name}" />'
         if img_b64

@@ -62,6 +62,46 @@ ESQUEMA_USUARIOS = {
                     "fecha_recurso_presupuestal": {"bsonType": ["date", "null"]},
                     "fecha_inicio": {"bsonType": ["date", "null"]},
                     "fecha_fin": {"bsonType": ["date", "null"]},
+                    "tiene_inventario": {"bsonType": ["bool", "null"]},
+                    "desc_inventario": {"bsonType": ["string", "null"]},
+                    "valor_total_ejecutado_contrato": {"bsonType": ["int", "long", "double", "null"]},
+                    "saldo_presp_lib_contrato": {"bsonType": ["int", "long", "double", "null"]},
+                    "valor_total_pagado": {"bsonType": ["int", "long", "double", "null"]},
+                    "prorrogra_contrato": {
+                        "bsonType": ["object", "null"],
+                        "properties": {
+                            "tiene_prorroga": {"bsonType": ["bool", "null"]},
+                            "fecha_prorrogra": {"bsonType": ["date", "null"]},
+                            "radicado_prorrogra": {"bsonType": ["string", "null"]},
+                        },
+                    },
+                    "pagos": {
+                        "bsonType": ["array", "null"],
+                        "maxItems": 20,
+                        "items": {
+                            "bsonType": "object",
+                            "required": [
+                                "numero_pago",
+                                "fecha_pago",
+                                "valor_bruto_pago",
+                                "valor_bruto_total",
+                                "deducciones_pago",
+                                "deducciones_pago_total",
+                                "valor_neto_pago",
+                                "valor_neto_pago_total",
+                            ],
+                            "properties": {
+                                "numero_pago": {"bsonType": "string"},
+                                "fecha_pago": {"bsonType": "date"},
+                                "valor_bruto_pago": {"bsonType": ["int", "long", "double"]},
+                                "valor_bruto_total": {"bsonType": ["int", "long", "double"]},
+                                "deducciones_pago": {"bsonType": ["int", "long", "double"]},
+                                "deducciones_pago_total": {"bsonType": ["int", "long", "double"]},
+                                "valor_neto_pago": {"bsonType": ["int", "long", "double"]},
+                                "valor_neto_pago_total": {"bsonType": ["int", "long", "double"]},
+                            },
+                        },
+                    },
                 },
             },
         },
@@ -73,9 +113,22 @@ ESQUEMA_USUARIOS = {
                     "bsonType": ["bool", "null"],
                     "description": "Si es True, AFP y CCF no aplican y no se validan para descarga de formatos",
                 },
+                "grupo_trabajo": {
+                    "bsonType": ["string", "null"],
+                    "enum": ["despacho", "normativa_tecnica", "innovacion_tecnica", "permisos", "", None],
+                    "description": "Grupo de trabajo al que pertenece",
+                },
                 "ibc_prestaciones_sociales": {
                     "bsonType": ["int", "long", "double", "null"],
                     "description": "Ingreso Base de Cotización - Prestaciones sociales (valor numérico)",
+                },
+                "paga_iva": {
+                    "bsonType": ["bool", "null"],
+                    "description": "Indica si paga IVA",
+                },
+                "valor_iva": {
+                    "bsonType": ["int", "long", "double", "null"],
+                    "description": "Valor del IVA",
                 },
                 "seguridad_social": {
                     "bsonType": ["object", "null"],
@@ -225,6 +278,7 @@ ESQUEMA_CERTIFICACIONES = {
         "fecha_corte": {"bsonType": ["date", "null"]},
         "snapshot_al_dia": {"bsonType": ["bool", "null"]},
         "observaciones": {"bsonType": ["string", "null"]},
+        "observacion": {"bsonType": ["string", "null"]},
         "aprobado_por": {
             "bsonType": "object",
             "required": ["usuario_id", "nombre", "fecha"],

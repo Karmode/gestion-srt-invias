@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import streamlit as st
 from app.core.ui_titulos import mostrar_titulo_decorado
 
+from app.core.cache_datos import limpiar_cache_lecturas
 from app.core.catalogos import TIPOS_CONTRATO
 from app.core.sesion import obtener_sesion
 from app.core.ui_laboral import (
@@ -74,6 +75,8 @@ with tab_perfil:
                 index=tipo_doc_idx,
             )
             nuevo_num_doc = st.text_input("Número de documento", value=sesion.get("numero_documento") or "")
+            if nuevo_num_doc and not nuevo_num_doc.strip().isdigit():
+                st.error("El número de documento debe contener únicamente números.")
         nuevo_lugar_exp = st.text_input(
             "Lugar de expedición del documento",
             value=_usuario_doc.get("lugar_expedicion_documento") or "",
@@ -103,6 +106,7 @@ with tab_perfil:
                 "numero_documento": nuevo_num_doc.strip(),
             })
             _feedback("success", "✅ Datos personales actualizados correctamente.")
+            limpiar_cache_lecturas()
             st.rerun()
         except ValueError as e:
             st.error(str(e))
@@ -127,6 +131,7 @@ with tab_laboral:
             )
             limpiar_estado_laboral("perfil_lab")
             _feedback("success", "✅ Información laboral guardada correctamente.")
+            limpiar_cache_lecturas()
             st.rerun()
         except ValueError as e:
             st.error(str(e))
@@ -144,6 +149,39 @@ with tab_firma:
 # ── TAB: CONTRATOS ────────────────────────────────────────────────────────────
 
 with tab_contrato:
+    # Reducir el tamaño de las fuentes y elementos en el panel de contratos por CSS
+    st.markdown(
+        """
+        <style>
+        /* Reducir tamaño de las etiquetas de los inputs */
+        div[data-testid="stWidgetLabel"] p {
+            font-size: 12px !important;
+            font-weight: 500 !important;
+        }
+        /* Reducir tamaño de los inputs y dropdowns */
+        div[data-testid="stWidget"] input, div[data-testid="stWidget"] select, div[role="combobox"] {
+            font-size: 13px !important;
+            padding: 2px 4px !important;
+        }
+        /* Reducir tamaño de los textos de st.write y st.caption dentro del expander */
+        div[data-testid="stExpander"] div.element-container p {
+            font-size: 13px !important;
+        }
+        /* Reducir tamaño de los botones */
+        div[data-testid="stWidget"] button {
+            font-size: 13px !important;
+            padding: 4px 8px !important;
+        }
+        /* Ajustar espaciado vertical general del expander */
+        div[data-testid="stExpander"] {
+            margin-bottom: 5px !important;
+            padding: 4px !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+    
     _contratos = sorted(
         (_usuario_doc.get("contratos") or []),
         key=lambda c: c.get("fecha_inicio") or datetime(1970, 1, 1, tzinfo=timezone.utc),
@@ -190,6 +228,7 @@ with tab_contrato:
                     "objeto": _n_obj.strip(),
                 })
                 _feedback("success", "✅ Contrato agregado correctamente.")
+                limpiar_cache_lecturas()
                 st.rerun()
             except ValueError as e:
                 st.error(str(e))
@@ -226,66 +265,76 @@ with tab_contrato:
                 if _c.get("objeto"):
                     st.write(f"**Objeto:** {_c.get('objeto')}")
 
-                if not _c_fin:
-                    st.write("---")
-                    _fi_ed = _c_fi.date() if _c_fi and hasattr(_c_fi, "date") else _c_fi
-                    _ff_ed = _c_ff.date() if _c_ff and hasattr(_c_ff, "date") else _c_ff
-                    with st.form(f"form_editar_contrato_{_c_num}"):
-                        _ec1, _ec2 = st.columns(2)
-                        with _ec1:
-                            _e_num = st.text_input("Número", value=_c_num, key=f"e_num_{_c_num}")
-                            _e_tipo_idx = list(TIPOS_CONTRATO.keys()).index(_c.get("tipo") or "") if (_c.get("tipo") or "") in TIPOS_CONTRATO else 0
-                            _e_tipo = st.selectbox(
-                                "Tipo",
-                                options=list(TIPOS_CONTRATO.keys()),
-                                format_func=lambda k: TIPOS_CONTRATO[k],
-                                index=_e_tipo_idx,
-                                key=f"e_tipo_{_c_num}",
-                            )
-                        with _ec2:
-                            _e_valor = st.number_input(
-                                "Valor (COP)", min_value=0, value=int(_c.get("valor") or 0),
-                                step=100000, format="%d", key=f"e_val_{_c_num}",
-                            )
-                            _e_vm = st.number_input(
-                                "Valor mensual (COP)", min_value=0, value=int(_c.get("valor_mensual") or 0),
-                                step=100000, format="%d", key=f"e_vm_{_c_num}",
-                            )
-                        _e_rp = st.text_input(
-                            "RP / compromiso presupuestal", value=_c.get("rp_compromiso_presupuestal") or "",
-                            key=f"e_rp_{_c_num}", placeholder="Código alfanumérico",
+                st.write("---")
+                _fi_ed = _c_fi.date() if _c_fi and hasattr(_c_fi, "date") else _c_fi
+                _ff_ed = _c_ff.date() if _c_ff and hasattr(_c_ff, "date") else _c_ff
+                
+                # Usamos st.container en vez de st.form porque agregamos pagos dinámicamente
+                with st.container():
+                    _ec1, _ec2 = st.columns(2)
+                    with _ec1:
+                        _e_num = st.text_input("Número", value=_c_num, key=f"e_num_{_c_num}")
+                        _e_tipo_idx = list(TIPOS_CONTRATO.keys()).index(_c.get("tipo") or "") if (_c.get("tipo") or "") in TIPOS_CONTRATO else 0
+                        _e_tipo = st.selectbox(
+                            "Tipo",
+                            options=list(TIPOS_CONTRATO.keys()),
+                            format_func=lambda k: TIPOS_CONTRATO[k],
+                            index=_e_tipo_idx,
+                            key=f"e_tipo_{_c_num}",
                         )
-                        _ec3, _ec4, _ec5 = st.columns(3)
-                        with _ec3:
-                            _e_frp_ed = _c.get("fecha_recurso_presupuestal")
-                            if _e_frp_ed and hasattr(_e_frp_ed, "date"):
-                                _e_frp_ed = _e_frp_ed.date()
-                            _e_frp = st.date_input("Fecha recurso presupuestal (opcional)", value=_e_frp_ed, format="DD/MM/YYYY", key=f"e_frp_{_c_num}")
-                        with _ec4:
-                            _e_fi = st.date_input("Inicio", value=_fi_ed, format="DD/MM/YYYY", key=f"e_fi_{_c_num}")
-                        with _ec5:
-                            _e_ff = st.date_input("Fin (opcional)", value=_ff_ed, format="DD/MM/YYYY", key=f"e_ff_{_c_num}")
-                        _e_obj = st.text_area("Objeto", value=_c.get("objeto") or "", key=f"e_obj_{_c_num}")
-                        st.caption("Los cambios se guardan solo al pulsar el botón.")
-                        _e_env = st.form_submit_button("💾 Guardar cambios", use_container_width=True, type="primary")
+                    with _ec2:
+                        _e_valor = st.number_input(
+                            "Valor (COP)", min_value=0, value=int(_c.get("valor") or 0),
+                            step=100000, format="%d", key=f"e_val_{_c_num}",
+                        )
+                        _e_vm = st.number_input(
+                            "Valor mensual (COP)", min_value=0, value=int(_c.get("valor_mensual") or 0),
+                            step=100000, format="%d", key=f"e_vm_{_c_num}",
+                        )
+                    _e_rp = st.text_input(
+                        "RP / compromiso presupuestal", value=_c.get("rp_compromiso_presupuestal") or "",
+                        key=f"e_rp_{_c_num}", placeholder="Código alfanumérico",
+                    )
+                    _ec3, _ec4, _ec5 = st.columns(3)
+                    with _ec3:
+                        _e_frp_ed = _c.get("fecha_recurso_presupuestal")
+                        if _e_frp_ed and hasattr(_e_frp_ed, "date"):
+                            _e_frp_ed = _e_frp_ed.date()
+                        _e_frp = st.date_input("Fecha recurso presupuestal (opcional)", value=_e_frp_ed, format="DD/MM/YYYY", key=f"e_frp_{_c_num}")
+                    with _ec4:
+                        _e_fi = st.date_input("Inicio", value=_fi_ed, format="DD/MM/YYYY", key=f"e_fi_{_c_num}")
+                    with _ec5:
+                        _e_ff = st.date_input("Fin (opcional)", value=_ff_ed, format="DD/MM/YYYY", key=f"e_ff_{_c_num}")
+                    _e_obj = st.text_area("Objeto", value=_c.get("objeto") or "", key=f"e_obj_{_c_num}")
+                    
+                    # RENDERIZAMOS EL BALANCE GENERAL Y PLAN DE PAGOS
+                    from app.core.ui_contratos import render_balance_y_pagos
+                    _balance_pagos_datos = render_balance_y_pagos(f"perfil_c_{_c_num}", _c, deshabilitado=_c_fin)
+                    
+                    _e_env = st.button("💾 Guardar cambios", key=f"btn_save_c_{_c_num}", use_container_width=True, type="primary", disabled=_c_fin)
 
-                    if _e_env:
-                        try:
-                            _servicio.editar_contrato(sesion["id"], _c_num, {
-                                "numero": _e_num.strip(),
-                                "tipo": _e_tipo,
-                                "valor": _e_valor if _e_valor > 0 else None,
-                                "rp_compromiso_presupuestal": _e_rp.strip(),
-                                "fecha_inicio": _e_fi,
-                                "fecha_fin": _e_ff,
-                                "fecha_recurso_presupuestal": _e_frp,
-                                "valor_mensual": _e_vm if _e_vm > 0 else None,
-                                "objeto": _e_obj.strip(),
-                            })
-                            _feedback("success", f"✅ Contrato {_c_num} actualizado correctamente.")
-                            st.rerun()
-                        except ValueError as e:
-                            st.error(str(e))
+                if _e_env:
+                    try:
+                        # Combinar campos básicos con los nuevos campos de balance/pagos
+                        datos_totales = {
+                            "numero": _e_num.strip(),
+                            "tipo": _e_tipo,
+                            "valor": _e_valor if _e_valor > 0 else None,
+                            "rp_compromiso_presupuestal": _e_rp.strip(),
+                            "fecha_inicio": _e_fi,
+                            "fecha_fin": _e_ff,
+                            "fecha_recurso_presupuestal": _e_frp,
+                            "valor_mensual": _e_vm if _e_vm > 0 else None,
+                            "objeto": _e_obj.strip(),
+                        }
+                        datos_totales.update(_balance_pagos_datos)
+                        
+                        _servicio.editar_contrato(sesion["id"], _c_num, datos_totales)
+                        _feedback("success", f"✅ Contrato {_c_num} actualizado correctamente.")
+                        limpiar_cache_lecturas()
+                        st.rerun()
+                    except ValueError as e:
+                        st.error(str(e))
 
 # ── TAB: CONTRASEÑA ────────────────────────────────────────────────────────────
 
@@ -306,6 +355,7 @@ with tab_password:
             exito, mensaje = auth_service.cambiar_password(sesion["id"], pwd_actual, pwd_nueva)
             if exito:
                 _feedback("success", f"✅ {mensaje}")
+                limpiar_cache_lecturas()
                 st.rerun()
             else:
                 st.error(f"❌ {mensaje}")
