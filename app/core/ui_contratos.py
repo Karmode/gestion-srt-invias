@@ -473,28 +473,48 @@ def render_balance_y_pagos(prefijo: str, c: dict, deshabilitado: bool = False):
     
     pagos_ids_key = f"{prefijo}_pagos_ids"
     pagos_seq_key = f"{prefijo}_pagos_seq"
-    
-    # Inicialización del estado de los pagos si no existe
+    pagos_datos_key = f"{prefijo}_pagos_datos"
+
+    # Inicialización del estado de los pagos si no existe. Los valores viven en
+    # un espejo programático (pagos_datos_key) además de las claves de widget:
+    # Streamlit borra las claves de widget cuando la sección no se renderiza
+    # (navegar a otra página, o un st.rerun() que interrumpe el run antes de
+    # dibujar la fila); el espejo sobrevive y permite re-sembrarlas. Sin él,
+    # las filas quedaban en cero y el siguiente guardado sobreescribía los
+    # pagos en la BD.
     if pagos_ids_key not in st.session_state:
         st.session_state[pagos_seq_key] = 0
         pagos_ids = []
+        pagos_datos = {}
         for p in pagos_lista:
             pid = st.session_state[pagos_seq_key]
             st.session_state[pagos_seq_key] += 1
             pagos_ids.append(pid)
-            
+
             f_p = p.get("fecha_pago")
             if f_p and hasattr(f_p, "date"):
                 f_p = f_p.date()
-                
-            st.session_state[f"{prefijo}_pago_num_{pid}"] = p.get("numero_pago") or ""
-            st.session_state[f"{prefijo}_pago_fec_{pid}"] = f_p
-            st.session_state[f"{prefijo}_pago_bruto_{pid}"] = int(p.get("valor_bruto_pago") or 0)
-            st.session_state[f"{prefijo}_pago_deduc_{pid}"] = int(p.get("deducciones_pago") or 0)
-            st.session_state[f"{prefijo}_pago_neto_{pid}"] = int(p.get("valor_neto_pago") or 0)
+
+            pagos_datos[pid] = {
+                "num": p.get("numero_pago") or "",
+                "fec": f_p,
+                "bruto": int(p.get("valor_bruto_pago") or 0),
+                "deduc": int(p.get("deducciones_pago") or 0),
+                "neto": int(p.get("valor_neto_pago") or 0),
+            }
         st.session_state[pagos_ids_key] = pagos_ids
-        
+        st.session_state[pagos_datos_key] = pagos_datos
+
     pids = st.session_state[pagos_ids_key]
+    pagos_datos = st.session_state[pagos_datos_key]
+
+    # Re-sembrar desde el espejo toda clave de widget que Streamlit haya limpiado.
+    for pid in pids:
+        fila = pagos_datos.get(pid) or {"num": "", "fec": date.today(), "bruto": 0, "deduc": 0, "neto": 0}
+        for campo, sufijo in (("num", "num"), ("fec", "fec"), ("bruto", "bruto"), ("deduc", "deduc"), ("neto", "neto")):
+            clave = f"{prefijo}_pago_{sufijo}_{pid}"
+            if clave not in st.session_state:
+                st.session_state[clave] = fila[campo]
     
     # Botón para añadir pago (límite 20)
     col_btn_add, _ = st.columns([1, 3])
@@ -504,13 +524,15 @@ def render_balance_y_pagos(prefijo: str, c: dict, deshabilitado: bool = False):
                 new_id = st.session_state[pagos_seq_key]
                 st.session_state[pagos_seq_key] += 1
                 
-                # Valores por defecto para el nuevo pago
-                st.session_state[f"{prefijo}_pago_num_{new_id}"] = f"Pago No. {len(pids) + 1}"
-                st.session_state[f"{prefijo}_pago_fec_{new_id}"] = date.today()
-                st.session_state[f"{prefijo}_pago_bruto_{new_id}"] = 0
-                st.session_state[f"{prefijo}_pago_deduc_{new_id}"] = 0
-                st.session_state[f"{prefijo}_pago_neto_{new_id}"] = 0
-                
+                # Valores por defecto para el nuevo pago (vía espejo; las
+                # claves de widget se siembran arriba en el próximo render)
+                pagos_datos[new_id] = {
+                    "num": f"Pago No. {len(pids) + 1}",
+                    "fec": date.today(),
+                    "bruto": 0,
+                    "deduc": 0,
+                    "neto": 0,
+                }
                 st.session_state[pagos_ids_key].append(new_id)
                 st.rerun()
         else:
@@ -540,10 +562,14 @@ def render_balance_y_pagos(prefijo: str, c: dict, deshabilitado: bool = False):
             st.write("")  # Espaciado para alinear con el botón
             if st.button("🗑️ Eliminar pago", key=f"{prefijo}_pago_del_{pid}", type="secondary", use_container_width=True, disabled=deshabilitado):
                 st.session_state[pagos_ids_key].remove(pid)
+                pagos_datos.pop(pid, None)
                 st.rerun()
                 
         st.markdown("---")
-        
+
+        # Actualizar el espejo con lo tecleado en este render.
+        pagos_datos[pid] = {"num": num_pago, "fec": fecha_pago, "bruto": val_bruto, "deduc": deduc, "neto": val_neto}
+
         # Guardaremos provisionalmente los acumulados como None o 0 por pago, pues los ingresará globalmente
         pagos_retorno.append({
             "numero_pago": num_pago,

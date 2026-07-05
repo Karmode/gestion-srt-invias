@@ -456,27 +456,47 @@ def _inputs_dependientes(prefijo, deps, mapas):
 
     ids_key = f"{prefijo}_dep_ids"
     seq_key = f"{prefijo}_dep_seq"
+    datos_key = f"{prefijo}_dep_datos"
     tdoc_keys = list(TIPOS_DOC_DEPENDIENTE.keys())
     tipo_mapa = mapas["tipo_dependiente"]
     tipo_keys = list(tipo_mapa.keys())
 
-    # Inicialización: un ID estable por dependiente existente, sembrando sus valores.
+    # Inicialización: un ID estable por dependiente existente. Los valores se
+    # guardan en un espejo programático (datos_key) además de las claves de
+    # widget: Streamlit borra las claves de widget cuando la sección no se
+    # renderiza (navegar a otra página, o un st.rerun() que interrumpe el run
+    # antes de dibujar la fila); el espejo sobrevive y permite re-sembrarlas.
+    # Sin él, las filas quedaban vacías y el siguiente guardado borraba los
+    # dependientes en la BD.
     if ids_key not in st.session_state:
         st.session_state[seq_key] = 0
         ids = []
+        datos = {}
         for dep in deps:
             rid = st.session_state[seq_key]
             st.session_state[seq_key] += 1
             ids.append(rid)
             tdoc = dep.get("tipo_documento") or ""
             tipo = dep.get("tipo") or ""
-            st.session_state[f"{prefijo}_dep_nombre_{rid}"] = dep.get("nombre") or ""
-            st.session_state[f"{prefijo}_dep_ndoc_{rid}"] = dep.get("numero_documento") or ""
-            st.session_state[f"{prefijo}_dep_tdoc_{rid}"] = tdoc if tdoc in tdoc_keys else ""
-            st.session_state[f"{prefijo}_dep_tipo_{rid}"] = tipo if tipo in tipo_keys else ""
+            datos[rid] = {
+                "nombre": dep.get("nombre") or "",
+                "ndoc": dep.get("numero_documento") or "",
+                "tdoc": tdoc if tdoc in tdoc_keys else "",
+                "tipo": tipo if tipo in tipo_keys else "",
+            }
         st.session_state[ids_key] = ids
+        st.session_state[datos_key] = datos
 
     ids = st.session_state[ids_key]
+    datos = st.session_state[datos_key]
+
+    # Re-sembrar desde el espejo toda clave de widget que Streamlit haya limpiado.
+    for rid in ids:
+        fila = datos.get(rid) or {"nombre": "", "ndoc": "", "tdoc": "", "tipo": ""}
+        _preseed(f"{prefijo}_dep_nombre_{rid}", fila["nombre"])
+        _preseed(f"{prefijo}_dep_ndoc_{rid}", fila["ndoc"])
+        _preseed(f"{prefijo}_dep_tdoc_{rid}", fila["tdoc"])
+        _preseed(f"{prefijo}_dep_tipo_{rid}", fila["tipo"])
     if not ids:
         st.caption("Sin dependientes. Usa “➕ Agregar dependiente” si necesitas registrar alguno.")
 
@@ -488,6 +508,7 @@ def _inputs_dependientes(prefijo, deps, mapas):
         with bdel:
             if st.button("🗑️", key=f"{prefijo}_dep_del_{rid}", help="Eliminar este dependiente"):
                 st.session_state[ids_key].remove(rid)
+                datos.pop(rid, None)
                 st.rerun()
         cd1, cd2 = st.columns(2)
         with cd1:
@@ -525,6 +546,8 @@ def _inputs_dependientes(prefijo, deps, mapas):
                 format_func=lambda k: tipo_mapa[k], key=f"{prefijo}_dep_tipo_{rid}",
                 label_visibility="collapsed"
             )
+        # Actualizar el espejo con lo tecleado en este render.
+        datos[rid] = {"nombre": nombre, "ndoc": ndoc, "tdoc": tdoc, "tipo": tipo}
         dependientes.append({
             "nombre": nombre, "tipo_documento": tdoc,
             "numero_documento": ndoc, "tipo": tipo,
@@ -533,6 +556,7 @@ def _inputs_dependientes(prefijo, deps, mapas):
     if st.button("➕ Agregar dependiente", key=f"{prefijo}_dep_add"):
         nid = st.session_state[seq_key]
         st.session_state[seq_key] += 1
+        datos[nid] = {"nombre": "", "ndoc": "", "tdoc": "", "tipo": ""}
         st.session_state[ids_key].append(nid)
         st.rerun()
 
