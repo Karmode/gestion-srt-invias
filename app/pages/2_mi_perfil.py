@@ -75,6 +75,8 @@ with tab_perfil:
                 index=tipo_doc_idx,
             )
             nuevo_num_doc = st.text_input("Número de documento", value=sesion.get("numero_documento") or "")
+            if nuevo_num_doc and not nuevo_num_doc.strip().isdigit():
+                st.error("El número de documento debe contener únicamente números.")
         nuevo_lugar_exp = st.text_input(
             "Lugar de expedición del documento",
             value=_usuario_doc.get("lugar_expedicion_documento") or "",

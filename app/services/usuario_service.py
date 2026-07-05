@@ -47,10 +47,10 @@ class UsuarioService:
 
     @staticmethod
     def _normalizar_numero_documento(numero: str) -> str:
-        numero = numero.strip().upper()
-        if not re.fullmatch(r"[A-Z0-9]+", numero):
+        numero = numero.strip()
+        if not re.fullmatch(r"[0-9]+", numero):
             raise ValueError(
-                "El número de documento solo puede contener letras y números, sin espacios, puntos ni símbolos."
+                "El número de documento solo puede contener números, sin letras, espacios, puntos ni símbolos."
             )
         return numero
 
@@ -105,10 +105,15 @@ class UsuarioService:
             nombre = (dep.get("nombre") or "").strip()
             if not nombre:
                 continue
+            ndoc = (dep.get("numero_documento") or "").strip()
+            if ndoc and not re.fullmatch(r"[0-9]+", ndoc):
+                raise ValueError(
+                    "El número de documento del dependiente solo puede contener números, sin letras, espacios, puntos ni símbolos."
+                )
             dependientes.append({
                 "nombre": nombre,
                 "tipo_documento": (dep.get("tipo_documento") or "").strip().upper() or None,
-                "numero_documento": (dep.get("numero_documento") or "").strip() or None,
+                "numero_documento": ndoc or None,
                 "tipo": (dep.get("tipo") or "").strip() or None,
             })
 

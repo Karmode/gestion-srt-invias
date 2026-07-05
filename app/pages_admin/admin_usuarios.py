@@ -111,8 +111,10 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
             numero_documento_editado = st.text_input(
                 "Número de documento",
                 value=uo.get("numero_documento", ""),
-                placeholder="Solo letras y números",
+                placeholder="Solo números",
             )
+            if numero_documento_editado and not numero_documento_editado.strip().isdigit():
+                st.error("El número de documento debe contener únicamente números.")
 
         lugar_expedicion_editado = st.text_input(
             "Lugar de expedición del documento",
@@ -520,9 +522,11 @@ def render(sesion=None):
             with col_ndoc:
                 nuevo_num_doc = st.text_input(
                     "Número de documento (opcional)",
-                    placeholder="Solo letras y números",
+                    placeholder="Solo números",
                     key="crear_num_doc",
                 )
+                if nuevo_num_doc and not nuevo_num_doc.strip().isdigit():
+                    st.error("El número de documento debe contener únicamente números.")
             nuevo_lugar_exp = st.text_input(
                 "Lugar de expedición del documento (opcional)",
                 placeholder="Ciudad de expedición de la cédula",

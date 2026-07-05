@@ -498,6 +498,8 @@ def _inputs_dependientes(prefijo, deps, mapas):
             )
         with cd2:
             ndoc = st.text_input("Número de documento", key=f"{prefijo}_dep_ndoc_{rid}")
+            if ndoc and not ndoc.strip().isdigit():
+                st.error("El número de documento debe contener únicamente números.")
             st.markdown(
                 """
                 <div class="srti-tooltip-container">
