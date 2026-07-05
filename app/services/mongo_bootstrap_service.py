@@ -78,6 +78,18 @@ class MongoBootstrapService:
         self.db["correspondencia"].create_index(
             "responsable_actual.usuario_id", name="idx_correspondencia_responsable"
         )
+        self.db["correspondencia"].create_index(
+            [("fecha_radicacion", -1)],
+            name="idx_correspondencia_fecha_radicacion",
+        )
+        self.db["correspondencia"].create_index(
+            [
+                ("responsable_actual.usuario_id", 1),
+                ("estado_actual", 1),
+                ("fecha_vencimiento", 1),
+            ],
+            name="idx_correspondencia_resp_estado_venc",
+        )
         self.db["certificaciones"].create_index(
             [("usuario_id", 1), ("año", -1), ("mes", -1)],
             name="idx_cert_usuario_periodo",
