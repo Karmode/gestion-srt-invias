@@ -1548,9 +1548,8 @@ def pantalla_dashboard() -> None:
     es_admin = any(rol in {"admin", "administrador"} for rol in roles)
     
     # Obtener métricas reales (siempre personales según lo solicitado)
-    servicio_corr = CorrespondenciaService()
-    id_filtro = sesion.get("id")
-    metricas = servicio_corr.obtener_metricas_dashboard(id_usuario=id_filtro)
+    from app.core.cache_datos import metricas_inicio
+    metricas = metricas_inicio(sesion.get("id"))
 
     # 2. Título "Inicio" decorado
     mostrar_titulo_decorado("Inicio")

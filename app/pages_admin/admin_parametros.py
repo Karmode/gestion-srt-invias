@@ -14,6 +14,7 @@ import streamlit as st
 
 from app.core.sesion import obtener_sesion
 from app.core.ui_titulos import mostrar_titulo_decorado
+from app.core.cache_datos import limpiar_cache_lecturas
 from app.services.opciones_service import OpcionesService
 from app.services.parametros_service import ParametrosService, PARAMETROS
 
@@ -49,6 +50,7 @@ def _dialog_confirmar(servicio: ParametrosService, sesion: dict) -> None:
                 st.session_state["_param_msg"] = (
                     f"'{meta['etiqueta']}' actualizado a **{nuevo}**."
                 )
+                limpiar_cache_lecturas()
                 st.rerun()
             except ValueError as e:
                 st.error(str(e))
@@ -175,6 +177,7 @@ def render(sesion=None):
         )
         if st.button("Limpiar caché de catálogos", key="btn_limpiar_cache_opciones"):
             OpcionesService().limpiar_cache()
+            limpiar_cache_lecturas()
             st.success("Caché de catálogos limpiada. Los cambios en la base de datos ya se reflejarán.")
 
     with st.container(border=True):

@@ -7,6 +7,7 @@ from app.core.ui_titulos import mostrar_titulo_decorado
 from app.core.autorizacion import validar_permiso, ValidacionAutorizacion
 from app.core.catalogos import TIPOS_CONTRATO
 from app.core.sesion import obtener_sesion
+from app.core.cache_datos import limpiar_cache_lecturas
 from app.core.ui_laboral import (
     boton_guardar_laboral,
     construir_mapas_catalogos,
@@ -62,6 +63,7 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                         )
                         st.session_state["mensaje_exito_usuarios"] = "Usuario desactivado correctamente."
                         st.session_state["last_opened_usuario_id"] = None
+                        limpiar_cache_lecturas()
                         st.rerun()
                     except ValueError as e:
                         st.error(str(e))
@@ -75,6 +77,7 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                         )
                         st.session_state["mensaje_exito_usuarios"] = "Usuario activado correctamente."
                         st.session_state["last_opened_usuario_id"] = None
+                        limpiar_cache_lecturas()
                         st.rerun()
                     except ValueError as e:
                         st.error(str(e))
@@ -146,6 +149,7 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
             )
             st.session_state["mensaje_exito_usuarios"] = "Usuario actualizado correctamente."
             st.session_state["last_opened_usuario_id"] = None
+            limpiar_cache_lecturas()
             st.rerun()
         except ValueError as e:
             st.error(str(e))
@@ -168,6 +172,7 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
             limpiar_estado_laboral(_pref)
             st.session_state["mensaje_exito_usuarios"] = "Información laboral actualizada."
             st.session_state["last_opened_usuario_id"] = None
+            limpiar_cache_lecturas()
             st.rerun()
         except ValueError as e:
             st.error(str(e))
@@ -552,6 +557,7 @@ def render(sesion=None):
                     servicio.crear_usuario(datos_nuevo, permisos_usuario=permisos)
                     limpiar_estado_laboral("crear")
                     st.session_state["mensaje_exito_usuarios"] = "Usuario creado correctamente."
+                    limpiar_cache_lecturas()
                     st.rerun()
                 except ValueError as e:
                     st.error(str(e))

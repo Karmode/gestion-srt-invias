@@ -7,9 +7,13 @@ import holidays
 import streamlit.components.v1 as components
 
 from app.core.sesion import obtener_sesion
+from app.core.cache_datos import (
+    usuarios_activos_para_seleccion,
+    admins_activos_para_seleccion,
+    opciones_activas,
+    limpiar_cache_lecturas,
+)
 from app.services.correspondencia_service import CorrespondenciaService
-from app.services.opciones_service import OpcionesService
-from app.services.usuario_service import UsuarioService
 
 # --- LÓGICA DE REINICIO DE FORMULARIO ---
 if "form_key_idx" not in st.session_state:
@@ -52,8 +56,6 @@ if not (is_asignacion or is_coordinador or is_lider or is_gestor):
     st.stop()
 
 service = CorrespondenciaService()
-opciones_service = OpcionesService()
-usuario_service = UsuarioService()
 
 # Inicializar estados de formulario si no existen
 if f"form_tipo_{form_key}" not in st.session_state:
@@ -95,8 +97,8 @@ tipos_dict = {
 }
 
 # Cargar el resto de opciones desde la DB
-grupos_dict = {op["clave"]: op["etiqueta"] for op in opciones_service.obtener_opciones("grupo")}
-clases_dict = {op["clave"]: op["etiqueta"] for op in opciones_service.obtener_opciones("clase_correspondencia")}
+grupos_dict = {op["clave"]: op["etiqueta"] for op in opciones_activas("grupo")}
+clases_dict = {op["clave"]: op["etiqueta"] for op in opciones_activas("clase_correspondencia")}
 if not grupos_dict: grupos_dict = {"permisos": "Permisos", "solicitudes": "Solicitudes", "otros": "Otros"}
 if not clases_dict: clases_dict = {"informes": "Informes", "peticiones": "Peticiones", "quejas": "Quejas"}
 
@@ -236,6 +238,7 @@ def modal_gestion_correspondencia(corr_actual):
                                     usuario_ejecutor_id=id_usuario_actual
                                 )
                                 st.success("Actualizado")
+                                limpiar_cache_lecturas()
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Error: {e}")
@@ -254,9 +257,8 @@ def modal_gestion_correspondencia(corr_actual):
                 with st.popover("👥 Asignar / Reasignar", width="stretch"):
 
                     st.write("Asignar a un usuario")
-                    usuarios = usuario_service.listar_usuarios()
-                    usuarios_opts = {str(u["_id"]): f"{u.get('nombre_completo', u['usuario'])}" for u in usuarios if u.get("activo", True)}
-                    
+                    usuarios_opts = usuarios_activos_para_seleccion()
+
                     with st.form(f"form_asignar_{id_seleccionado}"):
                         nuevo_resp_id = st.selectbox("Seleccionar Responsable", options=list(usuarios_opts.keys()), format_func=lambda x: usuarios_opts[x])
                         comentario_asig = st.text_input("Comentario", value="Reasignación")
@@ -271,6 +273,7 @@ def modal_gestion_correspondencia(corr_actual):
                                     usuario_ejecutor_id=id_usuario_actual
                                 )
                                 st.success("Asignado exitosamente")
+                                limpiar_cache_lecturas()
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Error: {e}")
@@ -287,13 +290,8 @@ def modal_gestion_correspondencia(corr_actual):
                     st.caption(tooltip_gestor)
                     
                     # Filtrar solo usuarios activos con rol admin
-                    todos_usuarios = usuario_service.listar_usuarios()
-                    admins_opts = {
-                        str(u["_id"]): f"{u.get('nombre_completo', u['usuario'])}"
-                        for u in todos_usuarios
-                        if u.get("activo", True) and "admin" in u.get("roles", [])
-                    }
-                    
+                    admins_opts = admins_activos_para_seleccion()
+
                     if not admins_opts:
                         st.warning("No hay administradores disponibles para reasignar.")
                     else:
@@ -323,6 +321,7 @@ def modal_gestion_correspondencia(corr_actual):
                                             usuario_ejecutor_id=id_usuario_actual
                                         )
                                         st.success("Reasignado exitosamente al administrador.")
+                                        limpiar_cache_lecturas()
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Error: {e}")
@@ -365,6 +364,7 @@ def modal_gestion_correspondencia(corr_actual):
                                 usuario_ejecutor_id=id_usuario_actual
                             )
                             st.success("Respuesta registrada")
+                            limpiar_cache_lecturas()
                             st.rerun()
 
                     
@@ -379,6 +379,7 @@ def modal_gestion_correspondencia(corr_actual):
                                 usuario_ejecutor_id=id_usuario_actual
                             )
                             st.success("Archivado")
+                            limpiar_cache_lecturas()
                             st.rerun()
                                 
                     if (is_admin or estado_actual not in ["archivado", "traslado_competencia"]) and (is_admin or is_asignacion or is_coordinador or is_lider):
@@ -394,6 +395,7 @@ def modal_gestion_correspondencia(corr_actual):
                                     usuario_ejecutor_id=id_usuario_actual
                                 )
                                 st.success("Traslado por competencia registrado")
+                                limpiar_cache_lecturas()
                                 st.rerun()
                             
     # --- TRAZABILIDAD ---
@@ -542,9 +544,8 @@ if is_asignacion:
                 
             observaciones = st.text_area("Observaciones Generales (Opcional)", key=f"form_observaciones_{form_key}")
             
-            usuarios = usuario_service.listar_usuarios()
-            usuarios_opts = {str(u["_id"]): f"{u.get('nombre_completo', u['usuario'])}" for u in usuarios if u.get("activo", True)}
-            
+            usuarios_opts = usuarios_activos_para_seleccion()
+
             is_traslado = st.checkbox("Es Traslado por Competencia (Cierra el radicado sin asignar)", key=f"form_is_traslado_{form_key}")
             asignado_a = None
             if not is_traslado:
@@ -594,7 +595,8 @@ if is_asignacion:
                             )
                             st.session_state["mensaje_exito"] = f"Correspondencia {numero_radicado} creada y trasladada por competencia."
                             limpiar_formulario()
-                            st.rerun() 
+                            limpiar_cache_lecturas()
+                            st.rerun()
 
                         else:
                             service.asignar_correspondencia(
@@ -606,8 +608,9 @@ if is_asignacion:
                                 usuario_ejecutor_id=id_usuario_actual
                             )
                             st.session_state["mensaje_exito"] = f"Correspondencia {numero_radicado} creada y asignada exitosamente."
-                        
+
                         limpiar_formulario()
+                        limpiar_cache_lecturas()
                         st.rerun()
 
                     except Exception as e:
@@ -623,6 +626,7 @@ with tab_gestion:
         st.subheader("Listado de Correspondencia")
     with col_header2:
         if st.button("🔄 Actualizar Datos", width="stretch", help="Recarga la lista de correspondencia"):
+            limpiar_cache_lecturas()
             st.rerun()
 
     
@@ -648,12 +652,10 @@ with tab_gestion:
     filtro_responsable = "Todos"
     if puede_ver_todo and col_resp_f:
         with col_resp_f:
-            usuarios_list = usuario_service.listar_usuarios()
             usuarios_f_opts = {"Todos": "Todos los responsables"}
-            for u in usuarios_list:
-                if u.get("activo", True):
-                    usuarios_f_opts[str(u["_id"])] = f"{u.get('nombre_completo', u['usuario'])}"
-            
+            usuarios_f_opts.update(usuarios_activos_para_seleccion())
+
+
             filtro_responsable = st.selectbox(
                 "Filtrar por Responsable", 
                 options=list(usuarios_f_opts.keys()), 
