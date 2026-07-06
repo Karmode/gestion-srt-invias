@@ -19,6 +19,8 @@ except ValidacionAutorizacion:
     st.error("No tienes permisos para ver este módulo.")
     st.stop()
 
+es_admin = any(r in {"admin", "administrador"} for r in sesion.get("roles", []))
+
 
 # --- Encabezado ---
 col_title, col_btn = st.columns([5, 1])
@@ -51,6 +53,7 @@ st.divider()
 col_c1, col_c2 = st.columns(2)
 
 with col_c1:
+  if es_admin:
     with st.container(border=True):
         st.markdown("### 📗 Evidencia KAWAK (Excel)")
         st.write(
@@ -185,6 +188,7 @@ st.write("")
 col_r2_1, col_r2_2 = st.columns(2)
 
 with col_r2_1:
+  if es_admin:
     with st.container(border=True):
         st.markdown("### 📊 Consolidado Correspondencia Anual (Excel)")
         st.write(
