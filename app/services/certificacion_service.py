@@ -370,29 +370,18 @@ class CertificacionService:
         tipo: str,
         firmante_id: str,
         firmante_nombre: str,
+        comentario: str | None = None,
     ) -> bool:
         """Registra la aprobación del firmante. Si con esta firma se completan
         las 3 y el contratista cumple requisitos, se certifica automáticamente."""
         año, mes = self.periodo_certificable()
         self.repo.registrar_firma(
-            empleado_id, empleado_nombre, año, mes, tipo, firmante_id, firmante_nombre
+            empleado_id, empleado_nombre, año, mes, tipo, firmante_id, firmante_nombre, comentario
         )
         self._intentar_auto_certificar(
             empleado_id, empleado_nombre, firmante_id, firmante_nombre, año, mes
         )
         return True
-
-    def guardar_observacion(
-        self,
-        empleado_id: str,
-        empleado_nombre: str,
-        texto_observacion: str,
-    ) -> bool:
-        """Guarda la observación del supervisor/firmante para el contratista en el período actual."""
-        año, mes = self.periodo_certificable()
-        return self.repo.guardar_observacion(
-            empleado_id, empleado_nombre, año, mes, texto_observacion
-        )
 
     def _intentar_auto_certificar(
         self,
