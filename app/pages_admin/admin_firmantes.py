@@ -64,82 +64,71 @@ def _badge_corr(pendientes: int, vencidas: int) -> str:
     )
 
 
-# ── Diálogo para agregar u/o editar observación ────────────────
-@st.dialog("Observación", width="small")
-def _dialog_observacion(servicio: CertificacionService) -> None:
-    data = st.session_state.get("_editar_observacion")
-    if not data:
-        return
-    uid = data["uid"]
-    nombre = data["nombre"]
-    obs_actual = data["observacion"]
+# ── Diálogo de confirmación de firma (aplica a los 3 tipos) ──────
 
-    st.markdown(f"**Contratista:** {nombre}")
-    nueva_obs = st.text_area("Escribe tu observación:", value=obs_actual, height=120)
-    
-    st.write("")
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("Observación", type="primary", use_container_width=True):
-            servicio.guardar_observacion(uid, nombre, nueva_obs)
-            st.session_state.pop("_editar_observacion", None)
-            st.rerun()
-    with c2:
-        if st.button("Cancelar", use_container_width=True):
-            st.session_state.pop("_editar_observacion", None)
-            st.rerun()
+def _cerrar_dialogo_confirmar_firma() -> None:
+    st.session_state.pop("_confirmar_firma", None)
 
 
-# ── Diálogo de confirmación para firma de Correspondencia ────────
-
-@st.dialog("Confirmar aprobación — Correspondencia", width="small")
-def _dialog_confirmar_firma_corr(
+@st.dialog("Confirmar aprobación", width="small", on_dismiss=_cerrar_dialogo_confirmar_firma)
+def _dialog_confirmar_firma(
     servicio: CertificacionService, sesion: dict, año: int, mes: int, nombre_mes: str
 ) -> None:
-    from app.services.correspondencia_service import CorrespondenciaService
-
-    emp = st.session_state.get("_confirmar_firma_corr")
-    if not emp:
+    pend = st.session_state.get("_confirmar_firma")
+    if not pend:
         return
 
-    uid = emp["uid"]
-    nombre = emp["nombre"]
+    uid = pend["uid"]
+    nombre = pend["nombre"]
+    tipo = pend["tipo"]
+    _, label_largo, _ = _META_FIRMA[tipo]
 
+    st.markdown(f"**Firma:** {label_largo}")
     st.markdown(f"**Contratista:** {nombre}")
     st.markdown(f"**Período a certificar:** {nombre_mes} {año}")
     st.divider()
 
-    with st.spinner("Consultando correspondencia del período…"):
-        stats = CorrespondenciaService().obtener_correspondencia_del_periodo(uid, año, mes)
+    if tipo == "corr":
+        from app.services.correspondencia_service import CorrespondenciaService
 
-    pendientes = stats["pendientes"]
-    vencidas = stats["vencidas"]
+        with st.spinner("Consultando correspondencia del período…"):
+            stats = CorrespondenciaService().obtener_correspondencia_del_periodo(uid, año, mes)
 
-    if pendientes == 0:
-        st.success("✅ Esta persona está al día en correspondencia para este período.")
-    elif vencidas > 0:
-        st.error(
-            f"⚠️ Esta persona tiene **{pendientes} solicitud(es)** con vencimiento en {nombre_mes} {año}, "
-            f"de las cuales **{vencidas} están vencidas**.\n\n"
-            "Al aprobar, aceptas la responsabilidad de esta decisión como firmante de Correspondencia."
-        )
-    else:
-        st.warning(
-            f"⚠️ Esta persona tiene **{pendientes} solicitud(es) pendiente(s)** con vencimiento en "
-            f"{nombre_mes} {año} (ninguna vencida aún)."
-        )
+        pendientes = stats["pendientes"]
+        vencidas = stats["vencidas"]
 
-    st.divider()
+        if pendientes == 0:
+            st.success("✅ Esta persona está al día en correspondencia para este período.")
+        elif vencidas > 0:
+            st.error(
+                f"⚠️ Esta persona tiene **{pendientes} solicitud(es)** con vencimiento en {nombre_mes} {año}, "
+                f"de las cuales **{vencidas} están vencidas**.\n\n"
+                "Al aprobar, aceptas la responsabilidad de esta decisión como firmante de Correspondencia."
+            )
+        else:
+            st.warning(
+                f"⚠️ Esta persona tiene **{pendientes} solicitud(es) pendiente(s)** con vencimiento en "
+                f"{nombre_mes} {año} (ninguna vencida aún)."
+            )
+        st.divider()
+
+    comentario = st.text_area(
+        "Comentario (opcional)",
+        placeholder="Ej: se aprueba con pendientes, ponerse al día en...",
+        key=f"txt_comentario_firma_{uid}_{tipo}",
+    )
+
+    st.write("")
     c1, c2 = st.columns(2)
     with c1:
         if st.button("Confirmar aprobación", type="primary", use_container_width=True):
             firmante_nombre = sesion.get("nombre_completo") or sesion["usuario"]
-            servicio.registrar_firma(uid, nombre, "corr", sesion["id"], firmante_nombre)
-            st.session_state.pop("_confirmar_firma_corr", None)
+            servicio.registrar_firma(uid, nombre, tipo, sesion["id"], firmante_nombre, comentario)
+            st.session_state.pop("_confirmar_firma", None)
             st.rerun()
     with c2:
         if st.button("Cancelar", use_container_width=True):
-            st.session_state.pop("_confirmar_firma_corr", None)
+            st.session_state.pop("_confirmar_firma", None)
             st.rerun()
 
 
@@ -386,13 +375,18 @@ def render(sesion=None):
 
                             # Detalle de cada firma existente
                             detalles = []
+                            comentarios_firma = []
                             for t in TIPOS_FIRMA:
                                 f = firmas.get(t)
                                 if f:
                                     fecha_f = formato_fecha_bogota(f.get("fecha"), "%d/%m %H:%M")
                                     detalles.append(f"{_META_FIRMA[t][0]}: {f.get('firmante_nombre', '')} · {fecha_f}")
+                                    if f.get("comentario"):
+                                        comentarios_firma.append(f"💬 {_META_FIRMA[t][0]}: *{f['comentario']}*")
                             if detalles:
                                 st.caption(" · ".join(detalles))
+                            for linea in comentarios_firma:
+                                st.caption(linea)
 
                         with c_accion:
                             cert_emp = emp.get("certificacion") or {}
@@ -432,32 +426,13 @@ def render(sesion=None):
                                     type="primary",
                                     use_container_width=True,
                                 ):
-                                    if tipo_mi_firma == "corr":
-                                        st.session_state["_confirmar_firma_corr"] = {"uid": uid, "nombre": nombre}
-                                        st.rerun()
-                                    else:
-                                         firmante_nombre = sesion.get("nombre_completo") or sesion["usuario"]
-                                         servicio.registrar_firma(uid, nombre, tipo_mi_firma, sesion["id"], firmante_nombre)
-                                         st.rerun()
-
-                            # Botón de observación compacto
-                            if tipo_mi_firma or es_admin:
-                                if st.button(
-                                    "💬 Obs",
-                                    key=f"btn_obs_{uid}",
-                                    use_container_width=True,
-                                    help="Agregar/Editar observación del supervisor",
-                                ):
-                                    st.session_state["_editar_observacion"] = {
+                                    st.session_state["_confirmar_firma"] = {
                                         "uid": uid,
                                         "nombre": nombre,
-                                        "observacion": obs_existente
+                                        "tipo": tipo_mi_firma,
                                     }
                                     st.rerun()
 
-    if st.session_state.get("_confirmar_firma_corr"):
-        _dialog_confirmar_firma_corr(servicio, sesion, año, mes, nombre_mes)
-
-    if st.session_state.get("_editar_observacion"):
-        _dialog_observacion(servicio)
+    if st.session_state.get("_confirmar_firma"):
+        _dialog_confirmar_firma(servicio, sesion, año, mes, nombre_mes)
 

@@ -299,6 +299,7 @@ ESQUEMA_CERTIFICACIONES = {
                         "firmante_id":     {"bsonType": "objectId"},
                         "firmante_nombre": {"bsonType": "string"},
                         "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
                     },
                 },
                 "gd":    {
@@ -308,6 +309,7 @@ ESQUEMA_CERTIFICACIONES = {
                         "firmante_id":     {"bsonType": "objectId"},
                         "firmante_nombre": {"bsonType": "string"},
                         "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
                     },
                 },
                 "secop": {
@@ -317,6 +319,7 @@ ESQUEMA_CERTIFICACIONES = {
                         "firmante_id":     {"bsonType": "objectId"},
                         "firmante_nombre": {"bsonType": "string"},
                         "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
                     },
                 },
             },
