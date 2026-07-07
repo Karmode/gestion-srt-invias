@@ -60,35 +60,6 @@ def _dialog_confirmar(servicio: ParametrosService, sesion: dict) -> None:
             st.rerun()
 
 
-@st.dialog("⚠️ CONFIRMAR LIMPIEZA DE CERTIFICACIONES", width="medium")
-def _dialog_confirmar_limpieza_certificaciones() -> None:
-    st.error(
-        "🚨 **¡ATENCIÓN!** Está a punto de eliminar permanentemente **todas** las certificaciones de la base de datos. "
-        "Esta acción es irreversible y afectará el historial de todos los usuarios."
-    )
-    st.write("Para proceder, por favor ingrese la contraseña de seguridad especial:")
-    confirmacion = st.text_input("Contraseña de seguridad", type="password", key="input_confirmar_eliminar_certs")
-    
-    b1, b2 = st.columns(2)
-    with b1:
-        disabled = confirmacion.strip() != "losmod@5"
-        if st.button("Confirmar eliminación", type="primary", use_container_width=True, disabled=disabled):
-            from app.repositories.certificacion_repo import CertificacionRepositorio
-            try:
-                repo = CertificacionRepositorio()
-                res = repo.coleccion.delete_many({})
-                st.session_state["_param_msg"] = f"Se eliminaron exitosamente {res.deleted_count} certificaciones de la base de datos."
-            except Exception as e:
-                st.session_state["_param_msg"] = f"❌ Error eliminando certificaciones: {e}"
-            st.session_state.pop("show_eliminar_certs_dialog", None)
-            st.rerun()
-    with b2:
-        if st.button("Cancelar", use_container_width=True):
-            st.session_state.pop("show_eliminar_certs_dialog", None)
-            st.rerun()
-
-
-
 # ── Render principal ─────────────────────────────────────────────────────────
 
 def render(sesion=None):
@@ -163,9 +134,6 @@ def render(sesion=None):
     if st.session_state.get("_param_pendiente"):
         _dialog_confirmar(servicio, sesion)
 
-    if st.session_state.get("show_eliminar_certs_dialog"):
-        _dialog_confirmar_limpieza_certificaciones()
-
     st.divider()
     with st.container(border=True):
         st.markdown("**Caché de catálogos (opciones de configuración)**")
@@ -179,15 +147,4 @@ def render(sesion=None):
             OpcionesService().limpiar_cache()
             limpiar_cache_lecturas()
             st.success("Caché de catálogos limpiada. Los cambios en la base de datos ya se reflejarán.")
-
-    with st.container(border=True):
-        st.markdown("**🗑️ Limpieza Anual de Certificaciones**")
-        st.caption(
-            "Elimina **todos** los registros de la colección de certificaciones en la base de datos. "
-            "Esta operación es irreversible y se realiza típicamente al final de cada año para reiniciar el ciclo. "
-            "La estructura de la colección y sus índices no se alterarán, solo se vaciarán sus documentos."
-        )
-        if st.button("Vaciar certificaciones", key="btn_vaciar_certificaciones", type="secondary"):
-            st.session_state["show_eliminar_certs_dialog"] = True
-            st.rerun()
 
