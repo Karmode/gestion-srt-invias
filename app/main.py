@@ -1866,8 +1866,7 @@ else:
     current_page_title = pg.title
     last_page = st.session_state.get("_last_active_page")
     if last_page and last_page != current_page_title:
-        st.session_state.pop("_editar_observacion", None)
-        st.session_state.pop("_confirmar_firma_corr", None)
+        st.session_state.pop("_confirmar_firma", None)
     st.session_state["_last_active_page"] = current_page_title
 
     pg.run()

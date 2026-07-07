@@ -19,6 +19,8 @@ except ValidacionAutorizacion:
     st.error("No tienes permisos para ver este módulo.")
     st.stop()
 
+es_admin = any(r in {"admin", "administrador"} for r in sesion.get("roles", []))
+
 
 # --- Encabezado ---
 col_title, col_btn = st.columns([5, 1])
@@ -51,6 +53,7 @@ st.divider()
 col_c1, col_c2 = st.columns(2)
 
 with col_c1:
+  if es_admin:
     with st.container(border=True):
         st.markdown("### 📗 Evidencia KAWAK (Excel)")
         st.write(
@@ -185,6 +188,7 @@ st.write("")
 col_r2_1, col_r2_2 = st.columns(2)
 
 with col_r2_1:
+  if es_admin:
     with st.container(border=True):
         st.markdown("### 📊 Consolidado Correspondencia Anual (Excel)")
         st.write(
@@ -201,29 +205,18 @@ with col_r2_1:
             key="anio_consolidado_sel"
         )
         
-        # Validación de contraseña para el reporte
-        password_reporte = st.text_input(
-            "Contraseña de seguridad",
-            type="password",
-            placeholder="Ingrese la contraseña de descarga",
-            key="passwd_consolidado"
-        )
-        
         if st.button("Generar Consolidado Anual", width="stretch", key="gen_consolidado", type="primary"):
-            if password_reporte != "losmod@5":
-                st.error("Contraseña incorrecta. No tienes autorización para generar este reporte.")
-            else:
-                with st.spinner("Procesando correspondencia total del año..."):
-                    try:
-                        excel_service = ExcelReportService()
-                        buffer, nombre = excel_service.generar_excel_consolidado_anual(anio_consolidado)
-                        st.session_state["consolidado_buffer"] = buffer
-                        st.session_state["consolidado_name"] = nombre
-                        st.session_state["show_consolidado_download"] = True
-                        st.success("¡Consolidado Anual generado con éxito!")
-                    except Exception as e:
-                        st.error(f"Error generando Consolidado: {e}")
-                    
+            with st.spinner("Procesando correspondencia total del año..."):
+                try:
+                    excel_service = ExcelReportService()
+                    buffer, nombre = excel_service.generar_excel_consolidado_anual(anio_consolidado)
+                    st.session_state["consolidado_buffer"] = buffer
+                    st.session_state["consolidado_name"] = nombre
+                    st.session_state["show_consolidado_download"] = True
+                    st.success("¡Consolidado Anual generado con éxito!")
+                except Exception as e:
+                    st.error(f"Error generando Consolidado: {e}")
+
         if st.session_state.get("show_consolidado_download", False):
             st.write("")
             st.download_button(

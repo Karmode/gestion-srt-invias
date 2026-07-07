@@ -61,6 +61,7 @@ class CertificacionRepositorio:
         tipo: str,
         firmante_id: str,
         firmante_nombre: str,
+        comentario: str | None = None,
     ) -> bool:
         ahora = datetime.now(timezone.utc)
         self.coleccion.update_one(
@@ -76,6 +77,7 @@ class CertificacionRepositorio:
                         "firmante_id": ObjectId(firmante_id),
                         "firmante_nombre": firmante_nombre,
                         "fecha": ahora,
+                        "comentario": comentario.strip() if comentario and comentario.strip() else None,
                     }
                 },
                 "$setOnInsert": {
@@ -98,37 +100,6 @@ class CertificacionRepositorio:
                 "tipo_formato": {"$in": [None, "gestion_correspondencia"]},
             },
             {"$unset": {f"firmas.{tipo}": ""}},
-        )
-        return True
-
-    def guardar_observacion(
-        self,
-        usuario_id: str,
-        nombre_usuario: str,
-        año: int,
-        mes: int,
-        texto_observacion: str,
-    ) -> bool:
-        ahora = datetime.now(timezone.utc)
-        self.coleccion.update_one(
-            {
-                "usuario_id": ObjectId(usuario_id),
-                "año": año,
-                "mes": mes,
-                "tipo_formato": {"$in": [None, "gestion_correspondencia"]},
-            },
-            {
-                "$set": {
-                    "observacion": texto_observacion if texto_observacion else None
-                },
-                "$setOnInsert": {
-                    "nombre_usuario": nombre_usuario,
-                    "estado": "pendiente",
-                    "tipo_formato": "gestion_correspondencia",
-                    "creado_en": ahora,
-                },
-            },
-            upsert=True,
         )
         return True
 

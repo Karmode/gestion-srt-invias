@@ -102,6 +102,8 @@ def _mostrar_avance(usuario_id: str, cert_actual) -> None:
                     f"<span style='font-size:.82em;color:#888;'>{f.get('firmante_nombre', '')} · {fecha_str}</span>",
                     unsafe_allow_html=True,
                 )
+                if f.get("comentario"):
+                    st.caption(f"💬 *{f['comentario']}*")
             else:
                 st.markdown(f"⏳ &nbsp;**{label_largo}** — pendiente")
 
