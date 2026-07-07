@@ -205,29 +205,18 @@ with col_r2_1:
             key="anio_consolidado_sel"
         )
         
-        # Validación de contraseña para el reporte
-        password_reporte = st.text_input(
-            "Contraseña de seguridad",
-            type="password",
-            placeholder="Ingrese la contraseña de descarga",
-            key="passwd_consolidado"
-        )
-        
         if st.button("Generar Consolidado Anual", width="stretch", key="gen_consolidado", type="primary"):
-            if password_reporte != "losmod@5":
-                st.error("Contraseña incorrecta. No tienes autorización para generar este reporte.")
-            else:
-                with st.spinner("Procesando correspondencia total del año..."):
-                    try:
-                        excel_service = ExcelReportService()
-                        buffer, nombre = excel_service.generar_excel_consolidado_anual(anio_consolidado)
-                        st.session_state["consolidado_buffer"] = buffer
-                        st.session_state["consolidado_name"] = nombre
-                        st.session_state["show_consolidado_download"] = True
-                        st.success("¡Consolidado Anual generado con éxito!")
-                    except Exception as e:
-                        st.error(f"Error generando Consolidado: {e}")
-                    
+            with st.spinner("Procesando correspondencia total del año..."):
+                try:
+                    excel_service = ExcelReportService()
+                    buffer, nombre = excel_service.generar_excel_consolidado_anual(anio_consolidado)
+                    st.session_state["consolidado_buffer"] = buffer
+                    st.session_state["consolidado_name"] = nombre
+                    st.session_state["show_consolidado_download"] = True
+                    st.success("¡Consolidado Anual generado con éxito!")
+                except Exception as e:
+                    st.error(f"Error generando Consolidado: {e}")
+
         if st.session_state.get("show_consolidado_download", False):
             st.write("")
             st.download_button(
