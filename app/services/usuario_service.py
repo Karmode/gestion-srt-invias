@@ -289,6 +289,9 @@ class UsuarioService:
         objeto = (datos.get("objeto") or "").strip()
         if objeto:
             contrato["objeto"] = objeto
+        radicado = (datos.get("radicado_del_contrato") or "").strip()
+        if radicado:
+            contrato["radicado_del_contrato"] = radicado
         valor = datos.get("valor")
         if valor is not None and valor > 0:
             contrato["valor"] = int(valor)
@@ -325,6 +328,15 @@ class UsuarioService:
             "tiene_prorroga": tiene_pror,
             "fecha_prorrogra": UsuarioService._fecha_a_datetime(f_pror) if tiene_pror and f_pror else None,
             "radicado_prorrogra": (prorroga.get("radicado_prorrogra") or "").strip() or None
+        }
+
+        # Adiciones
+        adiciones = datos.get("adiciones_contrato") or {}
+        tiene_adi = bool(adiciones.get("tiene_adiciones"))
+        val_adi = adiciones.get("valor_adicion")
+        contrato["adiciones_contrato"] = {
+            "tiene_adiciones": tiene_adi,
+            "valor_adicion": int(val_adi) if tiene_adi and val_adi is not None else None
         }
 
         # Arreglo de pagos (máximo 20)
