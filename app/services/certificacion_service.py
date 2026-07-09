@@ -839,7 +839,7 @@ class CertificacionService:
             "reclamos, sugerencias (PQRS), memorandos, comunicaciones internas o externas, que le "
             "sean asignados por el supervisor del contrato y que tengan relación con el objeto "
             "contractual y el alcance de la Subdirección de Reglamentación Técnica e Innovación "
-            "(Obligación Especifica No. 5)",
+            "(Obligación Especifica No. 7)",
         ]
         for ob in obligaciones:
             story.append(Paragraph(f"• {ob}", s_bullet))
