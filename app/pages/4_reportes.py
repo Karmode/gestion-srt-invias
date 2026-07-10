@@ -35,6 +35,9 @@ with col_btn:
         st.session_state.pop("show_excel_download", None)
         st.session_state.pop("excel_kawak_buffer", None)
         st.session_state.pop("excel_kawak_name", None)
+        st.session_state.pop("show_excel_gen_download", None)
+        st.session_state.pop("excel_kawak_gen_buffer", None)
+        st.session_state.pop("excel_kawak_gen_name", None)
         st.session_state.pop("show_consolidado_download", None)
         st.session_state.pop("consolidado_buffer", None)
         st.session_state.pop("consolidado_name", None)
@@ -53,53 +56,104 @@ st.divider()
 col_c1, col_c2 = st.columns(2)
 
 with col_c1:
-  if es_admin:
+    if es_admin:
+        with st.container(border=True):
+            st.markdown("### 📗 Evidencia KAWAK (Excel)")
+            st.write(
+                "Genera el libro de Excel consolidado que cumple con los campos exactos, "
+                "estructuras y codificaciones solicitadas por la plataforma KAWAK para la carga "
+                "de evidencias de gestión de correspondencia."
+            )
+            # Selector de período para KAWAK
+            anio_actual = datetime.date.today().year
+            col_sel_y, col_sel_q = st.columns(2)
+            with col_sel_y:
+                anio_kawak = st.selectbox(
+                    "Año",
+                    options=[anio_actual - 1, anio_actual, anio_actual + 1],
+                    index=1,
+                    key="anio_kawak_sel"
+                )
+            with col_sel_q:
+                trim_kawak = st.selectbox(
+                    "Trimestre",
+                    options=[1, 2, 3, 4],
+                    format_func=lambda x: f"T{x}",
+                    index=(datetime.date.today().month - 1) // 3,
+                    key="trim_kawak_sel"
+                )
+            
+            st.write("") # Relleno visual
+            
+            if st.button("Generar Excel KAWAK", width="stretch", key="gen_excel", type="primary"):
+                with st.spinner("Procesando datos y estructurando hoja Excel..."):
+                    try:
+                        excel_service = ExcelReportService()
+                        buffer, nombre = excel_service.generar_excel_kawak(anio_kawak, trim_kawak)
+                        st.session_state["excel_kawak_buffer"] = buffer
+                        st.session_state["excel_kawak_name"] = nombre
+                        st.session_state["show_excel_download"] = True
+                        st.success("¡Excel generado con éxito!")
+                    except Exception as e:
+                        st.error(f"Error generando Excel: {e}")
+            
+            if st.session_state.get("show_excel_download", False):
+                st.write("")
+                st.download_button(
+                    label="⬇️ Descargar Evidencia KAWAK (Excel)",
+                    data=st.session_state.get("excel_kawak_buffer", b""),
+                    file_name=st.session_state.get("excel_kawak_name", "Reporte_KAWAK.xlsx"),
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    width="stretch"
+                )
+
+    # KAWAK General (sin filtro restrictivo por grupo 'permisos')
     with st.container(border=True):
-        st.markdown("### 📗 Evidencia KAWAK (Excel)")
+        st.markdown("### 📘 Evidencia KAWAK General (Excel)")
         st.write(
             "Genera el libro de Excel consolidado que cumple con los campos exactos, "
-            "estructuras y codificaciones solicitadas por la plataforma KAWAK para la carga "
-            "de evidencias de gestión de correspondencia."
+            "estructuras y codificaciones solicitadas por la plataforma KAWAK para todos "
+            "los grupos de trabajo, sin filtros restrictivos de permisos."
         )
-        # Selector de período para KAWAK
-        anio_actual = datetime.date.today().year
-        col_sel_y, col_sel_q = st.columns(2)
-        with col_sel_y:
-            anio_kawak = st.selectbox(
+        # Selector de período para KAWAK General
+        anio_actual_g = datetime.date.today().year
+        col_sel_y_g, col_sel_q_g = st.columns(2)
+        with col_sel_y_g:
+            anio_kawak_g = st.selectbox(
                 "Año",
-                options=[anio_actual - 1, anio_actual, anio_actual + 1],
+                options=[anio_actual_g - 1, anio_actual_g, anio_actual_g + 1],
                 index=1,
-                key="anio_kawak_sel"
+                key="anio_kawak_gen_sel"
             )
-        with col_sel_q:
-            trim_kawak = st.selectbox(
+        with col_sel_q_g:
+            trim_kawak_g = st.selectbox(
                 "Trimestre",
                 options=[1, 2, 3, 4],
                 format_func=lambda x: f"T{x}",
                 index=(datetime.date.today().month - 1) // 3,
-                key="trim_kawak_sel"
+                key="trim_kawak_gen_sel"
             )
         
         st.write("") # Relleno visual
         
-        if st.button("Generar Excel KAWAK", width="stretch", key="gen_excel", type="primary"):
-            with st.spinner("Procesando datos y estructurando hoja Excel..."):
+        if st.button("Generar Excel KAWAK General", width="stretch", key="gen_excel_gen", type="primary"):
+            with st.spinner("Procesando datos generales y estructurando hoja Excel..."):
                 try:
                     excel_service = ExcelReportService()
-                    buffer, nombre = excel_service.generar_excel_kawak(anio_kawak, trim_kawak)
-                    st.session_state["excel_kawak_buffer"] = buffer
-                    st.session_state["excel_kawak_name"] = nombre
-                    st.session_state["show_excel_download"] = True
-                    st.success("¡Excel generado con éxito!")
+                    buffer_g, nombre_g = excel_service.generar_excel_kawak_general(anio_kawak_g, trim_kawak_g)
+                    st.session_state["excel_kawak_gen_buffer"] = buffer_g
+                    st.session_state["excel_kawak_gen_name"] = nombre_g
+                    st.session_state["show_excel_gen_download"] = True
+                    st.success("¡Excel general generado con éxito!")
                 except Exception as e:
-                    st.error(f"Error generando Excel: {e}")
+                    st.error(f"Error generando Excel general: {e}")
         
-        if st.session_state.get("show_excel_download", False):
+        if st.session_state.get("show_excel_gen_download", False):
             st.write("")
             st.download_button(
-                label="⬇️ Descargar Evidencia KAWAK (Excel)",
-                data=st.session_state.get("excel_kawak_buffer", b""),
-                file_name=st.session_state.get("excel_kawak_name", "Reporte_KAWAK.xlsx"),
+                label="⬇️ Descargar Evidencia KAWAK General (Excel)",
+                data=st.session_state.get("excel_kawak_gen_buffer", b""),
+                file_name=st.session_state.get("excel_kawak_gen_name", "Reporte_KAWAK_General.xlsx"),
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 width="stretch"
             )

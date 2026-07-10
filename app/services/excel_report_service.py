@@ -178,6 +178,44 @@ class ExcelReportService:
         buffer = self._crear_excel_reporte(datos, "PQRD")
         return buffer, nombre_archivo
 
+    def _obtener_datos_kawak_general(self, anio: int, trimestre: int) -> list:
+        # Filtros: PQRD, Cerrados (respondido, pero no archivado ni traslado) - SIN filtro de grupo permisos
+        query = {
+            "estado_actual": "respondido"
+        }
+        
+        docs = self.repo.listar(query, limit=10000)
+        
+        datos_filtrados = []
+        for doc in docs:
+            if "PQRD" not in str(doc.get("tipo", "")).upper():
+                continue
+                
+            f_rad = doc.get("fecha_radicacion")
+            f_resp = doc.get("respuesta", {}).get("fecha_salida") if isinstance(doc.get("respuesta"), dict) else None
+            
+            # Usar fecha de respuesta si está disponible, o fecha de radicación en su defecto
+            fecha_ref = f_resp or f_rad
+            if not fecha_ref:
+                continue
+                
+            ref_year = fecha_ref.year
+            ref_trimestre = (fecha_ref.month - 1) // 3 + 1
+            
+            if ref_year == anio and ref_trimestre == trimestre:
+                datos_filtrados.append(doc)
+            
+        return datos_filtrados
+
+    def generar_excel_kawak_general(self, anio: int, trimestre: int) -> tuple[io.BytesIO, str]:
+        hoy = datetime.now()
+        fecha_str = hoy.strftime("%Y-%m-%d")
+        nombre_archivo = f"PQRD - General T{trimestre} {anio} {fecha_str}.xlsx"
+        
+        datos = self._obtener_datos_kawak_general(anio, trimestre)
+        buffer = self._crear_excel_reporte(datos, "PQRD")
+        return buffer, nombre_archivo
+
     def _obtener_datos_consolidado_anual(self, anio: int) -> list:
         start_date = datetime(anio, 1, 1)
         end_date = datetime(anio + 1, 1, 1)
