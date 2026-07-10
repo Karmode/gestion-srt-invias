@@ -3305,6 +3305,22 @@ class CertificacionService:
         contrato_vig = self._contrato_vigente(contratos)
         no_contrato = contrato_vig.get("numero", "") if contrato_vig else ""
 
+        # Obtener valores para Adiciones y Prórroga
+        adiciones = (contrato_vig.get("adiciones_contrato") or {}) if contrato_vig else {}
+        tiene_adiciones = bool(adiciones.get("tiene_adiciones"))
+        valor_adicion = adiciones.get("valor_adicion") or 0
+
+        valor_contrato = contrato_vig.get("valor") or 0 if contrato_vig else 0
+        valor_total_contrato = valor_contrato + (valor_adicion if tiene_adiciones else 0)
+        try:
+            valor_total_formatted = f"{valor_total_contrato:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except Exception:
+            valor_total_formatted = "0,00"
+
+        prorroga = (contrato_vig.get("prorrogra_contrato") or {}) if contrato_vig else {}
+        tiene_prorroga = bool(prorroga.get("tiene_prorroga"))
+        fecha_prorroga_dt = prorroga.get("fecha_prorrogra")
+
         buf = io.BytesIO()
         custom_width = letter[0] + 2.0 * cm
         custom_height = letter[1] + 8.0 * cm
@@ -3421,15 +3437,18 @@ class CertificacionService:
         story = [header_table]
         story.append(Spacer(1, 0.4 * cm))
 
-        # Cuadro de fecha (DD, MM, AA) con la fecha fin del último contrato activo
+        # Cuadro de fecha (DD, MM, AA) con la fecha fin del último contrato activo (incluyendo prórroga si existe)
         from app.core.zona_horaria import utc_a_bogota
-        fecha_fin_dt = None
+        fecha_fin_efectiva_dt = None
         if contrato_vig and contrato_vig.get("fecha_fin"):
-            fecha_fin_dt = utc_a_bogota(contrato_vig["fecha_fin"])
+            if tiene_prorroga and fecha_prorroga_dt:
+                fecha_fin_efectiva_dt = utc_a_bogota(fecha_prorroga_dt)
+            else:
+                fecha_fin_efectiva_dt = utc_a_bogota(contrato_vig["fecha_fin"])
         
-        dia_str = fecha_fin_dt.strftime("%d") if fecha_fin_dt else "—"
-        mes_str = fecha_fin_dt.strftime("%m") if fecha_fin_dt else "—"
-        anio_str = fecha_fin_dt.strftime("%Y") if fecha_fin_dt else "—"
+        dia_str = fecha_fin_efectiva_dt.strftime("%d") if fecha_fin_efectiva_dt else "—"
+        mes_str = fecha_fin_efectiva_dt.strftime("%m") if fecha_fin_efectiva_dt else "—"
+        anio_str = fecha_fin_efectiva_dt.strftime("%Y") if fecha_fin_efectiva_dt else "—"
 
         s_fecha_lbl = ParagraphStyle(
             "acta_recibo_fec_lbl", parent=estilos["Normal"],
@@ -3483,7 +3502,7 @@ class CertificacionService:
         plazo_str = "—"
         if contrato_vig and contrato_vig.get("fecha_inicio") and contrato_vig.get("fecha_fin"):
             d1 = utc_a_bogota(contrato_vig["fecha_inicio"]).date()
-            d2 = utc_a_bogota(contrato_vig["fecha_fin"]).date()
+            d2 = fecha_fin_efectiva_dt.date() if fecha_fin_efectiva_dt else utc_a_bogota(contrato_vig["fecha_fin"]).date()
             years = d2.year - d1.year
             months = d2.month - d1.month
             days = d2.day - d1.day
@@ -3511,14 +3530,8 @@ class CertificacionService:
             "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"
         ]
         fecha_fin_larga = "—"
-        if contrato_vig and contrato_vig.get("fecha_fin"):
-            dt = utc_a_bogota(contrato_vig["fecha_fin"])
-            fecha_fin_larga = f"HASTA EL {dt.day} DE {MESES_LARGOS_ES[dt.month - 1]} DE {dt.year}"
-
-        # Obtener valores para Adiciones y Prórroga
-        adiciones = (contrato_vig.get("adiciones_contrato") or {}) if contrato_vig else {}
-        tiene_adiciones = bool(adiciones.get("tiene_adiciones"))
-        valor_adicion = adiciones.get("valor_adicion") or 0
+        if fecha_fin_efectiva_dt:
+            fecha_fin_larga = f"HASTA EL {fecha_fin_efectiva_dt.day} DE {MESES_LARGOS_ES[fecha_fin_efectiva_dt.month - 1]} DE {fecha_fin_efectiva_dt.year}"
 
         valor_adicion_str = "-"
         if tiene_adiciones and valor_adicion:
@@ -3526,10 +3539,6 @@ class CertificacionService:
                 valor_adicion_str = f"{valor_adicion:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             except Exception:
                 valor_adicion_str = "-"
-
-        prorroga = (contrato_vig.get("prorrogra_contrato") or {}) if contrato_vig else {}
-        tiene_prorroga = bool(prorroga.get("tiene_prorroga"))
-        fecha_prorroga_dt = prorroga.get("fecha_prorrogra")
 
         fecha_prorrogra_str = "—"
         if tiene_prorroga and fecha_prorroga_dt:
@@ -3540,9 +3549,7 @@ class CertificacionService:
                 fecha_prorrogra_str = "—"
 
         # Obtener variables para textos narrativos 12-15
-        fecha_fin_dt = None
-        if contrato_vig and contrato_vig.get("fecha_fin"):
-            fecha_fin_dt = utc_a_bogota(contrato_vig["fecha_fin"])
+        fecha_fin_dt = fecha_fin_efectiva_dt
 
         dia_fin = str(fecha_fin_dt.day) if fecha_fin_dt else "—"
         mes_fin = MESES_ES[fecha_fin_dt.month - 1].capitalize() if fecha_fin_dt else "—"
@@ -3721,7 +3728,7 @@ class CertificacionService:
         celda_valor_inicial = crear_celda_con_linea(t_money_inicial, Paragraph("(Indique en este espacio el valor total en números)", s_caption))
 
         t_money_total = Table(
-            [[Paragraph("<b>$</b>", s_lbl_contrato), Paragraph(valor_formatted, s_val_right)]],
+            [[Paragraph("<b>$</b>", s_lbl_contrato), Paragraph(valor_total_formatted, s_val_right)]],
             colWidths=[1.0 * cm, 6.0 * cm],
             rowHeights=[0.45 * cm]
         )
