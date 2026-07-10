@@ -53,6 +53,7 @@ ESQUEMA_USUARIOS = {
                         "enum": ["termino_indefinido", "termino_fijo", "obra_labor", "prestacion_servicios", "aprendizaje", None],
                     },
                     "objeto": {"bsonType": ["string", "null"]},
+                    "radicado_del_contrato": {"bsonType": ["string", "null"]},
                     "valor": {"bsonType": ["int", "long", "double", "null"]},
                     "valor_mensual": {"bsonType": ["int", "long", "double", "null"]},
                     "rp_compromiso_presupuestal": {
@@ -73,6 +74,13 @@ ESQUEMA_USUARIOS = {
                             "tiene_prorroga": {"bsonType": ["bool", "null"]},
                             "fecha_prorrogra": {"bsonType": ["date", "null"]},
                             "radicado_prorrogra": {"bsonType": ["string", "null"]},
+                        },
+                    },
+                    "adiciones_contrato": {
+                        "bsonType": ["object", "null"],
+                        "properties": {
+                            "tiene_adiciones": {"bsonType": ["bool", "null"]},
+                            "valor_adicion": {"bsonType": ["int", "long", "double", "null"]},
                         },
                     },
                     "pagos": {
@@ -275,6 +283,7 @@ ESQUEMA_CERTIFICACIONES = {
         "año": {"bsonType": "int"},
         "mes": {"bsonType": "int"},
         "estado": {"enum": ["pendiente", "aprobado", "rechazado"]},
+        "tipo_formato": {"bsonType": "string"},
         "fecha_corte": {"bsonType": ["date", "null"]},
         "snapshot_al_dia": {"bsonType": ["bool", "null"]},
         "observaciones": {"bsonType": ["string", "null"]},

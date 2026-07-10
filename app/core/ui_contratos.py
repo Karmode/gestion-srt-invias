@@ -242,6 +242,7 @@ def render_balance_y_pagos(prefijo: str, c: dict, deshabilitado: bool = False):
             "saldo_presp_lib_contrato": c.get("saldo_presp_lib_contrato"),
             "valor_total_pagado": c.get("valor_total_pagado"),
             "prorrogra_contrato": c.get("prorrogra_contrato") or {"tiene_prorroga": False, "fecha_prorrogra": None, "radicado_prorrogra": None},
+            "adiciones_contrato": c.get("adiciones_contrato") or {"tiene_adiciones": False, "valor_adicion": None},
             "pagos": c.get("pagos") or []
         }
         
@@ -299,11 +300,12 @@ def render_balance_y_pagos(prefijo: str, c: dict, deshabilitado: bool = False):
         desc_inv = None
         if tiene_inv:
             desc_inv = st.text_input(
-                "Descripción de inventario",
+                "Descripción de inventario (90/max)",
                 value=c.get("desc_inventario") or "",
                 key=f"{prefijo}_desc_inv",
                 placeholder="Ingresa la descripción del inventario...",
-                disabled=deshabilitado
+                disabled=deshabilitado,
+                max_chars=90
             )
             
     # 2. Sección: Valores financieros con Tooltip alineado a la izquierda (sobresale a la derecha)
@@ -446,6 +448,43 @@ def render_balance_y_pagos(prefijo: str, c: dict, deshabilitado: bool = False):
                 key=f"{prefijo}_rad_pror",
                 disabled=deshabilitado
             )
+
+    # 3.5 Sección: Adiciones del contrato
+    st.markdown(
+        """
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 15px; margin-bottom: 5px;">
+            <strong style="font-size: 16px; margin: 0; padding: 0;">➕ Adiciones del contrato</strong>
+            <div class="srti-tooltip-container" style="margin: 0;">
+                <span class="srti-tooltip-icon" tabindex="0">ⓘ
+                    <div class="srti-tooltip-content">
+                        <h4>Adiciones</h4>
+                        <p>Dinero incluido al contrato por cualquier otro medio extra al contrato que incremente la suma total del contrato.</p>
+                    </div>
+                </span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    adiciones_c = c.get("adiciones_contrato") or {}
+    tiene_adi = st.checkbox(
+        "¿Tiene adiciones?",
+        value=bool(adiciones_c.get("tiene_adiciones")),
+        key=f"{prefijo}_tiene_adi",
+        disabled=deshabilitado
+    )
+    
+    val_adicion = None
+    if tiene_adi:
+        val_adicion_val = adiciones_c.get("valor_adicion")
+        val_adicion = st.number_input(
+            "Valor de la adición (COP)",
+            min_value=1,
+            value=int(val_adicion_val) if (val_adicion_val is not None and val_adicion_val > 0) else 1,
+            step=1000,
+            key=f"{prefijo}_val_adicion",
+            disabled=deshabilitado
+        )
 
     # 4. Sección: Pagos con Tooltip detallado (sobresale a la derecha)
     st.markdown(
@@ -692,6 +731,10 @@ def render_balance_y_pagos(prefijo: str, c: dict, deshabilitado: bool = False):
             "tiene_prorroga": tiene_pror,
             "fecha_prorrogra": fecha_pror if tiene_pror else None,
             "radicado_prorrogra": radicado_pror if tiene_pror else None
+        },
+        "adiciones_contrato": {
+            "tiene_adiciones": tiene_adi,
+            "valor_adicion": val_adicion if tiene_adi else None
         },
         "pagos": pagos_retorno
     }

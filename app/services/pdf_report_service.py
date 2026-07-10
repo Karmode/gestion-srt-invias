@@ -427,8 +427,11 @@ class PDFReportService:
             if contrato and contrato.get("numero"):
                 usuarios_activos.append((u, contrato))
 
-        # 2. Consultar certificaciones de ese año
-        certs_cursor = cert_repo.coleccion.find({"año": anio})
+        # 2. Consultar certificaciones de ese año (filtrando por formato de correspondencia)
+        certs_cursor = cert_repo.coleccion.find({
+            "año": anio,
+            "tipo_formato": {"$in": [None, "gestion_correspondencia"]}
+        })
         certs_dict = {}
         for c in certs_cursor:
             uid = str(c.get("usuario_id", ""))

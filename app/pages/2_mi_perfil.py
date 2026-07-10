@@ -193,24 +193,156 @@ with tab_contrato:
         with st.form("form_nuevo_contrato"):
             _nc1, _nc2 = st.columns(2)
             with _nc1:
-                _n_num = st.text_input("Número de contrato *")
+                st.markdown(
+                    """
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                        <span style="font-size: 14px; font-weight: 500; color: #333333;">Numero del contrato *</span>
+                        <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                            <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                <div class="srti-tooltip-content" style="font-weight: normal;">
+                                    <h4>Numero del contrato</h4>
+                                    <p>Este es el numero de serie del contrato, sin adjetivos ni fechas.</p>
+                                </div>
+                            </span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                _n_num_raw = st.text_input("Número de contrato *", label_visibility="collapsed")
+                _n_num = "".join(filter(str.isdigit, _n_num_raw))
+                if _n_num_raw and not _n_num_raw.isdigit():
+                    st.error("El número de contrato debe contener solo dígitos.")
                 _n_tipo = st.selectbox(
                     "Tipo de contrato",
                     options=list(TIPOS_CONTRATO.keys()),
                     format_func=lambda k: TIPOS_CONTRATO[k],
                 )
             with _nc2:
-                _n_valor = st.number_input("Valor del contrato (COP)", min_value=0, step=100000, format="%d")
+                st.markdown(
+                    """
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                        <span style="font-size: 14px; font-weight: 500; color: #333333;">Valor del contrato (COP)</span>
+                        <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                            <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                <div class="srti-tooltip-content" style="font-weight: normal;">
+                                    <h4>Valor del contrato (COP)</h4>
+                                    <p>Es el valor total del contrato sin adiciones ni disminuciones.</p>
+                                </div>
+                            </span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                _n_valor = st.number_input("Valor del contrato (COP)", min_value=0, step=100000, format="%d", label_visibility="collapsed")
                 _n_vm = st.number_input("Valor mensual (COP)", min_value=0, step=100000, format="%d")
-            _n_rp = st.text_input("RP / compromiso presupuestal", placeholder="Código alfanumérico")
+            st.markdown(
+                """
+                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                    <span style="font-size: 14px; font-weight: 500; color: #333333;">RP / compromiso presupuestal</span>
+                    <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                        <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                            <div class="srti-tooltip-content" style="font-weight: normal;">
+                                <h4>RP / compromiso presupuestal</h4>
+                                <p>Este dato se puede encontrar dentro del cargue de datos financiero en SECOP II.</p>
+                            </div>
+                        </span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            _n_rp = st.text_input("RP / compromiso presupuestal", placeholder="Código alfanumérico", label_visibility="collapsed")
             _nc3, _nc4, _nc5 = st.columns(3)
             with _nc3:
-                _n_frp = st.date_input("Fecha recurso presupuestal (opcional)", value=None, format="DD/MM/YYYY")
+                st.markdown(
+                    """
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                        <span style="font-size: 14px; font-weight: 500; color: #333333;">Fecha recurso presupuestal</span>
+                        <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                            <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                <div class="srti-tooltip-content" style="font-weight: normal;">
+                                    <h4>Fecha recurso presupuestal</h4>
+                                    <p>Este dato se puede encontrar dentro del cargue de datos financiero en SECOP II.</p>
+                                </div>
+                            </span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                _n_frp = st.date_input("Fecha recurso presupuestal", value=None, format="DD/MM/YYYY", label_visibility="collapsed")
             with _nc4:
-                _n_fi = st.date_input("Fecha de inicio", value=None, format="DD/MM/YYYY")
+                st.markdown(
+                    """
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                        <span style="font-size: 14px; font-weight: 500; color: #333333;">Fecha de inicio contrato</span>
+                        <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                            <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                <div class="srti-tooltip-content" style="font-weight: normal;">
+                                    <h4>Fecha de inicio contrato</h4>
+                                    <p>El dato se puede encontrar en la cláusula del contrato, estudios previos o en la información general del contrato página de firma.</p>
+                                </div>
+                            </span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                _n_fi = st.date_input("Fecha de inicio contrato", value=None, format="DD/MM/YYYY", label_visibility="collapsed")
             with _nc5:
-                _n_ff = st.date_input("Fecha de finalización (opcional)", value=None, format="DD/MM/YYYY")
-            _n_obj = st.text_area("Objeto del contrato")
+                st.markdown(
+                    """
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                        <span style="font-size: 14px; font-weight: 500; color: #333333;">Fecha de fin de contrato</span>
+                        <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                            <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                <div class="srti-tooltip-content" style="font-weight: normal;">
+                                    <h4>Fecha de fin de contrato</h4>
+                                    <p>El dato se puede encontrar en la cláusula del contrato, estudios previos o en la información general del contrato página de firma.</p>
+                                </div>
+                            </span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                _n_ff = st.date_input("Fecha de fin de contrato", value=None, format="DD/MM/YYYY", label_visibility="collapsed")
+            st.markdown(
+                """
+                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                    <span style="font-size: 14px; font-weight: 500; color: #333333;">Objeto del contrato</span>
+                    <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                        <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                            <div class="srti-tooltip-content" style="font-weight: normal;">
+                                <h4>Objeto del contrato</h4>
+                                <p>Objeto del contrato identificable en la cláusula del contrato y deberá escribirlo en mayúscula sostenida.</p>
+                            </div>
+                        </span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            _n_obj = st.text_area("Objeto del contrato", label_visibility="collapsed")
+            st.markdown(
+                """
+                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                    <span style="font-size: 14px; font-weight: 500; color: #333333;">Radicado del contrato</span>
+                    <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                        <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                            <div class="srti-tooltip-content" style="font-weight: normal;">
+                                <h4>Radicado del contrato</h4>
+                                <p>Este radicado puede ser encontrado en las cláusulas, estudios previos o repositorios del contrato, y será necesario para el Acta de entrega.</p>
+                            </div>
+                        </span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            _n_rad = st.text_input("Radicado del contrato", label_visibility="collapsed")
             st.caption("El contrato se registra solo al pulsar el botón.")
             _n_env = st.form_submit_button("➕ Agregar contrato", use_container_width=True, type="primary")
 
@@ -226,6 +358,7 @@ with tab_contrato:
                     "fecha_recurso_presupuestal": _n_frp,
                     "valor_mensual": _n_vm if _n_vm > 0 else None,
                     "objeto": _n_obj.strip(),
+                    "radicado_del_contrato": _n_rad.strip() if _n_rad else None,
                 })
                 _feedback("success", "✅ Contrato agregado correctamente.")
                 limpiar_cache_lecturas()
@@ -249,7 +382,7 @@ with tab_contrato:
                 with _d1:
                     st.write(f"**Tipo:** {TIPOS_CONTRATO.get(_c.get('tipo') or '', '—')}")
                     _v = _c.get("valor")
-                    st.write(f"**Valor:** {'${:,.0f}'.format(_v) if _v else '—'}")
+                    st.write(f"**Valor total de contrato:** {'${:,.0f}'.format(_v) if _v else '—'}")
                 with _d2:
                     _vm = _c.get("valor_mensual")
                     st.write(f"**Valor mensual:** {'${:,.0f}'.format(_vm) if _vm else '—'}")
@@ -264,6 +397,8 @@ with tab_contrato:
                     st.write(f"**Fin:** {_c_ff.strftime('%d/%m/%Y') if _c_ff else '—'}")
                 if _c.get("objeto"):
                     st.write(f"**Objeto:** {_c.get('objeto')}")
+                if _c.get("radicado_del_contrato"):
+                    st.write(f"**Radicado del contrato:** {_c.get('radicado_del_contrato')}")
 
                 st.write("---")
                 _fi_ed = _c_fi.date() if _c_fi and hasattr(_c_fi, "date") else _c_fi
@@ -273,7 +408,26 @@ with tab_contrato:
                 with st.container():
                     _ec1, _ec2 = st.columns(2)
                     with _ec1:
-                        _e_num = st.text_input("Número", value=_c_num, key=f"e_num_{_c_num}")
+                        st.markdown(
+                            """
+                            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                                <span style="font-size: 14px; font-weight: 500; color: #333333;">Numero del contrato</span>
+                                <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                                    <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                        <div class="srti-tooltip-content" style="font-weight: normal;">
+                                            <h4>Numero del contrato</h4>
+                                            <p>Este es el numero de serie del contrato, sin adjetivos ni fechas.</p>
+                                        </div>
+                                    </span>
+                                </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+                        _e_num_raw = st.text_input("Número", value=_c_num, key=f"e_num_{_c_num}", label_visibility="collapsed")
+                        _e_num = "".join(filter(str.isdigit, _e_num_raw))
+                        if _e_num_raw and not _e_num_raw.isdigit():
+                            st.error("El número de contrato debe contener solo dígitos.")
                         _e_tipo_idx = list(TIPOS_CONTRATO.keys()).index(_c.get("tipo") or "") if (_c.get("tipo") or "") in TIPOS_CONTRATO else 0
                         _e_tipo = st.selectbox(
                             "Tipo",
@@ -283,29 +437,143 @@ with tab_contrato:
                             key=f"e_tipo_{_c_num}",
                         )
                     with _ec2:
+                        st.markdown(
+                            """
+                            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                                <span style="font-size: 14px; font-weight: 500; color: #333333;">Valor total de contrato (COP)</span>
+                                <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                                    <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                        <div class="srti-tooltip-content" style="font-weight: normal;">
+                                            <h4>Valor total de contrato (COP)</h4>
+                                            <p>Es el valor total del contrato sin adiciones ni disminuciones.</p>
+                                        </div>
+                                    </span>
+                                </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
                         _e_valor = st.number_input(
-                            "Valor (COP)", min_value=0, value=int(_c.get("valor") or 0),
+                            "Valor total de contrato (COP)", min_value=0, value=int(_c.get("valor") or 0),
                             step=100000, format="%d", key=f"e_val_{_c_num}",
+                            label_visibility="collapsed"
                         )
                         _e_vm = st.number_input(
                             "Valor mensual (COP)", min_value=0, value=int(_c.get("valor_mensual") or 0),
                             step=100000, format="%d", key=f"e_vm_{_c_num}",
                         )
+                    st.markdown(
+                        """
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                            <span style="font-size: 14px; font-weight: 500; color: #333333;">RP / compromiso presupuestal</span>
+                            <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                                <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                    <div class="srti-tooltip-content" style="font-weight: normal;">
+                                        <h4>RP / compromiso presupuestal</h4>
+                                        <p>Este dato se puede encontrar dentro del cargue de datos financiero en SECOP II.</p>
+                                    </div>
+                                </span>
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
                     _e_rp = st.text_input(
                         "RP / compromiso presupuestal", value=_c.get("rp_compromiso_presupuestal") or "",
-                        key=f"e_rp_{_c_num}", placeholder="Código alfanumérico",
+                        key=f"e_rp_{_c_num}", placeholder="Código alfanumérico", label_visibility="collapsed"
                     )
                     _ec3, _ec4, _ec5 = st.columns(3)
                     with _ec3:
                         _e_frp_ed = _c.get("fecha_recurso_presupuestal")
                         if _e_frp_ed and hasattr(_e_frp_ed, "date"):
                             _e_frp_ed = _e_frp_ed.date()
-                        _e_frp = st.date_input("Fecha recurso presupuestal (opcional)", value=_e_frp_ed, format="DD/MM/YYYY", key=f"e_frp_{_c_num}")
+                        st.markdown(
+                            """
+                            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                                <span style="font-size: 14px; font-weight: 500; color: #333333;">Fecha recurso presupuestal</span>
+                                <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                                    <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                        <div class="srti-tooltip-content" style="font-weight: normal;">
+                                            <h4>Fecha recurso presupuestal</h4>
+                                            <p>Este dato se puede encontrar dentro del cargue de datos financiero en SECOP II.</p>
+                                        </div>
+                                    </span>
+                                </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+                        _e_frp = st.date_input("Fecha recurso presupuestal", value=_e_frp_ed, format="DD/MM/YYYY", key=f"e_frp_{_c_num}", label_visibility="collapsed")
                     with _ec4:
-                        _e_fi = st.date_input("Inicio", value=_fi_ed, format="DD/MM/YYYY", key=f"e_fi_{_c_num}")
+                        st.markdown(
+                            """
+                            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                                <span style="font-size: 14px; font-weight: 500; color: #333333;">Fecha de inicio contrato</span>
+                                <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                                    <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                        <div class="srti-tooltip-content" style="font-weight: normal;">
+                                            <h4>Fecha de inicio contrato</h4>
+                                            <p>El dato se puede encontrar en la cláusula del contrato, estudios previos o en la información general del contrato página de firma.</p>
+                                        </div>
+                                    </span>
+                                </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+                        _e_fi = st.date_input("Fecha de inicio contrato", value=_fi_ed, format="DD/MM/YYYY", key=f"e_fi_{_c_num}", label_visibility="collapsed")
                     with _ec5:
-                        _e_ff = st.date_input("Fin (opcional)", value=_ff_ed, format="DD/MM/YYYY", key=f"e_ff_{_c_num}")
-                    _e_obj = st.text_area("Objeto", value=_c.get("objeto") or "", key=f"e_obj_{_c_num}")
+                        st.markdown(
+                            """
+                            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                                <span style="font-size: 14px; font-weight: 500; color: #333333;">Fecha de fin de contrato</span>
+                                <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                                    <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                        <div class="srti-tooltip-content" style="font-weight: normal;">
+                                            <h4>Fecha de fin de contrato</h4>
+                                            <p>El dato se puede encontrar en la cláusula del contrato, estudios previos o en la información general del contrato página de firma.</p>
+                                        </div>
+                                    </span>
+                                </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+                        _e_ff = st.date_input("Fecha de fin de contrato", value=_ff_ed, format="DD/MM/YYYY", key=f"e_ff_{_c_num}", label_visibility="collapsed")
+                    st.markdown(
+                        """
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                            <span style="font-size: 14px; font-weight: 500; color: #333333;">Objeto</span>
+                            <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                                <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                    <div class="srti-tooltip-content" style="font-weight: normal;">
+                                        <h4>Objeto del contrato</h4>
+                                        <p>Objeto del contrato identificable en la cláusula del contrato y deberá escribirlo en mayúscula sostenida.</p>
+                                    </div>
+                                </span>
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                    _e_obj = st.text_area("Objeto", value=_c.get("objeto") or "", key=f"e_obj_{_c_num}", label_visibility="collapsed")
+                    st.markdown(
+                        """
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                            <span style="font-size: 14px; font-weight: 500; color: #333333;">Radicado del contrato</span>
+                            <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                                <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                    <div class="srti-tooltip-content" style="font-weight: normal;">
+                                        <h4>Radicado del contrato</h4>
+                                        <p>Este radicado puede ser encontrado en las cláusulas, estudios previos o repositorios del contrato, y será necesario para el Acta de entrega.</p>
+                                    </div>
+                                </span>
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                    _e_rad = st.text_input("Radicado del contrato", value=_c.get("radicado_del_contrato") or "", key=f"e_rad_{_c_num}", label_visibility="collapsed")
                     
                     # RENDERIZAMOS EL BALANCE GENERAL Y PLAN DE PAGOS
                     from app.core.ui_contratos import render_balance_y_pagos
@@ -326,6 +594,7 @@ with tab_contrato:
                             "fecha_recurso_presupuestal": _e_frp,
                             "valor_mensual": _e_vm if _e_vm > 0 else None,
                             "objeto": _e_obj.strip(),
+                            "radicado_del_contrato": _e_rad.strip() if _e_rad else None,
                         }
                         datos_totales.update(_balance_pagos_datos)
                         
