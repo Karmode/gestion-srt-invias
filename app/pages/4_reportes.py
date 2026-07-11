@@ -38,6 +38,9 @@ with col_btn:
         st.session_state.pop("show_excel_gen_download", None)
         st.session_state.pop("excel_kawak_gen_buffer", None)
         st.session_state.pop("excel_kawak_gen_name", None)
+        st.session_state.pop("show_excel_users_download", None)
+        st.session_state.pop("excel_users_buffer", None)
+        st.session_state.pop("excel_users_name", None)
         st.session_state.pop("show_consolidado_download", None)
         st.session_state.pop("consolidado_buffer", None)
         st.session_state.pop("consolidado_name", None)
@@ -107,13 +110,12 @@ with col_c1:
                     width="stretch"
                 )
 
-    # KAWAK General (sin filtro restrictivo por grupo 'permisos')
+    # Conglomerado PQRD - Grupos Trimestral
     with st.container(border=True):
-        st.markdown("### 📘 Evidencia KAWAK General (Excel)")
+        st.markdown("### 📘 Conglomerado PQRD - Grupos Trimestral (Excel)")
         st.write(
-            "Genera el libro de Excel consolidado que cumple con los campos exactos, "
-            "estructuras y codificaciones solicitadas por la plataforma KAWAK para todos "
-            "los grupos de trabajo, sin filtros restrictivos de permisos."
+            "Genera el reporte trimestral consolidado de PQRD que cumple con los campos y "
+            "codificaciones de la plataforma para todos los grupos de trabajo."
         )
         # Selector de período para KAWAK General
         anio_actual_g = datetime.date.today().year
@@ -136,24 +138,24 @@ with col_c1:
         
         st.write("") # Relleno visual
         
-        if st.button("Generar Excel KAWAK General", width="stretch", key="gen_excel_gen", type="primary"):
-            with st.spinner("Procesando datos generales y estructurando hoja Excel..."):
+        if st.button("Generar Conglomerado PQRD", width="stretch", key="gen_excel_gen", type="primary"):
+            with st.spinner("Procesando datos y estructurando reporte conglomerado..."):
                 try:
                     excel_service = ExcelReportService()
                     buffer_g, nombre_g = excel_service.generar_excel_kawak_general(anio_kawak_g, trim_kawak_g)
                     st.session_state["excel_kawak_gen_buffer"] = buffer_g
                     st.session_state["excel_kawak_gen_name"] = nombre_g
                     st.session_state["show_excel_gen_download"] = True
-                    st.success("¡Excel general generado con éxito!")
+                    st.success("¡Reporte Conglomerado generado con éxito!")
                 except Exception as e:
-                    st.error(f"Error generando Excel general: {e}")
+                    st.error(f"Error generando reporte: {e}")
         
         if st.session_state.get("show_excel_gen_download", False):
             st.write("")
             st.download_button(
-                label="⬇️ Descargar Evidencia KAWAK General (Excel)",
+                label="⬇️ Descargar Conglomerado PQRD (Excel)",
                 data=st.session_state.get("excel_kawak_gen_buffer", b""),
-                file_name=st.session_state.get("excel_kawak_gen_name", "Reporte_KAWAK_General.xlsx"),
+                file_name=st.session_state.get("excel_kawak_gen_name", "Conglomerado_PQRD_Trimestral.xlsx"),
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 width="stretch"
             )
@@ -321,6 +323,43 @@ with col_r2_2:
                     width="stretch",
                     key="dl_cargue_cuentas"
                 )
+
+
+# --- Fila 3: Reporte de Usuarios Registrados ---
+st.write("")
+col_r3_1, col_r3_2 = st.columns(2)
+
+with col_r3_1:
+    with st.container(border=True):
+        st.markdown("### 👥 Reporte de Usuarios Registrados (Excel)")
+        st.write(
+            "Genera un libro de Excel con la información de todos los usuarios registrados en el sistema, "
+            "sus roles, documentos y su estado de vigencia contractual actual (activo/inactivo)."
+        )
+        st.write("") # Relleno visual
+        
+        if st.button("Generar Reporte de Usuarios", width="stretch", key="gen_users_excel", type="primary"):
+            with st.spinner("Procesando usuarios registrados y vigencia contractual..."):
+                try:
+                    excel_service = ExcelReportService()
+                    buffer_u, nombre_u = excel_service.generar_excel_usuarios()
+                    st.session_state["excel_users_buffer"] = buffer_u
+                    st.session_state["excel_users_name"] = nombre_u
+                    st.session_state["show_excel_users_download"] = True
+                    st.success("¡Reporte de usuarios generado con éxito!")
+                except Exception as e:
+                    st.error(f"Error generando reporte de usuarios: {e}")
+                    
+        if st.session_state.get("show_excel_users_download", False):
+            st.write("")
+            st.download_button(
+                label="⬇️ Descargar Reporte de Usuarios (Excel)",
+                data=st.session_state.get("excel_users_buffer", b"\x00"),
+                file_name=st.session_state.get("excel_users_name", "Reporte_Usuarios.xlsx"),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                width="stretch",
+                key="dl_users"
+            )
 
 
 # --- Visualizador de PDF Incrustado ---

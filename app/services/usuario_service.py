@@ -417,8 +417,17 @@ class UsuarioService:
 
     @classmethod
     def _contrato_campos_faltantes(cls, contrato: dict) -> list:
-        """Etiquetas de los campos del contrato que faltan por diligenciar."""
-        return [etiqueta for clave, etiqueta in _CAMPOS_CONTRATO if cls._vacio(contrato.get(clave))]
+        """Etiquetas de los campos del contrato que faltan por diligenciar o no son válidos."""
+        import re
+        faltantes = []
+        for clave, etiqueta in _CAMPOS_CONTRATO:
+            val = contrato.get(clave)
+            if cls._vacio(val):
+                faltantes.append(etiqueta)
+            elif clave == "numero":
+                if not re.fullmatch(r"[0-9]+", str(val).strip()):
+                    faltantes.append("Número de contrato (debe ser estrictamente numérico, ej: 3123123)")
+        return faltantes
 
     def faltantes_para_formatos(self, id_usuario: str) -> dict:
         """Evalúa si el usuario tiene todos los datos necesarios para descargar

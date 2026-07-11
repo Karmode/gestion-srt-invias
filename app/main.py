@@ -1141,8 +1141,12 @@ def pantalla_login() -> None:
         }
 
         .stApp input {
-            background-color: transparent !important; /* Transparente para heredar el contenedor */
+            /* Fondo oscuro propio (no 'transparent'): garantiza contraste aunque el selector
+               div[data-baseweb="input"] no coincida con el DOM de la versión de Streamlit desplegada.
+               Evita el caso texto-blanco-sobre-fondo-blanco en Streamlit Cloud. */
+            background-color: rgba(10, 5, 3, 0.9) !important;
             color: #FAFAFA !important;
+            -webkit-text-fill-color: #FAFAFA !important; /* Fuerza color del texto incluso en autofill */
             border: none !important;
             padding: 0.4rem 0.8rem !important; 
             font-size: 14.5px !important; 
@@ -1152,7 +1156,7 @@ def pantalla_login() -> None:
         .stApp input:focus {
             box-shadow: none !important;
             border: none !important;
-            background-color: transparent !important;
+            background-color: rgba(20, 10, 5, 0.95) !important;
         }
         
         /* Corregir el icono del ojito asegurando que su botón interno sea transparente */
