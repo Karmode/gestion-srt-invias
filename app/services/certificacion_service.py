@@ -2447,7 +2447,7 @@ class CertificacionService:
 
         buf = io.BytesIO()
         custom_width = letter[0] + 2.0 * cm
-        custom_height = letter[1] + 12.0 * cm
+        custom_height = letter[1] + 16.0 * cm
         custom_pagesize = (custom_width, custom_height)
         doc = SimpleDocTemplate(
             buf,
@@ -3323,7 +3323,7 @@ class CertificacionService:
 
         buf = io.BytesIO()
         custom_width = letter[0] + 2.0 * cm
-        custom_height = letter[1] + 8.0 * cm
+        custom_height = letter[1] + 12.0 * cm
         custom_pagesize = (custom_width, custom_height)
         doc = SimpleDocTemplate(
             buf,

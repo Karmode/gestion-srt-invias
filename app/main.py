@@ -1794,10 +1794,12 @@ else:
         supervision_pages.append(st.Page("pages/7_admin_certif.py", title="Seguimiento - Formatos", icon="📊"))
 
     # Agrupar páginas
+    gestion_permisos = [page_permisos_suit]
+
     menu_dict = {
         "Principal": [page_dashboard, page_correspondencia, page_perfil, page_instructivos],
         "Gestión contratos": supervision_pages,
-        "Permisos": [page_permisos_suit],
+        "Gestion Permisos": gestion_permisos,
     }
 
     if admin_pages:
