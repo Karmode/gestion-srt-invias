@@ -27,6 +27,12 @@ def _badge_estado(estado: str | None) -> str:
 # tipo_formato (p. ej. el control de correspondencia) usan el prefijo por defecto.
 _PREFIJO_ARCHIVO = {
     "dependencia_economica": "Condicion_Declarante",
+    "cuenta_cobro": "Cuenta_Cobro",
+    "retencion_fuente_primera": "Retencion_Fuente_Primera",
+    "retencion_fuente_segunda": "Retencion_Fuente_Segunda",
+    "acta_compromiso": "Acta_Compromiso",
+    "acta_recibo_entrega_cps": "Balance_General_CPS",
+    "acta_recibo_entrega_cps_real": "Acta_Recibo_Entrega_CPS",
 }
 _PREFIJO_ARCHIVO_DEFAULT = "Certificado_correspondencia"
 
@@ -98,6 +104,8 @@ def _mostrar_avance(usuario_id: str, cert_actual) -> None:
                     f"<span style='font-size:.82em;color:#888;'>{f.get('firmante_nombre', '')} · {fecha_str}</span>",
                     unsafe_allow_html=True,
                 )
+                if f.get("comentario"):
+                    st.caption(f"💬 *{f['comentario']}*")
             else:
                 st.markdown(f"⏳ &nbsp;**{label_largo}** — pendiente")
 
@@ -226,9 +234,9 @@ def _render_opcion_6_gestion_corr(servicio, usuario_id, año_cert, mes_cert, nom
 
 def _render_opcion_7_herramientas():
     """Viñeta 7 — acceso a plataformas externas (ADRES, SECOP II, KLIC 2, AZ Digital, Her. PDF)."""
-    import base64
+    from app.core.recursos import imagen_b64
 
-    mostrar_titulo_decorado("🌐 ADRES · SECOP II · KLIC 2 · AZ Digital · Her. PDF")
+    mostrar_titulo_decorado("🌐 Otros certificados · Herramientas")
     st.caption("Haz clic en cualquier imagen para abrir la plataforma en una nueva pestaña.")
     st.write("")
 
@@ -263,16 +271,40 @@ def _render_opcion_7_herramientas():
             "desc": "Herramienta de edición y gestión PDF",
             "url": configuracion.pdf_h_url,
         },
+        {
+            "img": os.path.join("app", "assets", "procuraduria_logo.png"),
+            "name": "Procuraduría",
+            "desc": "Certificado de antecedentes disciplinarios",
+            "url": configuracion.url_procuraduria,
+        },
+        {
+            "img": os.path.join("app", "assets", "contraloria_logo.png"),
+            "name": "Contraloría",
+            "desc": "Certificado de antecedentes fiscales",
+            "url": configuracion.url_contraloria,
+        },
+        {
+            "img": os.path.join("app", "assets", "policia_logo.png"),
+            "name": "Policía Antecedentes",
+            "desc": "Certificado de antecedentes judiciales (Policía).",
+            "url": configuracion.url_pol_antecedentes,
+        },
+        {
+            "img": os.path.join("app", "assets", "policia_RCMC.png"),
+            "name": "Policía RNMC",
+            "desc": "Certificado de medidas correctivas (RNMC)",
+            "url": configuracion.url_pol_rcmc,
+        },
+        {
+            "img": os.path.join("app", "assets", "rut_dian.png"),
+            "name": "RUT (DIAN)",
+            "desc": 'Descargar Rut (Virtual) "Requiere cuenta Virtual en la DIAN"',
+            "url": configuracion.url_rut,
+        },
     ]
 
-    def _img_b64(path: str) -> str:
-        if not os.path.exists(path):
-            return ""
-        with open(path, "rb") as f:
-            return base64.b64encode(f.read()).decode()
-
     def _card(plat: dict, delay_ms: int = 0) -> str:
-        b64 = _img_b64(plat["img"])
+        b64 = imagen_b64(plat["img"])
         img_tag = (
             f'<img src="data:image/png;base64,{b64}" alt="{plat["name"]}" '
             f'style="max-height:80px;max-width:100%;object-fit:contain;'
@@ -321,19 +353,14 @@ def _render_opcion_7_herramientas():
         unsafe_allow_html=True,
     )
 
-    # ── Primera fila: 3 plataformas ──────────────────────────────────────────
-    cols1 = st.columns(3, gap="medium")
-    for i, plat in enumerate(PLATAFORMAS[:3]):
-        with cols1[i]:
-            st.markdown(_card(plat, delay_ms=i * 80), unsafe_allow_html=True)
-
-    st.write("")
-
-    # ── Segunda fila: 2 plataformas centradas ───────────────────────────────
-    _, col_d, col_e, _ = st.columns([0.5, 1, 1, 0.5], gap="medium")
-    for col, plat, delay in zip([col_d, col_e], PLATAFORMAS[3:], [240, 320]):
-        with col:
-            st.markdown(_card(plat, delay_ms=delay), unsafe_allow_html=True)
+    # ── Renderizado en filas de 3 columnas ──────────────────────────────────────────
+    for r in range(0, len(PLATAFORMAS), 3):
+        cols = st.columns(3, gap="medium")
+        row_plats = PLATAFORMAS[r:r+3]
+        for c_idx, plat in enumerate(row_plats):
+            with cols[c_idx]:
+                st.markdown(_card(plat, delay_ms=(r + c_idx) * 80), unsafe_allow_html=True)
+        st.write("")
 
 
 def _render_opcion_8_historial(servicio, usuario_id, año_cert, mes_cert, bloqueado=False):
@@ -397,6 +424,329 @@ def _render_opcion_8_historial(servicio, usuario_id, año_cert, mes_cert, bloque
                                 "año": año_cert_hist,
                             }
                             st.rerun()
+
+
+def _render_opcion_1_cuenta_cobro(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, es_anterior, bloqueado=False):
+    usuario_id = sesion["id"]
+    nombre_usuario_actual = sesion.get("nombre_completo") or sesion.get("usuario")
+    mostrar_titulo_decorado("Cuenta de Cobro")
+
+    if bloqueado:
+        _aviso_bloqueado()
+        return
+
+    etiqueta = (
+        f"Período anterior — {nombre_mes_cert} {año_cert} (ponerse al día)"
+        if es_anterior
+        else f"Período actual — {nombre_mes_cert} {año_cert}"
+    )
+    st.subheader(etiqueta)
+
+    from app.services.firma_service import FirmaService
+    firma_service = FirmaService()
+    if not firma_service.tiene_firma(usuario_id):
+        st.warning(
+            "⚠️ No tienes una firma registrada en tu perfil.\n\n"
+            "Para poder generar y firmar digitalmente este formato, necesitas registrar tu firma. "
+            "Por favor, ve a **Mi Perfil** para subirla."
+        )
+        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
+        return
+
+    cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id, "cuenta_cobro")
+
+    if cert_actual:
+        st.success(
+            f"Tu formato de **Cuenta de cobro** para **{nombre_mes_cert} {año_cert}** "
+            f"ha sido generado y firmado digitalmente."
+        )
+        
+        try:
+            pdf_bytes = servicio.generar_pdf(cert_actual)
+        except Exception as e:
+            st.error(f"No se pudo generar el PDF del formato: {e}")
+            pdf_bytes = None
+
+        if pdf_bytes:
+            nombre_archivo = _nombre_archivo_pdf(cert_actual, nombre_mes_cert, año_cert)
+            c_dl, c_prev = st.columns(2)
+            with c_dl:
+                st.download_button(
+                    "⬇️ Descargar PDF",
+                    data=pdf_bytes,
+                    file_name=nombre_archivo,
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True,
+                )
+            with c_prev:
+                if st.button("👁️ Ver formato", use_container_width=True):
+                    st.session_state["_preview_cert_user"] = {
+                        "cert": cert_actual,
+                        "mes_nombre": nombre_mes_cert,
+                        "año": año_cert,
+                    }
+                    st.rerun()
+    else:
+        st.warning(f"Aún no has generado el formato para el período **{nombre_mes_cert} {año_cert}**.")
+        
+        # Mostrar resumen de datos del usuario
+        from app.repositories.usuario_repo import UsuarioRepositorio
+        usuario_data = UsuarioRepositorio().buscar_por_id(usuario_id) or {}
+        info_laboral = usuario_data.get("informacion_laboral") or {}
+        bancaria = info_laboral.get("bancaria") or {}
+        
+        # Contrato vigente
+        contratos = usuario_data.get("contratos") or []
+        contrato_vig = servicio._contrato_vigente(contratos)
+        
+        st.write("### Datos para generación de formato")
+        st.write(f"**Contratista:** {usuario_data.get('nombre_completo', '')}")
+        st.write(f"**Identificación:** {usuario_data.get('tipo_documento', '')} Nº {usuario_data.get('numero_documento', '')}")
+        st.write(f"**Lugar de expedición:** {usuario_data.get('lugar_expedicion_documento', '—')}")
+        
+        from app.services.opciones_service import OpcionesService
+        banco_clave = bancaria.get("banco")
+        banco_nombre = (
+            OpcionesService().obtener_etiqueta_por_clave("banco", banco_clave)
+            if banco_clave else "No registrado"
+        )
+        st.write(f"**Banco:** {banco_nombre}")
+        st.write(f"**Cuenta:** {bancaria.get('numero_cuenta') or 'No registrada'}")
+
+        if contrato_vig:
+            st.write(f"**Contrato:** {contrato_vig.get('numero', '')}")
+            st.write(f"**Honorarios Mensuales:** $ {contrato_vig.get('valor_mensual', 0):,}")
+            st.write(f"**RP Compromiso Presupuestal:** {contrato_vig.get('rp_compromiso_presupuestal') or '—'}")
+        else:
+            st.write("**Contrato:** No se detectó contrato vigente")
+            
+        st.caption("Si alguno de estos datos es incorrecto o deseas modificarlo, ve a tu perfil.")
+        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
+        
+        st.write("---")
+        if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True):
+            if servicio.firmar_y_generar_cuenta_cobro(usuario_id, nombre_usuario_actual):
+                st.success("¡Formato generado y firmado digitalmente con éxito!")
+                st.rerun()
+
+
+def _render_opcion_2_retencion_primera(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, es_anterior, bloqueado=False):
+    usuario_id = sesion["id"]
+    nombre_usuario_actual = sesion.get("nombre_completo") or sesion.get("usuario")
+    mostrar_titulo_decorado("Disminución Base Retención en la Fuente Contrato - Primera Cuenta")
+
+    if bloqueado:
+        _aviso_bloqueado()
+        return
+
+    etiqueta = (
+        f"Período anterior — {nombre_mes_cert} {año_cert} (ponerse al día)"
+        if es_anterior
+        else f"Período actual — {nombre_mes_cert} {año_cert}"
+    )
+    st.subheader(etiqueta)
+
+    from app.services.firma_service import FirmaService
+    firma_service = FirmaService()
+    if not firma_service.tiene_firma(usuario_id):
+        st.warning(
+            "⚠️ No tienes una firma registrada en tu perfil.\n\n"
+            "Para poder generar y firmar digitalmente este formato, necesitas registrar tu firma. "
+            "Por favor, ve a **Mi Perfil** para subirla."
+        )
+        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
+        return
+
+    cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id, "retencion_fuente_primera")
+
+    if cert_actual:
+        st.success(
+            f"Tu formato de **Retención en la fuente Primera cuenta** para **{nombre_mes_cert} {año_cert}** "
+            f"ha sido generado y firmado digitalmente."
+        )
+        
+        try:
+            pdf_bytes = servicio.generar_pdf(cert_actual)
+        except Exception as e:
+            st.error(f"No se pudo generar el PDF del formato: {e}")
+            pdf_bytes = None
+
+        if pdf_bytes:
+            nombre_archivo = _nombre_archivo_pdf(cert_actual, nombre_mes_cert, año_cert)
+            c_dl, c_prev = st.columns(2)
+            with c_dl:
+                st.download_button(
+                    "⬇️ Descargar PDF",
+                    data=pdf_bytes,
+                    file_name=nombre_archivo,
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True,
+                )
+            with c_prev:
+                if st.button("👁️ Ver formato", use_container_width=True):
+                    st.session_state["_preview_cert_user"] = {
+                        "cert": cert_actual,
+                        "mes_nombre": nombre_mes_exp_val if 'nombre_mes_exp_val' in locals() else nombre_mes_cert,
+                        "año": año_cert,
+                    }
+                    st.rerun()
+    else:
+        st.warning(f"Aún no has generado el formato para el período **{nombre_mes_cert} {año_cert}**.")
+        
+        # Mostrar resumen de datos del usuario
+        from app.repositories.usuario_repo import UsuarioRepositorio
+        usuario_data = UsuarioRepositorio().buscar_por_id(usuario_id) or {}
+        info_laboral = usuario_data.get("informacion_laboral") or {}
+        tributaria = info_laboral.get("tributaria") or {}
+        declarante_renta = tributaria.get("declarante_renta", False)
+        
+        # Contrato vigente
+        contratos = usuario_data.get("contratos") or []
+        contrato_vig = servicio._contrato_vigente(contratos)
+        
+        st.write("### Datos para generación de formato")
+        st.write(f"**Contratista:** {usuario_data.get('nombre_completo', '')}")
+        st.write(f"**Identificación:** {usuario_data.get('tipo_documento', '')} Nº {usuario_data.get('numero_documento', '')}")
+        st.write(f"**Lugar de expedición:** {usuario_data.get('lugar_expedicion_documento', '—')}")
+        
+        renta_str = "Declarante de Renta" if declarante_renta else "No Declarante de Renta"
+        st.write(f"**Condición Tributaria:** {renta_str}")
+        st.write(f"**RUT:** {tributaria.get('rut') or 'No registrado'}")
+
+        from app.services.opciones_service import OpcionesService
+        regimen_clave = tributaria.get("regimen")
+        regimen_etiqueta = (
+            OpcionesService().obtener_etiqueta_por_clave("regimen_tributario", regimen_clave)
+            if regimen_clave else "No registrado"
+        )
+        st.write(f"**Régimen tributario:** {regimen_etiqueta}")
+
+        if contrato_vig:
+            st.write(f"**Contrato:** {contrato_vig.get('numero', '')}")
+            st.write(f"**Valor total contrato:** $ {contrato_vig.get('valor', 0):,}")
+            st.write(f"**Honorarios Mensuales:** $ {contrato_vig.get('valor_mensual', 0):,}")
+        else:
+            st.write("**Contrato:** No se detectó contrato vigente")
+            
+        st.caption("Si alguno de estos datos es incorrecto o deseas modificarlo, ve a tu perfil.")
+        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
+        
+        st.write("---")
+        if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True):
+            if servicio.firmar_y_generar_retencion_primera(usuario_id, nombre_usuario_actual):
+                st.success("¡Formato generado y firmado digitalmente con éxito!")
+                st.rerun()
+
+
+def _render_opcion_3_retencion_segunda(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, es_anterior, bloqueado=False):
+    usuario_id = sesion["id"]
+    nombre_usuario_actual = sesion.get("nombre_completo") or sesion.get("usuario")
+    mostrar_titulo_decorado("Disminución Base Retención en la Fuente Contrato - Segunda Cuenta ++")
+
+    if bloqueado:
+        _aviso_bloqueado()
+        return
+
+    etiqueta = (
+        f"Período anterior — {nombre_mes_cert} {año_cert} (ponerse al día)"
+        if es_anterior
+        else f"Período actual — {nombre_mes_cert} {año_cert}"
+    )
+    st.subheader(etiqueta)
+
+    from app.services.firma_service import FirmaService
+    firma_service = FirmaService()
+    if not firma_service.tiene_firma(usuario_id):
+        st.warning(
+            "⚠️ No tienes una firma registrada en tu perfil.\n\n"
+            "Para poder generar y firmar digitalmente este formato, necesitas registrar tu firma. "
+            "Por favor, ve a **Mi Perfil** para subirla."
+        )
+        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
+        return
+
+    cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id, "retencion_fuente_segunda")
+
+    if cert_actual:
+        st.success(
+            f"Tu formato de **Retención en la fuente Segunda cuenta** para **{nombre_mes_cert} {año_cert}** "
+            f"ha sido generado y firmado digitalmente."
+        )
+        
+        try:
+            pdf_bytes = servicio.generar_pdf(cert_actual)
+        except Exception as e:
+            st.error(f"No se pudo generar el PDF del formato: {e}")
+            pdf_bytes = None
+
+        if pdf_bytes:
+            nombre_archivo = _nombre_archivo_pdf(cert_actual, nombre_mes_cert, año_cert)
+            c_dl, c_prev = st.columns(2)
+            with c_dl:
+                st.download_button(
+                    "⬇️ Descargar PDF",
+                    data=pdf_bytes,
+                    file_name=nombre_archivo,
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True,
+                )
+            with c_prev:
+                if st.button("👁️ Ver formato", use_container_width=True):
+                    st.session_state["_preview_cert_user"] = {
+                        "cert": cert_actual,
+                        "mes_nombre": nombre_mes_cert,
+                        "año": año_cert,
+                    }
+                    st.rerun()
+    else:
+        st.warning(f"Aún no has generado el formato para el período **{nombre_mes_cert} {año_cert}**.")
+        
+        # Mostrar resumen de datos del usuario
+        from app.repositories.usuario_repo import UsuarioRepositorio
+        usuario_data = UsuarioRepositorio().buscar_por_id(usuario_id) or {}
+        info_laboral = usuario_data.get("informacion_laboral") or {}
+        tributaria = info_laboral.get("tributaria") or {}
+        declarante_renta = tributaria.get("declarante_renta", False)
+        
+        # Contrato vigente
+        contratos = usuario_data.get("contratos") or []
+        contrato_vig = servicio._contrato_vigente(contratos)
+        
+        st.write("### Datos para generación de formato")
+        st.write(f"**Contratista:** {usuario_data.get('nombre_completo', '')}")
+        st.write(f"**Identificación:** {usuario_data.get('tipo_documento', '')} Nº {usuario_data.get('numero_documento', '')}")
+        st.write(f"**Lugar de expedición:** {usuario_data.get('lugar_expedicion_documento', '—')}")
+        
+        renta_str = "Declarante de Renta" if declarante_renta else "No Declarante de Renta"
+        st.write(f"**Condición Tributaria:** {renta_str}")
+        st.write(f"**RUT:** {tributaria.get('rut') or 'No registrado'}")
+
+        from app.services.opciones_service import OpcionesService
+        regimen_clave = tributaria.get("regimen")
+        regimen_etiqueta = (
+            OpcionesService().obtener_etiqueta_por_clave("regimen_tributario", regimen_clave)
+            if regimen_clave else "No registrado"
+        )
+        st.write(f"**Régimen tributario:** {regimen_etiqueta}")
+
+        if contrato_vig:
+            st.write(f"**Contrato:** {contrato_vig.get('numero', '')}")
+            st.write(f"**Valor total contrato:** $ {contrato_vig.get('valor', 0):,}")
+            st.write(f"**Honorarios Mensuales:** $ {contrato_vig.get('valor_mensual', 0):,}")
+        else:
+            st.write("**Contrato:** No se detectó contrato vigente")
+            
+        st.caption("Si alguno de estos datos es incorrecto o deseas modificarlo, ve a tu perfil.")
+        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
+        
+        st.write("---")
+        if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True):
+            if servicio.firmar_y_generar_retencion_segunda(usuario_id, nombre_usuario_actual):
+                st.success("¡Formato generado y firmado digitalmente con éxito!")
+                st.rerun()
 
 
 def _render_opcion_4_declarante_dependencia(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, es_anterior, bloqueado=False):
@@ -498,6 +848,306 @@ def _render_opcion_4_declarante_dependencia(servicio, sesion, año_cert, mes_cer
                 st.rerun()
 
 
+def _render_opcion_5_acta_compromiso(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, es_anterior, bloqueado=False):
+    usuario_id = sesion["id"]
+    nombre_usuario_actual = sesion.get("nombre_completo") or sesion.get("usuario")
+    mostrar_titulo_decorado("Acta de Compromiso")
+
+    if bloqueado:
+        _aviso_bloqueado()
+        return
+
+    etiqueta = (
+        f"Período anterior — {nombre_mes_cert} {año_cert} (ponerse al día)"
+        if es_anterior
+        else f"Período actual — {nombre_mes_cert} {año_cert}"
+    )
+    st.subheader(etiqueta)
+
+    from app.services.firma_service import FirmaService
+    firma_service = FirmaService()
+    if not firma_service.tiene_firma(usuario_id):
+        st.warning(
+            "⚠️ No tienes una firma registrada en tu perfil.\n\n"
+            "Para poder generar y firmar digitalmente este formato, necesitas registrar tu firma. "
+            "Por favor, ve a **Mi Perfil** para subirla."
+        )
+        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
+        return
+
+    cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id, "acta_compromiso")
+
+    if cert_actual:
+        st.success(
+            f"Tu formato de **Acta de compromiso** para **{nombre_mes_cert} {año_cert}** "
+            f"ha sido generado y firmado digitalmente."
+        )
+        
+        try:
+            pdf_bytes = servicio.generar_pdf(cert_actual)
+        except Exception as e:
+            st.error(f"No se pudo generar el PDF del formato: {e}")
+            pdf_bytes = None
+
+        if pdf_bytes:
+            nombre_archivo = _nombre_archivo_pdf(cert_actual, nombre_mes_cert, año_cert)
+            c_dl, c_prev = st.columns(2)
+            with c_dl:
+                st.download_button(
+                    "⬇️ Descargar PDF",
+                    data=pdf_bytes,
+                    file_name=nombre_archivo,
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True,
+                )
+            with c_prev:
+                if st.button("👁️ Ver formato", use_container_width=True):
+                    st.session_state["_preview_cert_user"] = {
+                        "cert": cert_actual,
+                        "mes_nombre": nombre_mes_cert,
+                        "año": año_cert,
+                    }
+                    st.rerun()
+    else:
+        st.warning(f"Aún no has generado el formato para el período **{nombre_mes_cert} {año_cert}**.")
+        
+        # Mostrar resumen de datos del usuario
+        from app.repositories.usuario_repo import UsuarioRepositorio
+        usuario_data = UsuarioRepositorio().buscar_por_id(usuario_id) or {}
+        info_laboral = usuario_data.get("informacion_laboral") or {}
+        seg_social = info_laboral.get("seguridad_social") or {}
+
+        # Contrato vigente
+        contratos = usuario_data.get("contratos") or []
+        contrato_vig = servicio._contrato_vigente(contratos)
+        
+        st.write("### Datos para generación de formato")
+        st.write(f"**Contratista:** {usuario_data.get('nombre_completo', '')}")
+        st.write(f"**Identificación:** {usuario_data.get('tipo_documento', '')} Nº {usuario_data.get('numero_documento', '')}")
+        st.write(f"**Lugar de expedición:** {usuario_data.get('lugar_expedicion_documento', '—')}")
+        
+        if contrato_vig:
+            st.write(f"**Contrato:** {contrato_vig.get('numero', '')}")
+            st.write(f"**Vigencia del Contrato:** {contrato_vig.get('fecha_inicio').strftime('%d/%m/%Y') if contrato_vig.get('fecha_inicio') else '—'} a {contrato_vig.get('fecha_fin').strftime('%d/%m/%Y') if contrato_vig.get('fecha_fin') else '—'}")
+        else:
+            st.write("**Contrato:** No se detectó contrato vigente")
+
+        # AFP
+        afp_obj = seg_social.get("afp") or {}
+        afp_val = afp_obj.get("valor")
+        afp_str = f"$ {afp_val:,.0f}" if afp_val is not None else (afp_obj.get("entidad") or "No registrada")
+
+        # EPS
+        eps_obj = seg_social.get("eps") or {}
+        eps_val = eps_obj.get("valor")
+        eps_str = f"$ {eps_val:,.0f}" if eps_val is not None else (eps_obj.get("entidad") or "No registrada")
+
+        # ARL
+        arl_obj = seg_social.get("arl") or {}
+        arl_val = arl_obj.get("valor")
+        arl_str = f"$ {arl_val:,.0f}" if arl_val is not None else (arl_obj.get("entidad") or "No registrada")
+
+        # IBC
+        ibc_val = info_laboral.get("ibc_prestaciones_sociales")
+        ibc_str = f"$ {ibc_val:,.0f}" if ibc_val is not None else "No registrado"
+
+        st.write(f"**Ingreso Base de Cotización:** {ibc_str}")
+        st.write(f"**AFP:** {afp_str}")
+        st.write(f"**EPS:** {eps_str}")
+        st.write(f"**ARL:** {arl_str}")
+            
+        st.caption("Si alguno de estos datos es incorrecto o deseas modificarlo, ve a tu perfil.")
+        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
+        
+        st.write("---")
+        if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True):
+            if servicio.firmar_y_generar_acta_compromiso(usuario_id, nombre_usuario_actual):
+                st.success("¡Formato generado y firmado digitalmente con éxito!")
+                st.rerun()
+
+
+def _render_opcion_9_acta_recibo_entrega_real(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, es_anterior, bloqueado=False):
+    usuario_id = sesion["id"]
+    nombre_usuario_actual = sesion.get("nombre_completo") or sesion.get("usuario")
+    mostrar_titulo_decorado("Acta de recibo y entrega CPS")
+
+    if bloqueado:
+        _aviso_bloqueado()
+        return
+
+    etiqueta = (
+        f"Período anterior — {nombre_mes_cert} {año_cert} (ponerse al día)"
+        if es_anterior
+        else f"Período actual — {nombre_mes_cert} {año_cert}"
+    )
+    st.subheader(etiqueta)
+
+    from app.services.firma_service import FirmaService
+    firma_service = FirmaService()
+    if not firma_service.tiene_firma(usuario_id):
+        st.warning(
+            "⚠️ No tienes una firma registrada en tu perfil.\n\n"
+            "Para poder generar y firmar digitalmente este formato, necesitas registrar tu firma. "
+            "Por favor, ve a **Mi Perfil** para subirla."
+        )
+        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
+        return
+
+    cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id, "acta_recibo_entrega_cps_real")
+
+    if cert_actual:
+        st.success(
+            f"Tu formato de **Acta de recibo y entrega CPS** para **{nombre_mes_cert} {año_cert}** "
+            f"ha sido generado y firmado digitalmente."
+        )
+        
+        try:
+            pdf_bytes = servicio.generar_pdf(cert_actual)
+        except Exception as e:
+            st.error(f"No se pudo generar el PDF del formato: {e}")
+            pdf_bytes = None
+
+        if pdf_bytes:
+            nombre_archivo = _nombre_archivo_pdf(cert_actual, nombre_mes_cert, año_cert)
+            c_dl, c_prev = st.columns(2)
+            with c_dl:
+                st.download_button(
+                    "⬇️ Descargar PDF",
+                    data=pdf_bytes,
+                    file_name=nombre_archivo,
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True,
+                )
+            with c_prev:
+                if st.button("👁️ Ver formato", use_container_width=True):
+                    st.session_state["_preview_cert_user"] = {
+                        "cert": cert_actual,
+                        "mes_nombre": nombre_mes_cert,
+                        "año": año_cert,
+                    }
+                    st.rerun()
+    else:
+        st.warning(f"Aún no has generado el formato para el período **{nombre_mes_cert} {año_cert}**.")
+        
+        # Mostrar resumen de datos del usuario
+        from app.repositories.usuario_repo import UsuarioRepositorio
+        usuario_data = UsuarioRepositorio().buscar_por_id(usuario_id) or {}
+
+        # Contrato vigente
+        contratos = usuario_data.get("contratos") or []
+        contrato_vig = servicio._contrato_vigente(contratos)
+        
+        st.write("### Datos para generación de formato")
+        st.write(f"**Contratista:** {usuario_data.get('nombre_completo', '')}")
+        st.write(f"**Identificación:** {usuario_data.get('tipo_documento', '')} Nº {usuario_data.get('numero_documento', '')}")
+        if contrato_vig:
+            st.write(f"**Contrato:** {contrato_vig.get('numero', '')}")
+        else:
+            st.write("**Contrato:** No se detectó contrato vigente")
+            
+        st.caption("Si alguno de estos datos es incorrecto o deseas modificarlo, ve a tu perfil.")
+        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
+        
+        st.write("---")
+        if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True):
+            if servicio.firmar_y_generar_acta_recibo_entrega_cps_real(usuario_id, nombre_usuario_actual):
+                st.success("¡Formato generado y firmado digitalmente con éxito!")
+                st.rerun()
+
+
+def _render_opcion_8_acta_recibo_entrega(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, es_anterior, bloqueado=False):
+    usuario_id = sesion["id"]
+    nombre_usuario_actual = sesion.get("nombre_completo") or sesion.get("usuario")
+    mostrar_titulo_decorado("Balance General CPS")
+
+    if bloqueado:
+        _aviso_bloqueado()
+        return
+
+    etiqueta = (
+        f"Período anterior — {nombre_mes_cert} {año_cert} (ponerse al día)"
+        if es_anterior
+        else f"Período actual — {nombre_mes_cert} {año_cert}"
+    )
+    st.subheader(etiqueta)
+
+    from app.services.firma_service import FirmaService
+    firma_service = FirmaService()
+    if not firma_service.tiene_firma(usuario_id):
+        st.warning(
+            "⚠️ No tienes una firma registrada en tu perfil.\n\n"
+            "Para poder generar y firmar digitalmente este formato, necesitas registrar tu firma. "
+            "Por favor, ve a **Mi Perfil** para subirla."
+        )
+        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
+        return
+
+    cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id, "acta_recibo_entrega_cps")
+
+    if cert_actual:
+        st.success(
+            f"Tu formato de **Balance General CPS** para **{nombre_mes_cert} {año_cert}** "
+            f"ha sido generado y firmado digitalmente."
+        )
+        
+        try:
+            pdf_bytes = servicio.generar_pdf(cert_actual)
+        except Exception as e:
+            st.error(f"No se pudo generar el PDF del formato: {e}")
+            pdf_bytes = None
+
+        if pdf_bytes:
+            nombre_archivo = _nombre_archivo_pdf(cert_actual, nombre_mes_cert, año_cert)
+            c_dl, c_prev = st.columns(2)
+            with c_dl:
+                st.download_button(
+                    "⬇️ Descargar PDF",
+                    data=pdf_bytes,
+                    file_name=nombre_archivo,
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True,
+                )
+            with c_prev:
+                if st.button("👁️ Ver formato", use_container_width=True):
+                    st.session_state["_preview_cert_user"] = {
+                        "cert": cert_actual,
+                        "mes_nombre": nombre_mes_cert,
+                        "año": año_cert,
+                    }
+                    st.rerun()
+    else:
+        st.warning(f"Aún no has generado el formato para el período **{nombre_mes_cert} {año_cert}**.")
+        
+        # Mostrar resumen de datos del usuario
+        from app.repositories.usuario_repo import UsuarioRepositorio
+        usuario_data = UsuarioRepositorio().buscar_por_id(usuario_id) or {}
+
+        # Contrato vigente
+        contratos = usuario_data.get("contratos") or []
+        contrato_vig = servicio._contrato_vigente(contratos)
+        
+        st.write("### Datos para generación de formato")
+        st.write(f"**Contratista:** {usuario_data.get('nombre_completo', '')}")
+        st.write(f"**Identificación:** {usuario_data.get('tipo_documento', '')} Nº {usuario_data.get('numero_documento', '')}")
+        if contrato_vig:
+            st.write(f"**Contrato:** {contrato_vig.get('numero', '')}")
+        else:
+            st.write("**Contrato:** No se detectó contrato vigente")
+            
+        st.caption("Si alguno de estos datos es incorrecto o deseas modificarlo, ve a tu perfil.")
+        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
+        
+        st.write("---")
+        if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True):
+            if servicio.firmar_y_generar_acta_recibo_entrega(usuario_id, nombre_usuario_actual):
+                st.success("¡Formato generado y firmado digitalmente con éxito!")
+                st.rerun()
+
+
+
 def _render_alerta_faltantes(faltantes: dict) -> None:
     """Alerta superior que enumera los datos pendientes que bloquean la descarga."""
     msg = (
@@ -537,7 +1187,41 @@ def render(sesion=None):
     nombre_mes_cert = MESES_ES[mes_cert - 1]
     es_anterior = servicio.es_mes_anterior()
 
-    mostrar_titulo_decorado("Formatos de contrato")
+    tab_activa = st.session_state.get("tab_formato_activo")
+    if tab_activa == 5:
+        mostrar_titulo_decorado("Formato de acta de compromiso")
+    elif tab_activa == 8:
+        mostrar_titulo_decorado("Balance General CPS")
+    elif tab_activa == 9:
+        mostrar_titulo_decorado("Acta de recibo y entrega CPS")
+    else:
+        mostrar_titulo_decorado("Formatos de contrato")
+
+    dia_inicio = servicio._dia_inicio_periodo()
+
+    # CSS global para pintar de verde el botón de instructivos en el segundo contenedor
+    st.markdown(
+        """
+        <style>
+        /* Selecciona el botón dentro del segundo contenedor del panel izquierdo */
+        div[data-testid="stColumn"]:first-child div[data-testid="stVerticalBlockBorderWrapper"]:nth-of-type(2) div.stButton > button {
+            background-color: #28a745 !important;
+            background: #28a745 !important;
+            color: white !important;
+            border: 1px solid #28a745 !important;
+        }
+        div[data-testid="stColumn"]:first-child div[data-testid="stVerticalBlockBorderWrapper"]:nth-of-type(2) div.stButton > button:hover {
+            background-color: #218838 !important;
+            background: #218838 !important;
+            border-color: #1e7e34 !important;
+        }
+        div[data-testid="stColumn"]:first-child div[data-testid="stVerticalBlockBorderWrapper"]:nth-of-type(2) div.stButton > button * {
+            color: white !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
     faltantes = UsuarioService().faltantes_para_formatos(usuario_id)
     bloqueado = not faltantes["puede_descargar"]
@@ -549,43 +1233,113 @@ def render(sesion=None):
     with col_menu:
         with st.container(border=True):
             st.markdown("### Formatos - Cuenta de cobro SRTI")
-            st.button("1- Cuenta de cobro.", disabled=True, use_container_width=True)
-            st.button("2- Form. retención en la fuente Primera cuenta.", disabled=True, use_container_width=True)
-            st.button("3- Form. retención en la fuente Segunda cuenta ++", disabled=True, use_container_width=True)
+            if st.button("1- Cuenta de cobro.", type="primary", disabled=False, use_container_width=True):
+                st.session_state["tab_formato_activo"] = 1
+                st.rerun()
+            if st.button("2- Form. retención en la fuente Primera cuenta.", type="primary", disabled=False, use_container_width=True):
+                st.session_state["tab_formato_activo"] = 2
+                st.rerun()
+            if st.button("3- Form. retención en la fuente Segunda cuenta ++", type="primary", disabled=False, use_container_width=True):
+                st.session_state["tab_formato_activo"] = 3
+                st.rerun()
             
             if st.button("4- Form. condicion de declarante y dep. Economica.", type="primary", disabled=False, use_container_width=True):
                 st.session_state["tab_formato_activo"] = 4
                 st.rerun()
 
-            st.button("5- Form. Acta de compromiso.", disabled=True, use_container_width=True)
+            if st.button("5- Form. Acta compromiso.", type="primary", disabled=False, use_container_width=True):
+                st.session_state["tab_formato_activo"] = 5
+                st.rerun()
             
             if st.button("6– Form. Gestión Corr – GD – SECOP II.", type="primary", disabled=False, use_container_width=True):
                 st.session_state["tab_formato_activo"] = 6
                 st.rerun()
 
-            if st.button("7– ADRES · SECOP II · KLIC 2 · AZ · Her. PDF.", type="primary", disabled=False, use_container_width=True):
+            if st.button("7- Otros certificados - Herramientas", type="primary", disabled=False, use_container_width=True):
                 st.session_state["tab_formato_activo"] = 7
                 st.rerun()
             
-            if st.button("8- Historial de formatos.", type="primary", disabled=False, use_container_width=True):
+            if st.button("8- Balance General CPS.", type="primary", disabled=False, use_container_width=True):
                 st.session_state["tab_formato_activo"] = 8
                 st.rerun()
-                
-            if st.button("9- Verificar formato.", type="primary", disabled=False, use_container_width=True):
+            if st.button("9- Formato de acta de recibo y entrega CPS.", type="primary", disabled=False, use_container_width=True):
                 st.session_state["tab_formato_activo"] = 9
                 st.rerun()
+            
+            if st.button("10- Historial de formatos.", type="primary", disabled=False, use_container_width=True):
+                st.session_state["tab_formato_activo"] = 10
+                st.rerun()
+                
+            if st.button("11- Verificar formato.", type="primary", disabled=False, use_container_width=True):
+                st.session_state["tab_formato_activo"] = 11
+                st.rerun()
+            
+        # Fin del primer contenedor de formatos
+        
+        # Segundo contenedor para el botón de instructivos (viñeta separada)
+        with st.container(border=True):
+            st.markdown("""
+            <style>
+                div.element-container:has(style#btn-instructivo-verde) {
+                    display: none !important;
+                    height: 0px !important;
+                    margin: 0px !important;
+                    padding: 0px !important;
+                }
+                div.element-container:has(style#btn-instructivo-verde) + div.element-container button {
+                    background-color: #28a745 !important;
+                    background: #28a745 !important;
+                    border-color: #28a745 !important;
+                }
+                div.element-container:has(style#btn-instructivo-verde) + div.element-container button:hover {
+                    background-color: #218838 !important;
+                    background: #218838 !important;
+                    border-color: #1e7e34 !important;
+                }
+                div.element-container:has(style#btn-instructivo-verde) + div.element-container button p {
+                    color: white !important;
+                }
+            </style>
+            <style id="btn-instructivo-verde"></style>
+            """, unsafe_allow_html=True)
+            if st.button("📚 Instructivo de cargue de cuenta", type="primary", use_container_width=True):
+                st.switch_page("pages/3_instructivos.py")
+        
+        # Anuncio/Tarjeta informativa debajo del segundo contenedor
+        st.markdown(
+            f"""
+            <div style="background: linear-gradient(135deg, #FF8C00, #FF9800); color: white; padding: 12px 15px; border-radius: 8px; margin-top: 15px;">
+                <h4 style="margin: 0; font-size: 13.5px; display: flex; align-items: center; gap: 8px; color: white !important; font-weight: 600;">
+                    💡 Los formatos de correspondencia se generan desde el día {dia_inicio} de cada mes.
+                </h4>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
     with col_contenido:
         tab_activa = st.session_state.get("tab_formato_activo")
-        if tab_activa == 4:
+        if tab_activa == 1:
+            _render_opcion_1_cuenta_cobro(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, es_anterior, bloqueado)
+        elif tab_activa == 2:
+            _render_opcion_2_retencion_primera(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, es_anterior, bloqueado)
+        elif tab_activa == 3:
+            _render_opcion_3_retencion_segunda(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, es_anterior, bloqueado)
+        elif tab_activa == 4:
             _render_opcion_4_declarante_dependencia(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, es_anterior, bloqueado)
+        elif tab_activa == 5:
+            _render_opcion_5_acta_compromiso(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, es_anterior, bloqueado)
         elif tab_activa == 6:
             _render_opcion_6_gestion_corr(servicio, usuario_id, año_cert, mes_cert, nombre_mes_cert, es_anterior, bloqueado)
         elif tab_activa == 7:
             _render_opcion_7_herramientas()
         elif tab_activa == 8:
-            _render_opcion_8_historial(servicio, usuario_id, año_cert, mes_cert, bloqueado)
+            _render_opcion_8_acta_recibo_entrega(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, es_anterior, bloqueado)
         elif tab_activa == 9:
+            _render_opcion_9_acta_recibo_entrega_real(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, es_anterior, bloqueado)
+        elif tab_activa == 10:
+            _render_opcion_8_historial(servicio, usuario_id, año_cert, mes_cert, bloqueado)
+        elif tab_activa == 11:
             _render_verificador_codigo(servicio)
         else:
             st.info("👈 Selecciona un formato en el menú de la izquierda para visualizar su contenido.")

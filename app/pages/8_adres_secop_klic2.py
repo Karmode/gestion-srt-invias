@@ -4,12 +4,12 @@ Acceso rápido a las plataformas externas utilizadas en la gestión de
 contratos de la SRTI. Cada tarjeta abre la URL configurada en el .env.
 """
 
-import base64
 import os
 
 import streamlit as st
 
 from app.config import configuracion
+from app.core.recursos import imagen_b64
 from app.core.ui_titulos import mostrar_titulo_decorado
 
 st.set_page_config(
@@ -138,15 +138,6 @@ st.markdown(
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _img_b64(rel_path: str) -> str:
-    """Convierte una imagen del proyecto en base64 para embeber en HTML."""
-    abs_path = os.path.join("app", "assets", rel_path)
-    if not os.path.exists(abs_path):
-        return ""
-    with open(abs_path, "rb") as f:
-        return base64.b64encode(f.read()).decode()
-
-
 def _render_card(
     col,
     badge: str,
@@ -157,7 +148,7 @@ def _render_card(
     delay_ms: int = 0,
 ) -> None:
     """Renderiza una tarjeta de plataforma en la columna dada."""
-    img_b64 = _img_b64(img_file)
+    img_b64 = imagen_b64(os.path.join("app", "assets", img_file))
     img_tag = (
         f'<img src="data:image/png;base64,{img_b64}" alt="{name}" />'
         if img_b64
@@ -230,49 +221,71 @@ PLATAFORMAS = [
         "description": "Herramienta de edición y gestión de archivos PDF",
         "url": configuracion.pdf_h_url,
     },
+    {
+        "badge": "7F",
+        "img_file": "procuraduria_logo.png",
+        "name": "Procuraduría",
+        "description": "Certificado de antecedentes disciplinarios",
+        "url": configuracion.url_procuraduria,
+    },
+    {
+        "badge": "7G",
+        "img_file": "contraloria_logo.png",
+        "name": "Contraloría",
+        "description": "Certificado de antecedentes fiscales",
+        "url": configuracion.url_contraloria,
+    },
+    {
+        "badge": "7H",
+        "img_file": "policia_logo.png",
+        "name": "Policía Antecedentes",
+        "description": "Certificado de antecedentes judiciales (Policía).",
+        "url": configuracion.url_pol_antecedentes,
+    },
+    {
+        "badge": "7I",
+        "img_file": "policia_RCMC.png",
+        "name": "Policía RNMC",
+        "description": "Certificado de medidas correctivas (RNMC)",
+        "url": configuracion.url_pol_rcmc,
+    },
+    {
+        "badge": "7J",
+        "img_file": "rut_dian.png",
+        "name": "RUT (DIAN)",
+        "description": 'Descargar Rut (Virtual) "Requiere cuenta Virtual en la DIAN"',
+        "url": configuracion.url_rut,
+    },
 ]
 
 
 # ---------------------------------------------------------------------------
 # Layout principal
 # ---------------------------------------------------------------------------
-mostrar_titulo_decorado("🌐 Herramientas Externas — ADRES · SECOP II · KLIC 2 · AZ Digital · PDF")
+mostrar_titulo_decorado("🌐 Otros certificados · Herramientas")
 
 st.caption(
-    "Acceso directo a las plataformas externas utilizadas en la gestión de contratos de la SRTI. "
+    "Acceso directo a las plataformas externas, certificados de antecedentes y descarga del RUT utilizados en la gestión de contratos de la SRTI. "
     "Haz clic en cualquier tarjeta para abrir la plataforma en una nueva pestaña."
 )
 
 st.markdown('<div class="fancy-divider"></div>', unsafe_allow_html=True)
 
-# --- Primera fila: 3 plataformas ---
-cols_row1 = st.columns(3, gap="large")
-for i, plat in enumerate(PLATAFORMAS[:3]):
-    _render_card(
-        col=cols_row1[i],
-        badge=plat["badge"],
-        img_file=plat["img_file"],
-        name=plat["name"],
-        description=plat["description"],
-        url=plat["url"],
-        delay_ms=i * 80,
-    )
-
-st.write("")  # Espaciado entre filas
-
-# --- Segunda fila: 2 plataformas centradas ---
-col_spacer_l, col_c1, col_c2, col_spacer_r = st.columns([0.5, 1, 1, 0.5], gap="large")
-for i, plat in enumerate(PLATAFORMAS[3:]):
-    target_col = col_c1 if i == 0 else col_c2
-    _render_card(
-        col=target_col,
-        badge=plat["badge"],
-        img_file=plat["img_file"],
-        name=plat["name"],
-        description=plat["description"],
-        url=plat["url"],
-        delay_ms=(3 + i) * 80,
-    )
+# --- Renderizado en filas de 3 columnas ---
+for r in range(0, len(PLATAFORMAS), 3):
+    cols = st.columns(3, gap="large")
+    row_plats = PLATAFORMAS[r:r+3]
+    for c_idx, plat in enumerate(row_plats):
+        _render_card(
+            col=cols[c_idx],
+            badge=plat["badge"],
+            img_file=plat["img_file"],
+            name=plat["name"],
+            description=plat["description"],
+            url=plat["url"],
+            delay_ms=(r + c_idx) * 80,
+        )
+    st.write("")  # Espaciado entre filas
 
 st.markdown('<div class="fancy-divider"></div>', unsafe_allow_html=True)
 
@@ -287,6 +300,11 @@ with st.expander("⚙️ Configuración de URLs", expanded=False):
         "KLIC_2=https://...\n"
         "ADRES=https://...\n"
         "SECOP=https://...\n"
-        "PDF_H=https://...",
+        "PDF_H=https://...\n"
+        "URL_PROCURADURIA=https://...\n"
+        "URL_CONTRALORIA=https://...\n"
+        "URL_POL_ANTECEDENTES=https://...\n"
+        "URL_POL_RCMC=https://...\n"
+        "URL_RUT=https://...",
         language="ini",
     )

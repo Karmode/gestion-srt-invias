@@ -13,7 +13,27 @@ TIPOS_DOC_DEPENDIENTE = {
     "CC": "CC — Cédula de Ciudadanía",
     "TI": "TI — Tarjeta de Identidad",
     "CE": "CE — Cédula de Extranjería",
+    "RC": "RC — Registro Civil",
+    "OTRO": "Otro",
 }
+
+# Tipos de cuenta bancaria admitidos
+TIPOS_CUENTA_BANCARIA = {
+    "": "— Sin especificar —",
+    "ahorros": "Cuenta de Ahorros",
+    "corriente": "Cuenta Corriente",
+    "cts": "Cuenta de Trámite Simplificado (CTS/ Depósitos Electrónicos)",
+}
+
+# Grupos de trabajo
+GRUPOS_TRABAJO = {
+    "": "— Sin especificar —",
+    "despacho": "DESPACHO",
+    "normativa_tecnica": "NORMATIVA",
+    "innovacion_tecnica": "INNOVACIÓN",
+    "permisos": "PERMISOS",
+}
+
 
 PERMISOS_BASE = [
     {"clave": "usuario.ver", "descripcion": "Ver usuarios", "modulo": "usuarios"},

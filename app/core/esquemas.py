@@ -53,8 +53,10 @@ ESQUEMA_USUARIOS = {
                         "enum": ["termino_indefinido", "termino_fijo", "obra_labor", "prestacion_servicios", "aprendizaje", None],
                     },
                     "objeto": {"bsonType": ["string", "null"]},
+                    "radicado_del_contrato": {"bsonType": ["string", "null"]},
                     "valor": {"bsonType": ["int", "long", "double", "null"]},
                     "valor_mensual": {"bsonType": ["int", "long", "double", "null"]},
+                    "valor_primer_pago": {"bsonType": ["int", "long", "double", "null"]},
                     "rp_compromiso_presupuestal": {
                         "bsonType": ["string", "null"],
                         "description": "Código de Registro Presupuestal / compromiso presupuestal (alfanumérico)",
@@ -62,6 +64,53 @@ ESQUEMA_USUARIOS = {
                     "fecha_recurso_presupuestal": {"bsonType": ["date", "null"]},
                     "fecha_inicio": {"bsonType": ["date", "null"]},
                     "fecha_fin": {"bsonType": ["date", "null"]},
+                    "tiene_inventario": {"bsonType": ["bool", "null"]},
+                    "desc_inventario": {"bsonType": ["string", "null"]},
+                    "valor_total_ejecutado_contrato": {"bsonType": ["int", "long", "double", "null"]},
+                    "saldo_presp_lib_contrato": {"bsonType": ["int", "long", "double", "null"]},
+                    "valor_total_pagado": {"bsonType": ["int", "long", "double", "null"]},
+                    "prorrogra_contrato": {
+                        "bsonType": ["object", "null"],
+                        "properties": {
+                            "tiene_prorroga": {"bsonType": ["bool", "null"]},
+                            "fecha_prorrogra": {"bsonType": ["date", "null"]},
+                            "radicado_prorrogra": {"bsonType": ["string", "null"]},
+                        },
+                    },
+                    "adiciones_contrato": {
+                        "bsonType": ["object", "null"],
+                        "properties": {
+                            "tiene_adiciones": {"bsonType": ["bool", "null"]},
+                            "valor_adicion": {"bsonType": ["int", "long", "double", "null"]},
+                        },
+                    },
+                    "pagos": {
+                        "bsonType": ["array", "null"],
+                        "maxItems": 20,
+                        "items": {
+                            "bsonType": "object",
+                            "required": [
+                                "numero_pago",
+                                "fecha_pago",
+                                "valor_bruto_pago",
+                                "valor_bruto_total",
+                                "deducciones_pago",
+                                "deducciones_pago_total",
+                                "valor_neto_pago",
+                                "valor_neto_pago_total",
+                            ],
+                            "properties": {
+                                "numero_pago": {"bsonType": "string"},
+                                "fecha_pago": {"bsonType": "date"},
+                                "valor_bruto_pago": {"bsonType": ["int", "long", "double"]},
+                                "valor_bruto_total": {"bsonType": ["int", "long", "double"]},
+                                "deducciones_pago": {"bsonType": ["int", "long", "double"]},
+                                "deducciones_pago_total": {"bsonType": ["int", "long", "double"]},
+                                "valor_neto_pago": {"bsonType": ["int", "long", "double"]},
+                                "valor_neto_pago_total": {"bsonType": ["int", "long", "double"]},
+                            },
+                        },
+                    },
                 },
             },
         },
@@ -72,6 +121,27 @@ ESQUEMA_USUARIOS = {
                 "es_pensionado": {
                     "bsonType": ["bool", "null"],
                     "description": "Si es True, AFP y CCF no aplican y no se validan para descarga de formatos",
+                },
+                "planilla_mes_vencido": {
+                    "bsonType": ["bool", "null"],
+                    "description": "True si paga planilla a mes vencido, False en caso contrario",
+                },
+                "grupo_trabajo": {
+                    "bsonType": ["string", "null"],
+                    "enum": ["despacho", "normativa_tecnica", "innovacion_tecnica", "permisos", "", None],
+                    "description": "Grupo de trabajo al que pertenece",
+                },
+                "ibc_prestaciones_sociales": {
+                    "bsonType": ["int", "long", "double", "null"],
+                    "description": "Ingreso Base de Cotización - Prestaciones sociales (valor numérico)",
+                },
+                "paga_iva": {
+                    "bsonType": ["bool", "null"],
+                    "description": "Indica si paga IVA",
+                },
+                "valor_iva": {
+                    "bsonType": ["int", "long", "double", "null"],
+                    "description": "Valor del IVA",
                 },
                 "seguridad_social": {
                     "bsonType": ["object", "null"],
@@ -90,6 +160,11 @@ ESQUEMA_USUARIOS = {
                             "bsonType": ["string", "null"],
                             "description": "Número de cuenta (string para preservar ceros a la izquierda)",
                         },
+                        "tipo_cuenta": {
+                            "bsonType": ["string", "null"],
+                            "enum": ["ahorros", "corriente", "cts", None],
+                            "description": "ahorros=Cuenta de Ahorros, corriente=Cuenta Corriente, cts=Cuentas de Trámite Simplificado",
+                        },
                     },
                 },
                 "tributaria": {
@@ -97,6 +172,11 @@ ESQUEMA_USUARIOS = {
                     "properties": {
                         "rut": {"bsonType": ["string", "null"], "description": "Número de RUT (alfanumérico, admite símbolos)"},
                         "declarante_renta": {"bsonType": ["bool", "null"]},
+                        "regimen": {
+                            "bsonType": ["string", "null"],
+                            "enum": ["no_responsable_iva", "responsable_iva", "simple_rst", "especial_rte", None],
+                            "description": "Clave del catálogo 'regimen_tributario'"
+                        },
                     },
                 },
                 "dependientes": {
@@ -109,7 +189,7 @@ ESQUEMA_USUARIOS = {
                             "nombre": {"bsonType": "string", "minLength": 1},
                             "tipo_documento": {
                                 "bsonType": ["string", "null"],
-                                "enum": ["CC", "TI", "CE", None],
+                                "enum": ["CC", "TI", "CE", "RC", "OTRO", None],
                             },
                             "numero_documento": {"bsonType": ["string", "null"]},
                             "tipo": {"bsonType": ["string", "null"], "description": "Clave del catálogo 'tipo_dependiente'"},
@@ -212,9 +292,11 @@ ESQUEMA_CERTIFICACIONES = {
         "año": {"bsonType": "int"},
         "mes": {"bsonType": "int"},
         "estado": {"enum": ["pendiente", "aprobado", "rechazado"]},
+        "tipo_formato": {"bsonType": "string"},
         "fecha_corte": {"bsonType": ["date", "null"]},
         "snapshot_al_dia": {"bsonType": ["bool", "null"]},
         "observaciones": {"bsonType": ["string", "null"]},
+        "observacion": {"bsonType": ["string", "null"]},
         "aprobado_por": {
             "bsonType": "object",
             "required": ["usuario_id", "nombre", "fecha"],
@@ -235,6 +317,7 @@ ESQUEMA_CERTIFICACIONES = {
                         "firmante_id":     {"bsonType": "objectId"},
                         "firmante_nombre": {"bsonType": "string"},
                         "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
                     },
                 },
                 "gd":    {
@@ -244,6 +327,7 @@ ESQUEMA_CERTIFICACIONES = {
                         "firmante_id":     {"bsonType": "objectId"},
                         "firmante_nombre": {"bsonType": "string"},
                         "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
                     },
                 },
                 "secop": {
@@ -253,6 +337,7 @@ ESQUEMA_CERTIFICACIONES = {
                         "firmante_id":     {"bsonType": "objectId"},
                         "firmante_nombre": {"bsonType": "string"},
                         "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
                     },
                 },
             },

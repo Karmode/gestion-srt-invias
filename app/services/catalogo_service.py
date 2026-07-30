@@ -52,6 +52,14 @@ _BANCOS = [
 ]
 # Categorías de dependiente económico (placeholder; ajustar etiquetas a las categorías reales).
 _TIPO_DEPENDIENTE = ["TIPO A", "TIPO B", "TIPO C", "TIPO D", "TIPO E"]
+# Claves cortas (no derivadas de la etiqueta completa) porque el PDF de certificación
+# antepone la palabra "RÉGIMEN" al texto de la clave (ver certificacion_service.py).
+_REGIMEN_TRIBUTARIO = [
+    {"clave": "no_responsable_iva", "etiqueta": "No responsables de IVA", "activo": True},
+    {"clave": "responsable_iva", "etiqueta": "Responsables de IVA", "activo": True},
+    {"clave": "simple_rst", "etiqueta": "Régimen Simple de Tributación (RST)", "activo": True},
+    {"clave": "especial_rte", "etiqueta": "Régimen Tributario Especial (RTE)", "activo": True},
+]
 
 
 OPCIONES_BASE = [
@@ -111,6 +119,7 @@ OPCIONES_BASE = [
     {"categoria": "ccf", "opciones": _opciones_desde_etiquetas(_CCF)},
     {"categoria": "banco", "opciones": _opciones_desde_etiquetas(_BANCOS)},
     {"categoria": "tipo_dependiente", "opciones": _opciones_desde_etiquetas(_TIPO_DEPENDIENTE)},
+    {"categoria": "regimen_tributario", "opciones": _REGIMEN_TRIBUTARIO},
 ]
 
 
@@ -136,11 +145,30 @@ class CatalogoService:
             )
 
         for opcion in OPCIONES_BASE:
-            self.coleccion_opciones.update_one(
-                {"categoria": opcion["categoria"]},
-                {"$set": opcion},
-                upsert=True,
-            )
+            categoria = opcion["categoria"]
+            doc_existente = self.coleccion_opciones.find_one({"categoria": categoria})
+            if doc_existente is None:
+                self.coleccion_opciones.insert_one(opcion)
+                continue
+
+            if categoria == "regimen_tributario":
+                # Forzar sobreescritura completa para depurar opciones obsoletas
+                self.coleccion_opciones.update_one(
+                    {"categoria": categoria},
+                    {"$set": {"opciones": opcion["opciones"]}}
+                )
+            else:
+                claves_existentes = {
+                    o.get("clave") for o in doc_existente.get("opciones", [])
+                }
+                nuevas = [
+                    o for o in opcion["opciones"] if o.get("clave") not in claves_existentes
+                ]
+                if nuevas:
+                    self.coleccion_opciones.update_one(
+                        {"categoria": categoria},
+                        {"$push": {"opciones": {"$each": nuevas}}},
+                    )
 
         # Configuración inicial de firmantes designados para certificaciones
         self.coleccion_opciones.update_one(

@@ -7,6 +7,7 @@ from app.core.ui_titulos import mostrar_titulo_decorado
 from app.core.autorizacion import validar_permiso, ValidacionAutorizacion
 from app.core.catalogos import TIPOS_CONTRATO
 from app.core.sesion import obtener_sesion
+from app.core.cache_datos import limpiar_cache_lecturas
 from app.core.ui_laboral import (
     boton_guardar_laboral,
     construir_mapas_catalogos,
@@ -62,6 +63,7 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                         )
                         st.session_state["mensaje_exito_usuarios"] = "Usuario desactivado correctamente."
                         st.session_state["last_opened_usuario_id"] = None
+                        limpiar_cache_lecturas()
                         st.rerun()
                     except ValueError as e:
                         st.error(str(e))
@@ -75,6 +77,7 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                         )
                         st.session_state["mensaje_exito_usuarios"] = "Usuario activado correctamente."
                         st.session_state["last_opened_usuario_id"] = None
+                        limpiar_cache_lecturas()
                         st.rerun()
                     except ValueError as e:
                         st.error(str(e))
@@ -108,8 +111,10 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
             numero_documento_editado = st.text_input(
                 "Número de documento",
                 value=uo.get("numero_documento", ""),
-                placeholder="Solo letras y números",
+                placeholder="Solo números",
             )
+            if numero_documento_editado and not numero_documento_editado.strip().isdigit():
+                st.error("El número de documento debe contener únicamente números.")
 
         lugar_expedicion_editado = st.text_input(
             "Lugar de expedición del documento",
@@ -146,6 +151,7 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
             )
             st.session_state["mensaje_exito_usuarios"] = "Usuario actualizado correctamente."
             st.session_state["last_opened_usuario_id"] = None
+            limpiar_cache_lecturas()
             st.rerun()
         except ValueError as e:
             st.error(str(e))
@@ -168,6 +174,7 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
             limpiar_estado_laboral(_pref)
             st.session_state["mensaje_exito_usuarios"] = "Información laboral actualizada."
             st.session_state["last_opened_usuario_id"] = None
+            limpiar_cache_lecturas()
             st.rerun()
         except ValueError as e:
             st.error(str(e))
@@ -207,6 +214,8 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
             with _d2:
                 _vm = _c.get("valor_mensual")
                 st.write(f"**Valor mensual:** {'${:,.0f}'.format(_vm) if _vm else '—'}")
+                _vpp = _c.get("valor_primer_pago")
+                st.write(f"**Valor primer pago:** {'${:,.0f}'.format(_vpp) if _vpp else '—'}")
                 st.write(f"**RP / compromiso presupuestal:** {_c.get('rp_compromiso_presupuestal') or '—'}")
             _d3, _d4, _d5 = st.columns(3)
             with _d3:
@@ -218,50 +227,162 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                 st.write(f"**Fin:** {_c_ff.strftime('%d/%m/%Y') if _c_ff else '—'}")
             if _c.get("objeto"):
                 st.write(f"**Objeto:** {_c.get('objeto')}")
+            if _c.get("radicado_del_contrato"):
+                st.write(f"**Radicado del contrato:** {_c.get('radicado_del_contrato')}")
 
-            if not _c_fin:
-                _fi_ed = _c_fi.date() if _c_fi and hasattr(_c_fi, "date") else _c_fi
-                _ff_ed = _c_ff.date() if _c_ff and hasattr(_c_ff, "date") else _c_ff
-                with st.form(f"form_edit_c_{_c_num}"):
-                    _ec1, _ec2 = st.columns(2)
-                    with _ec1:
-                        _e_num = st.text_input("Número", value=_c_num, key=f"e_num_{_c_num}")
-                        _e_tipo_idx = list(TIPOS_CONTRATO.keys()).index(_c.get("tipo") or "") if (_c.get("tipo") or "") in TIPOS_CONTRATO else 0
-                        _e_tipo = st.selectbox("Tipo", options=list(TIPOS_CONTRATO.keys()), format_func=lambda k: TIPOS_CONTRATO[k], index=_e_tipo_idx, key=f"e_tipo_{_c_num}")
-                    with _ec2:
-                        _e_valor = st.number_input("Valor (COP)", min_value=0, value=int(_c.get("valor") or 0), step=100000, format="%d", key=f"e_val_{_c_num}")
-                        _e_vm = st.number_input("Valor mensual (COP)", min_value=0, value=int(_c.get("valor_mensual") or 0), step=100000, format="%d", key=f"e_vm_{_c_num}")
-                    _e_rp = st.text_input("RP / compromiso presupuestal", value=_c.get("rp_compromiso_presupuestal") or "", key=f"e_rp_{_c_num}", placeholder="Código alfanumérico")
-                    _ec3, _ec4, _ec5 = st.columns(3)
-                    with _ec3:
-                        _e_frp_ed = _c.get("fecha_recurso_presupuestal")
-                        if _e_frp_ed and hasattr(_e_frp_ed, "date"):
-                            _e_frp_ed = _e_frp_ed.date()
-                        _e_frp = st.date_input("Fecha recurso presupuestal (opcional)", value=_e_frp_ed, format="DD/MM/YYYY", key=f"e_frp_{_c_num}")
-                    with _ec4:
-                        _e_fi = st.date_input("Inicio", value=_fi_ed, format="DD/MM/YYYY", key=f"e_fi_{_c_num}")
-                    with _ec5:
-                        _e_ff = st.date_input("Fin (opcional)", value=_ff_ed, format="DD/MM/YYYY", key=f"e_ff_{_c_num}")
-                    _e_obj = st.text_area("Objeto", value=_c.get("objeto") or "", key=f"e_obj_{_c_num}")
-                    _e_env = st.form_submit_button("💾 Guardar", use_container_width=True)
-                if _e_env:
-                    try:
-                        servicio.editar_contrato(str(uo["_id"]), _c_num, {
-                            "numero": _e_num.strip(),
-                            "tipo": _e_tipo,
-                            "valor": _e_valor if _e_valor > 0 else None,
-                            "rp_compromiso_presupuestal": _e_rp.strip(),
-                            "fecha_inicio": _e_fi,
-                            "fecha_fin": _e_ff,
-                            "fecha_recurso_presupuestal": _e_frp,
-                            "valor_mensual": _e_vm if _e_vm > 0 else None,
-                            "objeto": _e_obj.strip(),
-                        })
-                        st.session_state["mensaje_exito_usuarios"] = f"Contrato {_c_num} actualizado."
-                        st.session_state["last_opened_usuario_id"] = None
-                        st.rerun()
-                    except ValueError as e:
-                        st.error(str(e))
+            _fi_ed = _c_fi.date() if _c_fi and hasattr(_c_fi, "date") else _c_fi
+            _ff_ed = _c_ff.date() if _c_ff and hasattr(_c_ff, "date") else _c_ff
+            
+            # Usamos st.container en vez de st.form por los botones de pagos interactivos
+            with st.container():
+                _ec1, _ec2 = st.columns(2)
+                with _ec1:
+                    _e_num = st.text_input("Número", value=_c_num, key=f"e_num_{_c_num}")
+                    _e_tipo_idx = list(TIPOS_CONTRATO.keys()).index(_c.get("tipo") or "") if (_c.get("tipo") or "") in TIPOS_CONTRATO else 0
+                    _e_tipo = st.selectbox("Tipo", options=list(TIPOS_CONTRATO.keys()), format_func=lambda k: TIPOS_CONTRATO[k], index=_e_tipo_idx, key=f"e_tipo_{_c_num}")
+                with _ec2:
+                    _e_valor = st.number_input("Valor (COP)", min_value=0, value=int(_c.get("valor") or 0), step=100000, format="%d", key=f"e_val_{_c_num}")
+                    _e_vm = st.number_input("Valor mensual (COP)", min_value=0, value=int(_c.get("valor_mensual") or 0), step=100000, format="%d", key=f"e_vm_{_c_num}")
+                    st.markdown(
+                        """
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                            <span style="font-size: 14px; font-weight: 500; color: #333333;">Valor primer pago</span>
+                            <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                                <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                    <div class="srti-tooltip-content" style="font-weight: normal;">
+                                        <h4>Valor primer pago</h4>
+                                        <p>Este valor figurará en sus formatos de primera cuenta.</p>
+                                    </div>
+                                </span>
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                    _e_vpp = st.number_input("Valor primer pago", min_value=0, value=int(_c.get("valor_primer_pago") or 0), step=100000, format="%d", key=f"e_vpp_{_c_num}", label_visibility="collapsed")
+                st.markdown(
+                    """
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                        <span style="font-size: 14px; font-weight: 500; color: #333333;">RP / compromiso presupuestal</span>
+                        <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                            <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                <div class="srti-tooltip-content" style="font-weight: normal;">
+                                    <h4>RP / compromiso presupuestal</h4>
+                                    <p>Este dato se puede encontrar dentro del cargue de datos financiero en SECOP II.</p>
+                                </div>
+                            </span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                _e_rp = st.text_input("RP / compromiso presupuestal", value=_c.get("rp_compromiso_presupuestal") or "", key=f"e_rp_{_c_num}", placeholder="Código alfanumérico", label_visibility="collapsed")
+                _ec3, _ec4, _ec5 = st.columns(3)
+                with _ec3:
+                    _e_frp_ed = _c.get("fecha_recurso_presupuestal")
+                    if _e_frp_ed and hasattr(_e_frp_ed, "date"):
+                        _e_frp_ed = _e_frp_ed.date()
+                    st.markdown(
+                        """
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                            <span style="font-size: 14px; font-weight: 500; color: #333333;">Fecha recurso presupuestal</span>
+                            <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                                <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                    <div class="srti-tooltip-content" style="font-weight: normal;">
+                                        <h4>Fecha recurso presupuestal</h4>
+                                        <p>Este dato se puede encontrar dentro del cargue de datos financiero en SECOP II.</p>
+                                    </div>
+                                </span>
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                    _e_frp = st.date_input("Fecha recurso presupuestal", value=_e_frp_ed, format="DD/MM/YYYY", key=f"e_frp_{_c_num}", label_visibility="collapsed")
+                with _ec4:
+                    st.markdown(
+                        """
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                            <span style="font-size: 14px; font-weight: 500; color: #333333;">Fecha de inicio contrato</span>
+                            <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                                <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                    <div class="srti-tooltip-content" style="font-weight: normal;">
+                                        <h4>Fecha de inicio contrato</h4>
+                                        <p>El dato se puede encontrar en la cláusula del contrato, estudios previos o en la información general del contrato página de firma.</p>
+                                    </div>
+                                </span>
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                    _e_fi = st.date_input("Fecha de inicio contrato", value=_fi_ed, format="DD/MM/YYYY", key=f"e_fi_{_c_num}", label_visibility="collapsed")
+                with _ec5:
+                    st.markdown(
+                        """
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                            <span style="font-size: 14px; font-weight: 500; color: #333333;">Fecha de fin de contrato</span>
+                            <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                                <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                    <div class="srti-tooltip-content" style="font-weight: normal;">
+                                        <h4>Fecha de fin de contrato</h4>
+                                        <p>El dato se puede encontrar en la cláusula del contrato, estudios previos o en la información general del contrato página de firma.</p>
+                                    </div>
+                                </span>
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                    _e_ff = st.date_input("Fecha de fin de contrato", value=_ff_ed, format="DD/MM/YYYY", key=f"e_ff_{_c_num}", label_visibility="collapsed")
+                _e_obj = st.text_area("Objeto", value=_c.get("objeto") or "", key=f"e_obj_{_c_num}")
+                st.markdown(
+                    """
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                        <span style="font-size: 14px; font-weight: 500; color: #333333;">Radicado del contrato</span>
+                        <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                            <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                <div class="srti-tooltip-content" style="font-weight: normal;">
+                                    <h4>Radicado del contrato</h4>
+                                    <p>Este radicado puede ser encontrado en las cláusulas, estudios previos o repositorios del contrato, y será necesario para el Acta de entrega.</p>
+                                </div>
+                            </span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                _e_rad = st.text_input("Radicado del contrato", value=_c.get("radicado_del_contrato") or "", key=f"e_rad_{_c_num}", label_visibility="collapsed")
+                
+                # RENDERIZAMOS EL BALANCE GENERAL Y PLAN DE PAGOS
+                from app.core.ui_contratos import render_balance_y_pagos
+                _balance_pagos_datos = render_balance_y_pagos(f"admin_c_{_c_num}", _c, deshabilitado=_c_fin)
+                
+                _e_env = st.button("💾 Guardar", key=f"btn_save_adm_c_{_c_num}", use_container_width=True, type="primary", disabled=_c_fin)
+                
+            if _e_env:
+                try:
+                    datos_totales = {
+                        "numero": _e_num.strip(),
+                        "tipo": _e_tipo,
+                        "valor": _e_valor if _e_valor > 0 else None,
+                        "rp_compromiso_presupuestal": _e_rp.strip(),
+                        "fecha_inicio": _e_fi,
+                        "fecha_fin": _e_ff,
+                        "fecha_recurso_presupuestal": _e_frp,
+                        "valor_mensual": _e_vm if _e_vm > 0 else None,
+                        "valor_primer_pago": _e_vpp if _e_vpp > 0 else None,
+                        "objeto": _e_obj.strip(),
+                        "radicado_del_contrato": _e_rad.strip() if _e_rad else None,
+                    }
+                    datos_totales.update(_balance_pagos_datos)
+                    
+                    servicio.editar_contrato(str(uo["_id"]), _c_num, datos_totales)
+                    st.session_state["mensaje_exito_usuarios"] = f"Contrato {_c_num} actualizado."
+                    st.session_state["last_opened_usuario_id"] = None
+                    st.rerun()
+                except ValueError as e:
+                    st.error(str(e))
 
     with st.expander("➕ Agregar nuevo contrato"):
         with st.form("form_nuevo_contrato_modal"):
@@ -272,15 +393,113 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
             with _nc2:
                 _n_valor = st.number_input("Valor (COP)", min_value=0, step=100000, format="%d")
                 _n_vm = st.number_input("Valor mensual (COP)", min_value=0, step=100000, format="%d")
-            _n_rp = st.text_input("RP / compromiso presupuestal", placeholder="Código alfanumérico")
+                st.markdown(
+                    """
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                        <span style="font-size: 14px; font-weight: 500; color: #333333;">Valor primer pago</span>
+                        <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                            <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                <div class="srti-tooltip-content" style="font-weight: normal;">
+                                    <h4>Valor primer pago</h4>
+                                    <p>Este valor figurará en sus formatos de primera cuenta.</p>
+                                </div>
+                            </span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                _n_vpp = st.number_input("Valor primer pago", min_value=0, step=100000, format="%d", label_visibility="collapsed")
+            st.markdown(
+                """
+                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                    <span style="font-size: 14px; font-weight: 500; color: #333333;">RP / compromiso presupuestal</span>
+                    <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                        <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                            <div class="srti-tooltip-content" style="font-weight: normal;">
+                                <h4>RP / compromiso presupuestal</h4>
+                                <p>Este dato se puede encontrar dentro del cargue de datos financiero en SECOP II.</p>
+                            </div>
+                        </span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            _n_rp = st.text_input("RP / compromiso presupuestal", placeholder="Código alfanumérico", label_visibility="collapsed")
             _nc3, _nc4, _nc5 = st.columns(3)
             with _nc3:
-                _n_frp = st.date_input("Fecha recurso presupuestal (opcional)", value=None, format="DD/MM/YYYY")
+                st.markdown(
+                    """
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                        <span style="font-size: 14px; font-weight: 500; color: #333333;">Fecha recurso presupuestal</span>
+                        <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                            <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                <div class="srti-tooltip-content" style="font-weight: normal;">
+                                    <h4>Fecha recurso presupuestal</h4>
+                                    <p>Este dato se puede encontrar dentro del cargue de datos financiero en SECOP II.</p>
+                                </div>
+                            </span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                _n_frp = st.date_input("Fecha recurso presupuestal", value=None, format="DD/MM/YYYY", label_visibility="collapsed")
             with _nc4:
-                _n_fi = st.date_input("Fecha inicio", value=None, format="DD/MM/YYYY")
+                st.markdown(
+                    """
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                        <span style="font-size: 14px; font-weight: 500; color: #333333;">Fecha de inicio contrato</span>
+                        <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                            <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                <div class="srti-tooltip-content" style="font-weight: normal;">
+                                    <h4>Fecha de inicio contrato</h4>
+                                    <p>El dato se puede encontrar en la cláusula del contrato, estudios previos o en la información general del contrato página de firma.</p>
+                                </div>
+                            </span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                _n_fi = st.date_input("Fecha de inicio contrato", value=None, format="DD/MM/YYYY", label_visibility="collapsed")
             with _nc5:
-                _n_ff = st.date_input("Fecha fin (opcional)", value=None, format="DD/MM/YYYY")
+                st.markdown(
+                    """
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                        <span style="font-size: 14px; font-weight: 500; color: #333333;">Fecha de fin de contrato</span>
+                        <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                            <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                <div class="srti-tooltip-content" style="font-weight: normal;">
+                                    <h4>Fecha de fin de contrato</h4>
+                                    <p>El dato se puede encontrar en la cláusula del contrato, estudios previos o en la información general del contrato página de firma.</p>
+                                </div>
+                            </span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                _n_ff = st.date_input("Fecha de fin de contrato", value=None, format="DD/MM/YYYY", label_visibility="collapsed")
             _n_obj = st.text_area("Objeto del contrato")
+            st.markdown(
+                """
+                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                    <span style="font-size: 14px; font-weight: 500; color: #333333;">Radicado del contrato</span>
+                    <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                        <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                            <div class="srti-tooltip-content" style="font-weight: normal;">
+                                <h4>Radicado del contrato</h4>
+                                <p>Este radicado puede ser encontrado en las cláusulas, estudios previos o repositorios del contrato, y será necesario para el Acta de entrega.</p>
+                            </div>
+                        </span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            _n_rad = st.text_input("Radicado del contrato", label_visibility="collapsed")
             _n_env = st.form_submit_button("Agregar contrato", use_container_width=True)
         if _n_env:
             try:
@@ -293,7 +512,9 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                     "fecha_fin": _n_ff,
                     "fecha_recurso_presupuestal": _n_frp,
                     "valor_mensual": _n_vm if _n_vm > 0 else None,
+                    "valor_primer_pago": _n_vpp if _n_vpp > 0 else None,
                     "objeto": _n_obj.strip(),
+                    "radicado_del_contrato": _n_rad.strip() if _n_rad else None,
                 })
                 st.session_state["mensaje_exito_usuarios"] = "Contrato agregado correctamente."
                 st.session_state["last_opened_usuario_id"] = None
@@ -505,9 +726,11 @@ def render(sesion=None):
             with col_ndoc:
                 nuevo_num_doc = st.text_input(
                     "Número de documento (opcional)",
-                    placeholder="Solo letras y números",
+                    placeholder="Solo números",
                     key="crear_num_doc",
                 )
+                if nuevo_num_doc and not nuevo_num_doc.strip().isdigit():
+                    st.error("El número de documento debe contener únicamente números.")
             nuevo_lugar_exp = st.text_input(
                 "Lugar de expedición del documento (opcional)",
                 placeholder="Ciudad de expedición de la cédula",
@@ -542,6 +765,7 @@ def render(sesion=None):
                     servicio.crear_usuario(datos_nuevo, permisos_usuario=permisos)
                     limpiar_estado_laboral("crear")
                     st.session_state["mensaje_exito_usuarios"] = "Usuario creado correctamente."
+                    limpiar_cache_lecturas()
                     st.rerun()
                 except ValueError as e:
                     st.error(str(e))

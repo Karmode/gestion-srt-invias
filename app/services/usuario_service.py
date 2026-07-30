@@ -47,10 +47,10 @@ class UsuarioService:
 
     @staticmethod
     def _normalizar_numero_documento(numero: str) -> str:
-        numero = numero.strip().upper()
-        if not re.fullmatch(r"[A-Z0-9]+", numero):
+        numero = numero.strip()
+        if not re.fullmatch(r"[0-9]+", numero):
             raise ValueError(
-                "El número de documento solo puede contener letras y números, sin espacios, puntos ni símbolos."
+                "El número de documento solo puede contener números, sin letras, espacios, puntos ni símbolos."
             )
         return numero
 
@@ -105,15 +105,44 @@ class UsuarioService:
             nombre = (dep.get("nombre") or "").strip()
             if not nombre:
                 continue
+            ndoc = (dep.get("numero_documento") or "").strip()
+            if ndoc and not re.fullmatch(r"[0-9]+", ndoc):
+                raise ValueError(
+                    "El número de documento del dependiente solo puede contener números, sin letras, espacios, puntos ni símbolos."
+                )
             dependientes.append({
                 "nombre": nombre,
                 "tipo_documento": (dep.get("tipo_documento") or "").strip().upper() or None,
-                "numero_documento": (dep.get("numero_documento") or "").strip() or None,
+                "numero_documento": ndoc or None,
                 "tipo": (dep.get("tipo") or "").strip() or None,
             })
 
+        ibc_ps = datos.get("ibc_prestaciones_sociales")
+        if ibc_ps is not None:
+            try:
+                ibc_ps = int(ibc_ps)
+            except (ValueError, TypeError):
+                ibc_ps = None
+        else:
+            ibc_ps = None
+
+        paga_iva = bool(datos.get("paga_iva"))
+        valor_iva = datos.get("valor_iva")
+        if paga_iva and valor_iva is not None:
+            try:
+                valor_iva = int(valor_iva)
+            except (ValueError, TypeError):
+                valor_iva = None
+        else:
+            valor_iva = None
+
         return {
             "es_pensionado": bool(datos.get("es_pensionado")),
+            "planilla_mes_vencido": bool(datos.get("planilla_mes_vencido")),
+            "grupo_trabajo": (datos.get("grupo_trabajo") or "").strip() or None,
+            "ibc_prestaciones_sociales": ibc_ps if ibc_ps and ibc_ps > 0 else None,
+            "paga_iva": paga_iva,
+            "valor_iva": valor_iva if paga_iva else None,
             "seguridad_social": {
                 "eps": UsuarioService._afiliacion(ss.get("eps")),
                 "arl": UsuarioService._afiliacion(ss.get("arl")),
@@ -123,10 +152,12 @@ class UsuarioService:
             "bancaria": {
                 "banco": (bancaria.get("banco") or "").strip() or None,
                 "numero_cuenta": (bancaria.get("numero_cuenta") or "").strip() or None,
+                "tipo_cuenta": (bancaria.get("tipo_cuenta") or "").strip() or None,
             },
             "tributaria": {
                 "rut": (tributaria.get("rut") or "").strip() or None,
                 "declarante_renta": bool(tributaria.get("declarante_renta")),
+                "regimen": (tributaria.get("regimen") or "").strip() or None,
             },
             "dependientes": dependientes,
         }
@@ -259,6 +290,9 @@ class UsuarioService:
         objeto = (datos.get("objeto") or "").strip()
         if objeto:
             contrato["objeto"] = objeto
+        radicado = (datos.get("radicado_del_contrato") or "").strip()
+        if radicado:
+            contrato["radicado_del_contrato"] = radicado
         valor = datos.get("valor")
         if valor is not None and valor > 0:
             contrato["valor"] = int(valor)
@@ -277,6 +311,62 @@ class UsuarioService:
         valor_mensual = datos.get("valor_mensual")
         if valor_mensual is not None and valor_mensual > 0:
             contrato["valor_mensual"] = int(valor_mensual)
+        
+        valor_primer_pago = datos.get("valor_primer_pago")
+        if valor_primer_pago is not None and valor_primer_pago > 0:
+            contrato["valor_primer_pago"] = int(valor_primer_pago)
+        else:
+            contrato["valor_primer_pago"] = None
+
+        # NUEVAS VARIABLES DE CONTRATO
+        contrato["tiene_inventario"] = bool(datos.get("tiene_inventario"))
+        contrato["desc_inventario"] = (datos.get("desc_inventario") or "").strip() or None
+        
+        # Valores numéricos
+        for key in ["valor_total_ejecutado_contrato", "saldo_presp_lib_contrato", "valor_total_pagado"]:
+            val = datos.get(key)
+            contrato[key] = int(val) if val is not None else None
+
+        # Prórroga
+        prorroga = datos.get("prorrogra_contrato") or {}
+        tiene_pror = bool(prorroga.get("tiene_prorroga"))
+        f_pror = prorroga.get("fecha_prorrogra")
+        contrato["prorrogra_contrato"] = {
+            "tiene_prorroga": tiene_pror,
+            "fecha_prorrogra": UsuarioService._fecha_a_datetime(f_pror) if tiene_pror and f_pror else None,
+            "radicado_prorrogra": (prorroga.get("radicado_prorrogra") or "").strip() or None
+        }
+
+        # Adiciones
+        adiciones = datos.get("adiciones_contrato") or {}
+        tiene_adi = bool(adiciones.get("tiene_adiciones"))
+        val_adi = adiciones.get("valor_adicion")
+        contrato["adiciones_contrato"] = {
+            "tiene_adiciones": tiene_adi,
+            "valor_adicion": int(val_adi) if tiene_adi and val_adi is not None else None
+        }
+
+        # Arreglo de pagos (máximo 20)
+        pagos_entrada = datos.get("pagos") or []
+        pagos_procesados = []
+        for p in pagos_entrada[:20]:
+            num_p = (p.get("numero_pago") or "").strip()
+            if not num_p:
+                continue
+            
+            f_pago = p.get("fecha_pago")
+            pagos_procesados.append({
+                "numero_pago": num_p,
+                "fecha_pago": UsuarioService._fecha_a_datetime(f_pago),
+                "valor_bruto_pago": int(p.get("valor_bruto_pago") or 0),
+                "valor_bruto_total": int(p.get("valor_bruto_total") or 0),
+                "deducciones_pago": int(p.get("deducciones_pago") or 0),
+                "deducciones_pago_total": int(p.get("deducciones_pago_total") or 0),
+                "valor_neto_pago": int(p.get("valor_neto_pago") or 0),
+                "valor_neto_pago_total": int(p.get("valor_neto_pago_total") or 0),
+            })
+        contrato["pagos"] = pagos_procesados
+
         return contrato
 
     def agregar_contrato(self, id_usuario: str, datos_contrato: dict):
@@ -334,8 +424,40 @@ class UsuarioService:
 
     @classmethod
     def _contrato_campos_faltantes(cls, contrato: dict) -> list:
-        """Etiquetas de los campos del contrato que faltan por diligenciar."""
-        return [etiqueta for clave, etiqueta in _CAMPOS_CONTRATO if cls._vacio(contrato.get(clave))]
+        """Etiquetas de los campos del contrato que faltan por diligenciar o no son válidos."""
+        import re
+        faltantes = []
+        for clave, etiqueta in _CAMPOS_CONTRATO:
+            val = contrato.get(clave)
+            if cls._vacio(val):
+                faltantes.append(etiqueta)
+            elif clave == "numero":
+                if not re.fullmatch(r"[0-9]+", str(val).strip()):
+                    faltantes.append("Número de contrato (debe ser estrictamente numérico, ej: 3123123)")
+        # Validar Valor primer pago
+        es_requerido = True
+        fecha_inicio = contrato.get("fecha_inicio")
+        if fecha_inicio:
+            from datetime import datetime
+            from app.core.zona_horaria import ZONA_BOGOTA, utc_a_bogota
+            ahora = datetime.now(ZONA_BOGOTA)
+            fi_bog = utc_a_bogota(fecha_inicio) if fecha_inicio.tzinfo else ZONA_BOGOTA.localize(fecha_inicio)
+            
+            ref_fin = ahora
+            fecha_fin = contrato.get("fecha_fin")
+            if fecha_fin:
+                ff_bog = utc_a_bogota(fecha_fin) if fecha_fin.tzinfo else ZONA_BOGOTA.localize(fecha_fin)
+                if ff_bog < ahora:
+                    ref_fin = ff_bog
+            
+            dias_transcurridos = (ref_fin - fi_bog).days
+            if dias_transcurridos >= 60:  # 2 meses
+                es_requerido = False
+                
+        if es_requerido and cls._vacio(contrato.get("valor_primer_pago")):
+            faltantes.append("Valor primer pago")
+
+        return faltantes
 
     def faltantes_para_formatos(self, id_usuario: str) -> dict:
         """Evalúa si el usuario tiene todos los datos necesarios para descargar
@@ -420,8 +542,18 @@ class UsuarioService:
             faltan_laboral.append("Banco")
         if self._vacio(bancaria.get("numero_cuenta")):
             faltan_laboral.append("Número de cuenta")
+        if self._vacio(bancaria.get("tipo_cuenta")):
+            faltan_laboral.append("Tipo de cuenta bancaria")
         if self._vacio(tributaria.get("rut")):
             faltan_laboral.append("RUT")
+        regimen_actual = tributaria.get("regimen")
+        regimenes_validos = {"no_responsable_iva", "responsable_iva", "simple_rst", "especial_rte"}
+        if self._vacio(regimen_actual):
+            faltan_laboral.append("Régimen tributario")
+        elif regimen_actual not in regimenes_validos:
+            faltan_laboral.append("Régimen tributario (Valor actual no válido o desactualizado. Selecciona uno nuevo en Mi Perfil)")
+        if self._vacio(il.get("grupo_trabajo")):
+            faltan_laboral.append("Grupo de trabajo")
         if faltan_laboral:
             secciones.append({
                 "titulo": "Información laboral",

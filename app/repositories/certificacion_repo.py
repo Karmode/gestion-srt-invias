@@ -61,6 +61,7 @@ class CertificacionRepositorio:
         tipo: str,
         firmante_id: str,
         firmante_nombre: str,
+        comentario: str | None = None,
     ) -> bool:
         ahora = datetime.now(timezone.utc)
         self.coleccion.update_one(
@@ -76,6 +77,7 @@ class CertificacionRepositorio:
                         "firmante_id": ObjectId(firmante_id),
                         "firmante_nombre": firmante_nombre,
                         "fecha": ahora,
+                        "comentario": comentario.strip() if comentario and comentario.strip() else None,
                     }
                 },
                 "$setOnInsert": {
@@ -100,3 +102,4 @@ class CertificacionRepositorio:
             {"$unset": {f"firmas.{tipo}": ""}},
         )
         return True
+
