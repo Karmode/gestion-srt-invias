@@ -68,30 +68,12 @@ class CorrespondenciaService:
             if "busqueda" in filtros and filtros["busqueda"]:
                 texto = filtros["busqueda"].strip()
                 patron = {"$regex": re.escape(texto), "$options": "i"}
-                coincidencia_subcadena = [
+                query["$or"] = [
                     {"numero_radicado": patron},
                     {"respuesta.numero_oficio": patron},
                     {"peticionario": patron},
                     {"asunto": patron},
                 ]
-
-                # 1) Intento rápido: el índice de texto acota candidatos, pero
-                #    siempre se exige también la coincidencia exacta de
-                #    subcadena (regex), ya que $text tokeniza/stemea y por sí
-                #    solo puede traer falsos positivos (p. ej. todo un año).
-                query_text = dict(query)
-                query_text["$text"] = {"$search": texto}
-                query_text["$or"] = coincidencia_subcadena
-                total_text = self.repo.contar(query_text)
-                if total_text > 0:
-                    return (
-                        self.repo.listar(query_text, skip, limit, projection={"trazabilidad": 0}),
-                        total_text,
-                    )
-
-                # 2) Fallback: sin índice de texto, solo coincidencia por
-                #    subcadena (cubre términos que el índice no tokeniza igual)
-                query["$or"] = coincidencia_subcadena
 
         return (
             self.repo.listar(query, skip, limit, projection={"trazabilidad": 0}),

@@ -138,6 +138,7 @@ class UsuarioService:
 
         return {
             "es_pensionado": bool(datos.get("es_pensionado")),
+            "planilla_mes_vencido": bool(datos.get("planilla_mes_vencido")),
             "grupo_trabajo": (datos.get("grupo_trabajo") or "").strip() or None,
             "ibc_prestaciones_sociales": ibc_ps if ibc_ps and ibc_ps > 0 else None,
             "paga_iva": paga_iva,
@@ -310,6 +311,12 @@ class UsuarioService:
         valor_mensual = datos.get("valor_mensual")
         if valor_mensual is not None and valor_mensual > 0:
             contrato["valor_mensual"] = int(valor_mensual)
+        
+        valor_primer_pago = datos.get("valor_primer_pago")
+        if valor_primer_pago is not None and valor_primer_pago > 0:
+            contrato["valor_primer_pago"] = int(valor_primer_pago)
+        else:
+            contrato["valor_primer_pago"] = None
 
         # NUEVAS VARIABLES DE CONTRATO
         contrato["tiene_inventario"] = bool(datos.get("tiene_inventario"))
@@ -427,6 +434,29 @@ class UsuarioService:
             elif clave == "numero":
                 if not re.fullmatch(r"[0-9]+", str(val).strip()):
                     faltantes.append("Número de contrato (debe ser estrictamente numérico, ej: 3123123)")
+        # Validar Valor primer pago
+        es_requerido = True
+        fecha_inicio = contrato.get("fecha_inicio")
+        if fecha_inicio:
+            from datetime import datetime
+            from app.core.zona_horaria import ZONA_BOGOTA, utc_a_bogota
+            ahora = datetime.now(ZONA_BOGOTA)
+            fi_bog = utc_a_bogota(fecha_inicio) if fecha_inicio.tzinfo else ZONA_BOGOTA.localize(fecha_inicio)
+            
+            ref_fin = ahora
+            fecha_fin = contrato.get("fecha_fin")
+            if fecha_fin:
+                ff_bog = utc_a_bogota(fecha_fin) if fecha_fin.tzinfo else ZONA_BOGOTA.localize(fecha_fin)
+                if ff_bog < ahora:
+                    ref_fin = ff_bog
+            
+            dias_transcurridos = (ref_fin - fi_bog).days
+            if dias_transcurridos >= 60:  # 2 meses
+                es_requerido = False
+                
+        if es_requerido and cls._vacio(contrato.get("valor_primer_pago")):
+            faltantes.append("Valor primer pago")
+
         return faltantes
 
     def faltantes_para_formatos(self, id_usuario: str) -> dict:
@@ -516,8 +546,12 @@ class UsuarioService:
             faltan_laboral.append("Tipo de cuenta bancaria")
         if self._vacio(tributaria.get("rut")):
             faltan_laboral.append("RUT")
-        if self._vacio(tributaria.get("regimen")):
+        regimen_actual = tributaria.get("regimen")
+        regimenes_validos = {"no_responsable_iva", "responsable_iva", "simple_rst", "especial_rte"}
+        if self._vacio(regimen_actual):
             faltan_laboral.append("Régimen tributario")
+        elif regimen_actual not in regimenes_validos:
+            faltan_laboral.append("Régimen tributario (Valor actual no válido o desactualizado. Selecciona uno nuevo en Mi Perfil)")
         if self._vacio(il.get("grupo_trabajo")):
             faltan_laboral.append("Grupo de trabajo")
         if faltan_laboral:

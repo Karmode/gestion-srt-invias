@@ -25,14 +25,21 @@ if not sesion:
     st.stop()
 
 
-def _feedback(tipo: str, mensaje: str) -> None:
+def _feedback(tipo: str, mensaje: str, destino: str = "") -> None:
     """Guarda un mensaje de feedback para mostrarlo tras el rerun (persiste, no es toast)."""
-    st.session_state["_perfil_msg"] = (tipo, mensaje)
+    st.session_state["_perfil_msg"] = (tipo, mensaje, destino)
 
 
-# Mensaje de éxito/error persistente entre reruns (visible en cualquier pestaña).
-if _msg := st.session_state.pop("_perfil_msg", None):
-    getattr(st, _msg[0])(_msg[1])
+def mostrar_feedback(destino_esperado: str) -> None:
+    """Muestra el mensaje de feedback si coincide con el destino esperado y lo elimina."""
+    if _msg := st.session_state.get("_perfil_msg"):
+        if len(_msg) == 3 and _msg[2] == destino_esperado:
+            st.session_state.pop("_perfil_msg", None)
+            getattr(st, _msg[0])(_msg[1])
+        elif len(_msg) == 2:
+            # Fallback para mensajes sin destino: mostrarlos en la primera oportunidad
+            st.session_state.pop("_perfil_msg", None)
+            getattr(st, _msg[0])(_msg[1])
 
 TIPOS_DOCUMENTO = {
     "": "— Sin especificar —",
@@ -85,6 +92,8 @@ with tab_perfil:
         st.caption("Los cambios se guardan solo al pulsar el botón. Si sales sin pulsarlo, no se conservan.")
         guardar_perfil = st.form_submit_button("💾 Guardar cambios", use_container_width=True, type="primary")
 
+    mostrar_feedback("perfil")
+
     if guardar_perfil:
         try:
             _servicio.actualizar_usuario(
@@ -105,7 +114,7 @@ with tab_perfil:
                 "tipo_documento": nuevo_tipo_doc.strip(),
                 "numero_documento": nuevo_num_doc.strip(),
             })
-            _feedback("success", "✅ Datos personales actualizados correctamente.")
+            _feedback("success", "✅ Datos personales actualizados correctamente.", "perfil")
             limpiar_cache_lecturas()
             st.rerun()
         except ValueError as e:
@@ -130,11 +139,13 @@ with tab_laboral:
                 validar_permisos=False,
             )
             limpiar_estado_laboral("perfil_lab")
-            _feedback("success", "✅ Información laboral guardada correctamente.")
+            _feedback("success", "✅ Información laboral guardada correctamente.", "laboral")
             limpiar_cache_lecturas()
             st.rerun()
         except ValueError as e:
             st.error(str(e))
+
+    mostrar_feedback("laboral")
 
 # ── TAB: FIRMA ──────────────────────────────────────────────────────────────────
 
@@ -143,8 +154,9 @@ with tab_firma:
     st.caption("Sube una foto o escaneo de tu firma sobre papel blanco; se procesa para quitar el fondo.")
     render_seccion_firma(
         sesion["id"], sesion["usuario"], "perfil_firma",
-        al_terminar=lambda m: _feedback("success", f"✅ {m}"),
+        al_terminar=lambda m: _feedback("success", f"✅ {m}", "firma"),
     )
+    mostrar_feedback("firma")
 
 # ── TAB: CONTRATOS ────────────────────────────────────────────────────────────
 
@@ -237,6 +249,23 @@ with tab_contrato:
                 )
                 _n_valor = st.number_input("Valor del contrato (COP)", min_value=0, step=100000, format="%d", label_visibility="collapsed")
                 _n_vm = st.number_input("Valor mensual (COP)", min_value=0, step=100000, format="%d")
+                st.markdown(
+                    """
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                        <span style="font-size: 14px; font-weight: 500; color: #333333;">Valor primer pago</span>
+                        <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                            <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                <div class="srti-tooltip-content" style="font-weight: normal;">
+                                    <h4>Valor primer pago</h4>
+                                    <p>Este valor figurará en sus formatos de primera cuenta.</p>
+                                </div>
+                            </span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                _n_vpp = st.number_input("Valor primer pago", min_value=0, step=100000, format="%d", label_visibility="collapsed")
             st.markdown(
                 """
                 <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
@@ -346,6 +375,8 @@ with tab_contrato:
             st.caption("El contrato se registra solo al pulsar el botón.")
             _n_env = st.form_submit_button("➕ Agregar contrato", use_container_width=True, type="primary")
 
+        mostrar_feedback("contrato_nuevo")
+
         if _n_env:
             try:
                 _servicio.agregar_contrato(sesion["id"], {
@@ -357,10 +388,11 @@ with tab_contrato:
                     "fecha_fin": _n_ff,
                     "fecha_recurso_presupuestal": _n_frp,
                     "valor_mensual": _n_vm if _n_vm > 0 else None,
+                    "valor_primer_pago": _n_vpp if _n_vpp > 0 else None,
                     "objeto": _n_obj.strip(),
                     "radicado_del_contrato": _n_rad.strip() if _n_rad else None,
                 })
-                _feedback("success", "✅ Contrato agregado correctamente.")
+                _feedback("success", "✅ Contrato agregado correctamente.", "contrato_nuevo")
                 limpiar_cache_lecturas()
                 st.rerun()
             except ValueError as e:
@@ -386,6 +418,8 @@ with tab_contrato:
                 with _d2:
                     _vm = _c.get("valor_mensual")
                     st.write(f"**Valor mensual:** {'${:,.0f}'.format(_vm) if _vm else '—'}")
+                    _vpp = _c.get("valor_primer_pago")
+                    st.write(f"**Valor primer pago:** {'${:,.0f}'.format(_vpp) if _vpp else '—'}")
                     st.write(f"**RP / compromiso presupuestal:** {_c.get('rp_compromiso_presupuestal') or '—'}")
                 _d3, _d4, _d5 = st.columns(3)
                 with _d3:
@@ -461,6 +495,27 @@ with tab_contrato:
                         _e_vm = st.number_input(
                             "Valor mensual (COP)", min_value=0, value=int(_c.get("valor_mensual") or 0),
                             step=100000, format="%d", key=f"e_vm_{_c_num}",
+                        )
+                        st.markdown(
+                            """
+                            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                                <span style="font-size: 14px; font-weight: 500; color: #333333;">Valor primer pago</span>
+                                <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                                    <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                        <div class="srti-tooltip-content" style="font-weight: normal;">
+                                            <h4>Valor primer pago</h4>
+                                            <p>Este valor figurará en sus formatos de primera cuenta.</p>
+                                        </div>
+                                    </span>
+                                </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+                        _e_vpp = st.number_input(
+                            "Valor primer pago", min_value=0, value=int(_c.get("valor_primer_pago") or 0),
+                            step=100000, format="%d", key=f"e_vpp_{_c_num}",
+                            label_visibility="collapsed"
                         )
                     st.markdown(
                         """
@@ -580,6 +635,7 @@ with tab_contrato:
                     _balance_pagos_datos = render_balance_y_pagos(f"perfil_c_{_c_num}", _c, deshabilitado=_c_fin)
                     
                     _e_env = st.button("💾 Guardar cambios", key=f"btn_save_c_{_c_num}", use_container_width=True, type="primary", disabled=_c_fin)
+                    mostrar_feedback(f"contrato_edicion_{_c_num}")
 
                 if _e_env:
                     try:
@@ -593,13 +649,14 @@ with tab_contrato:
                             "fecha_fin": _e_ff,
                             "fecha_recurso_presupuestal": _e_frp,
                             "valor_mensual": _e_vm if _e_vm > 0 else None,
+                            "valor_primer_pago": _e_vpp if _e_vpp > 0 else None,
                             "objeto": _e_obj.strip(),
                             "radicado_del_contrato": _e_rad.strip() if _e_rad else None,
                         }
                         datos_totales.update(_balance_pagos_datos)
                         
                         _servicio.editar_contrato(sesion["id"], _c_num, datos_totales)
-                        _feedback("success", f"✅ Contrato {_c_num} actualizado correctamente.")
+                        _feedback("success", f"✅ Contrato {_c_num} actualizado correctamente.", f"contrato_edicion_{_c_num}")
                         limpiar_cache_lecturas()
                         st.rerun()
                     except ValueError as e:
@@ -616,6 +673,8 @@ with tab_password:
         pwd_confirmar = st.text_input("Confirmar contraseña nueva", type="password")
         enviar_pwd = st.form_submit_button("🔒 Cambiar contraseña", type="primary")
 
+    mostrar_feedback("password")
+
     if enviar_pwd:
         if pwd_nueva != pwd_confirmar:
             st.error("❌ Las contraseñas nuevas no coinciden.")
@@ -623,7 +682,7 @@ with tab_password:
             auth_service = AuthService()
             exito, mensaje = auth_service.cambiar_password(sesion["id"], pwd_actual, pwd_nueva)
             if exito:
-                _feedback("success", f"✅ {mensaje}")
+                _feedback("success", f"✅ {mensaje}", "password")
                 limpiar_cache_lecturas()
                 st.rerun()
             else:

@@ -214,6 +214,8 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
             with _d2:
                 _vm = _c.get("valor_mensual")
                 st.write(f"**Valor mensual:** {'${:,.0f}'.format(_vm) if _vm else '—'}")
+                _vpp = _c.get("valor_primer_pago")
+                st.write(f"**Valor primer pago:** {'${:,.0f}'.format(_vpp) if _vpp else '—'}")
                 st.write(f"**RP / compromiso presupuestal:** {_c.get('rp_compromiso_presupuestal') or '—'}")
             _d3, _d4, _d5 = st.columns(3)
             with _d3:
@@ -241,6 +243,23 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                 with _ec2:
                     _e_valor = st.number_input("Valor (COP)", min_value=0, value=int(_c.get("valor") or 0), step=100000, format="%d", key=f"e_val_{_c_num}")
                     _e_vm = st.number_input("Valor mensual (COP)", min_value=0, value=int(_c.get("valor_mensual") or 0), step=100000, format="%d", key=f"e_vm_{_c_num}")
+                    st.markdown(
+                        """
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                            <span style="font-size: 14px; font-weight: 500; color: #333333;">Valor primer pago</span>
+                            <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                                <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                    <div class="srti-tooltip-content" style="font-weight: normal;">
+                                        <h4>Valor primer pago</h4>
+                                        <p>Este valor figurará en sus formatos de primera cuenta.</p>
+                                    </div>
+                                </span>
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                    _e_vpp = st.number_input("Valor primer pago", min_value=0, value=int(_c.get("valor_primer_pago") or 0), step=100000, format="%d", key=f"e_vpp_{_c_num}", label_visibility="collapsed")
                 st.markdown(
                     """
                     <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
@@ -352,6 +371,7 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                         "fecha_fin": _e_ff,
                         "fecha_recurso_presupuestal": _e_frp,
                         "valor_mensual": _e_vm if _e_vm > 0 else None,
+                        "valor_primer_pago": _e_vpp if _e_vpp > 0 else None,
                         "objeto": _e_obj.strip(),
                         "radicado_del_contrato": _e_rad.strip() if _e_rad else None,
                     }
@@ -373,6 +393,23 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
             with _nc2:
                 _n_valor = st.number_input("Valor (COP)", min_value=0, step=100000, format="%d")
                 _n_vm = st.number_input("Valor mensual (COP)", min_value=0, step=100000, format="%d")
+                st.markdown(
+                    """
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                        <span style="font-size: 14px; font-weight: 500; color: #333333;">Valor primer pago</span>
+                        <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                            <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                <div class="srti-tooltip-content" style="font-weight: normal;">
+                                    <h4>Valor primer pago</h4>
+                                    <p>Este valor figurará en sus formatos de primera cuenta.</p>
+                                </div>
+                            </span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                _n_vpp = st.number_input("Valor primer pago", min_value=0, step=100000, format="%d", label_visibility="collapsed")
             st.markdown(
                 """
                 <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
@@ -475,6 +512,7 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                     "fecha_fin": _n_ff,
                     "fecha_recurso_presupuestal": _n_frp,
                     "valor_mensual": _n_vm if _n_vm > 0 else None,
+                    "valor_primer_pago": _n_vpp if _n_vpp > 0 else None,
                     "objeto": _n_obj.strip(),
                     "radicado_del_contrato": _n_rad.strip() if _n_rad else None,
                 })

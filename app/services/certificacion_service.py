@@ -1401,14 +1401,31 @@ class CertificacionService:
         story.append(Spacer(1, 1.0 * cm))
 
         # Párrafo valor y objeto
-        val_letras = _numero_a_letras(int(valor_mensual))
-        val_num_fmt = _formatear_pesos(valor_mensual)
+        es_primer_mes = False
+        if fecha_ini_raw and cert_month == fecha_ini_raw.month and cert_year == fecha_ini_raw.year:
+            es_primer_mes = True
+
+        if es_primer_mes:
+            valor_pago = contrato_vig.get("valor_primer_pago")
+            if valor_pago is None or valor_pago == 0:
+                valor_pago = valor_mensual
+            
+            dia_ini = fecha_ini_raw.day
+            mes_ini = MESES_ES[fecha_ini_raw.month - 1].lower()
+            mes_nombre_lower = MESES_ES[cert_month - 1].lower()
+            periodo_html = f"del <b>{dia_ini} de {mes_ini} al 30 de {mes_nombre_lower} del {cert_year}</b>"
+        else:
+            valor_pago = valor_mensual
+            periodo_html = f"de <b>{mes_nombre_upper}</b> del <b>{cert_year}</b>"
+
+        val_letras = _numero_a_letras(int(valor_pago))
+        val_num_fmt = _formatear_pesos(valor_pago)
         objeto_sostenida = objeto_contrato.upper()
         
         p_valor = (
             f"La suma de <b>{val_letras}</b> /Cte <b>(${val_num_fmt})</b> <b>MONEDA CORRIENTE</b> "
             f"por concepto del Contrato de Prestación de Servicios No. <b>{no_contrato}</b> de <b>{fecha_ini_raw.year if fecha_ini_raw else dt.year}</b> "
-            f"cuyo objeto es: “<b>{objeto_sostenida}</b>”, en el periodo correspondiente de <b>{mes_nombre_upper}</b> del <b>{cert_year}</b>."
+            f"cuyo objeto es: “<b>{objeto_sostenida}</b>”, en el periodo correspondiente {periodo_html}."
         )
         story.append(Paragraph(p_valor, s_cuerpo))
 
@@ -1746,10 +1763,19 @@ class CertificacionService:
         story.append(Spacer(1, 0.3 * cm))
 
         # Honorarios
-        val_letras = _numero_a_letras(int(valor_mensual))
-        val_num_fmt = _formatear_pesos(valor_mensual)
+        valor_base = contrato_vig.get("valor_primer_pago")
+        if valor_base is None or valor_base == 0:
+            valor_base = valor_mensual
+        val_letras = _numero_a_letras(int(valor_base))
+        val_num_fmt = _formatear_pesos(valor_base)
+        nombre_mes_exp_lc = nombre_mes_exp.lower()
+        if fecha_ini_raw:
+            periodo_texto = f"el {dia_ini} de {mes_ini} al 30 de {nombre_mes_exp_lc} del {año_ini}"
+        else:
+            periodo_texto = f"el — de — al 30 de {nombre_mes_exp_lc} del —"
+            
         p_honorarios = (
-            f"Que el valor a cobrar por concepto de honorarios corresponden al periodo del <b><i>{nombre_mes_exp.upper()}</i></b> "
+            f"Que el valor a cobrar por concepto de honorarios corresponden al periodo del <b><i>{periodo_texto}</i></b> "
             f"y ascienden a la suma de: <b><i>{val_letras} ($ {val_num_fmt}) M/Cte.</i></b>"
         )
         story.append(Paragraph(p_honorarios, s_cuerpo))
@@ -1856,8 +1882,24 @@ class CertificacionService:
 
         # Fechas de expedición del documento (mes/año parameter)
         mes_num = certificacion.get("mes", 1)
+        año_num = certificacion.get("año", 2026)
         nombre_mes_exp = MESES_ES[mes_num - 1]
-        año_exp = str(certificacion.get("año", ""))
+        año_exp = str(año_num)
+        
+        planilla_mes_vencido = bool(info_laboral.get("planilla_mes_vencido"))
+        if planilla_mes_vencido:
+            if mes_num == 1:
+                mes_num_periodo = 12
+                año_num_periodo = año_num - 1
+            else:
+                mes_num_periodo = mes_num - 1
+                año_num_periodo = año_num
+        else:
+            mes_num_periodo = mes_num
+            año_num_periodo = año_num
+
+        nombre_mes_planilla = MESES_ES[mes_num_periodo - 1]
+        año_planilla = str(año_num_periodo)
 
         # Fecha actual o de firma para el encabezado "Bogotá D.C., {fecha de expedición del formato}"
         fecha_corte = certificacion.get("fecha_corte")
@@ -2076,12 +2118,20 @@ class CertificacionService:
         arl_name = (arl_info.get("entidad") or "ARL").replace("_", " ").upper()
         arl_val = arl_info.get("valor") or 0
 
-        p_seg_social = (
-            f"También declaró bajo la gravedad de juramento, que el documento soporte de pago de aportes obligatorios "
-            f"al Sistema General de Seguridad Social, realizados a la Entidad Prestadora de <b>{eps_name}</b> y "
-            f"aporte obligatorio realizados al Fondo de Pensiones <b>{afp_name}</b> correspondiente al periodo del mes de "
-            f"<b>{nombre_mes_exp.upper()}</b> de <b>{año_exp}</b>, corresponde a la suma de:"
-        )
+        if planilla_mes_vencido:
+            p_seg_social = (
+                f"También declaró bajo la gravedad de juramento, que el documento soporte de pago de aportes obligatorios "
+                f"al Sistema General de Seguridad Social, realizados a la Entidad Prestadora de <b>{eps_name}</b> y "
+                f"aporte obligatorio realizados al Fondo de Pensiones <b>{afp_name}</b> correspondiente al pago a mes vencido en periodo del mes de "
+                f"<b>{nombre_mes_planilla.upper()}</b> de <b>{año_planilla}</b>, corresponde a la suma de:"
+            )
+        else:
+            p_seg_social = (
+                f"También declaró bajo la gravedad de juramento, que el documento soporte de pago de aportes obligatorios "
+                f"al Sistema General de Seguridad Social, realizados a la Entidad Prestadora de <b>{eps_name}</b> y "
+                f"aporte obligatorio realizados al Fondo de Pensiones <b>{afp_name}</b> correspondiente al periodo del mes de "
+                f"<b>{nombre_mes_planilla.upper()}</b> de <b>{año_planilla}</b>, corresponde a la suma de:"
+            )
         story.append(Paragraph(p_seg_social, s_cuerpo))
         story.append(Spacer(1, 0.1 * cm))
 
