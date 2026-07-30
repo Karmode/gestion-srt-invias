@@ -262,6 +262,9 @@ def inputs_informacion_laboral(prefijo, il, mapas):
     _preseed(f"{prefijo}_es_pensionado", bool(il.get("es_pensionado")))
     es_pensionado = st.session_state.get(f"{prefijo}_es_pensionado", False)
 
+    _preseed(f"{prefijo}_planilla_mes_vencido", bool(il.get("planilla_mes_vencido")))
+    planilla_mes_vencido = st.session_state.get(f"{prefijo}_planilla_mes_vencido", False)
+
 
     st.markdown(
         """
@@ -292,6 +295,12 @@ def inputs_informacion_laboral(prefijo, il, mapas):
 
     st.markdown("##### 🏥 Seguridad social y aportes")
     st.caption("Indica si el aporte lo pagas tú (registra el valor mensual) o se paga por otro medio (registra el número de radicado).")
+    
+    st.checkbox(
+        "Planilla a mes vencido",
+        key=f"{prefijo}_planilla_mes_vencido",
+        help="Marca esta opción si pagas la planilla a mes vencido."
+    )
     
     st.markdown(
         """<div class="srti-tooltip-container">
@@ -384,23 +393,60 @@ Fórmula: <code>Ingreso Mensual × 40% = IBC</code><br>
               <span class="srti-tooltip-icon" tabindex="0">ⓘ
                 <div class="srti-tooltip-content">
                   <h4 style="color: #FF8C00 !important; margin-bottom: 12px; font-weight: 700;">TIPOS DE RÉGIMEN</h4>
-                  <p><strong>Ordinario</strong><br>
-                  Corresponde al régimen general del impuesto sobre la renta. Aplica para la mayoría de personas naturales y jurídicas que cumplen con las obligaciones tributarias bajo el sistema tradicional establecido en el Estatuto Tributario.</p>
-                  <p><strong>Simple (RST)</strong><br>
-                  Régimen Simple de Tributación. Es un sistema opcional diseñado para facilitar el cumplimiento de las obligaciones tributarias mediante el pago unificado de varios impuestos, dirigido principalmente a pequeños y medianos empresarios que cumplen los requisitos legales.</p>
-                  <p><strong>Especial</strong><br>
-                  Aplica a entidades pertenecientes al Régimen Tributario Especial, como fundaciones, corporaciones, asociaciones y demás entidades sin ánimo de lucro que cumplen las condiciones establecidas por la legislación tributaria para acceder a este tratamiento.</p>
+                  <p><strong>No responsables de IVA</strong><br>
+                  Personas naturales que no cumplen con los topes de ingresos o condiciones de ley para ser responsables de declarar/cobrar IVA (anteriormente régimen simplificado).</p>
+                  <p><strong>Responsables de IVA</strong><br>
+                  Personas jurídicas o naturales que superan los topes legales de ingresos o requisitos y por tanto deben facturar, recaudar y declarar el IVA (anteriormente régimen común).</p>
+                  <p><strong>Régimen Simple de Tributación (RST)</strong><br>
+                  Sistema de tributación opcional que unifica varios impuestos (renta, ICA, IVA si aplica) para facilitar y simplificar el cumplimiento tributario.</p>
+                  <p><strong>Régimen Tributario Especial (RTE)</strong><br>
+                  Aplica a entidades sin ánimo de lucro (fundaciones, asociaciones, corporaciones) que cumplen requisitos de ley y tienen un tratamiento tributario preferencial.</p>
                 </div>
               </span>
             </div>
             """,
             unsafe_allow_html=True
         )
+        regimen_db = tributaria.get("regimen") or ""
+        regimenes_validos = {"no_responsable_iva", "responsable_iva", "simple_rst", "especial_rte"}
+        regimen_invalido = regimen_db != "" and regimen_db not in regimenes_validos
+        
+        # Usamos un div contenedor con un id o clase para aplicar el estilo únicamente a este selectbox
+        if regimen_invalido:
+            st.markdown(
+                f"""
+                <style>
+                /* Forzar el borde rojo ÚNICAMENTE en el selectbox de régimen */
+                div.element-container:has(iframe), 
+                div.element-container:has(div[data-testid="stSelectbox"] select[aria-label="Tipo de régimen"]) {{
+                    border: 1px solid #FF4B4B !important;
+                    border-radius: 4px;
+                }}
+                /* Alternativa usando el id único que genera Streamlit en base al key del widget */
+                div[data-testid="stSelectbox"]:has(input[id^="{prefijo}_regimen"]) {{
+                    border: 1px solid #FF4B4B !important;
+                    border-radius: 4px;
+                }}
+                </style>
+                """,
+                unsafe_allow_html=True
+            )
+            
         regimen = _select_keyed(
             "Tipo de régimen", mapas["regimen_tributario"],
             tributaria.get("regimen") or "", f"{prefijo}_regimen",
             label_visibility="collapsed"
         )
+        
+        if regimen_invalido:
+            st.markdown(
+                f'<span style="color: #FF4B4B; font-size: 0.85em; font-weight: 500;">⚠️ El régimen guardado actual ("{regimen_db}") está desactualizado. Selecciona uno nuevo.</span>',
+                unsafe_allow_html=True
+            )
+
+        # Si el régimen elegido es responsable de IVA, forzamos automáticamente paga_iva en True
+        if regimen == "responsable_iva":
+            st.session_state[f"{prefijo}_paga_iva"] = True
         
         # Si paga IVA, mostramos el input para el valor
         _preseed(f"{prefijo}_paga_iva", bool(il.get("paga_iva")))
@@ -439,6 +485,7 @@ Fórmula: <code>Ingreso Mensual × 40% = IBC</code><br>
 
     return {
         "es_pensionado": es_pensionado,
+        "planilla_mes_vencido": planilla_mes_vencido,
         "grupo_trabajo": grupo_trabajo if grupo_trabajo else None,
         "ibc_prestaciones_sociales": ibc_ps if ibc_ps > 0 else None,
         "paga_iva": paga_iva,

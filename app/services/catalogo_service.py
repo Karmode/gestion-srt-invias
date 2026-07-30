@@ -55,9 +55,10 @@ _TIPO_DEPENDIENTE = ["TIPO A", "TIPO B", "TIPO C", "TIPO D", "TIPO E"]
 # Claves cortas (no derivadas de la etiqueta completa) porque el PDF de certificación
 # antepone la palabra "RÉGIMEN" al texto de la clave (ver certificacion_service.py).
 _REGIMEN_TRIBUTARIO = [
-    {"clave": "ordinario", "etiqueta": "Régimen Ordinario", "activo": True},
+    {"clave": "no_responsable_iva", "etiqueta": "No responsables de IVA", "activo": True},
+    {"clave": "responsable_iva", "etiqueta": "Responsables de IVA", "activo": True},
     {"clave": "simple_rst", "etiqueta": "Régimen Simple de Tributación (RST)", "activo": True},
-    {"clave": "especial", "etiqueta": "Régimen Especial", "activo": True},
+    {"clave": "especial_rte", "etiqueta": "Régimen Tributario Especial (RTE)", "activo": True},
 ]
 
 
@@ -150,17 +151,24 @@ class CatalogoService:
                 self.coleccion_opciones.insert_one(opcion)
                 continue
 
-            claves_existentes = {
-                o.get("clave") for o in doc_existente.get("opciones", [])
-            }
-            nuevas = [
-                o for o in opcion["opciones"] if o.get("clave") not in claves_existentes
-            ]
-            if nuevas:
+            if categoria == "regimen_tributario":
+                # Forzar sobreescritura completa para depurar opciones obsoletas
                 self.coleccion_opciones.update_one(
                     {"categoria": categoria},
-                    {"$push": {"opciones": {"$each": nuevas}}},
+                    {"$set": {"opciones": opcion["opciones"]}}
                 )
+            else:
+                claves_existentes = {
+                    o.get("clave") for o in doc_existente.get("opciones", [])
+                }
+                nuevas = [
+                    o for o in opcion["opciones"] if o.get("clave") not in claves_existentes
+                ]
+                if nuevas:
+                    self.coleccion_opciones.update_one(
+                        {"categoria": categoria},
+                        {"$push": {"opciones": {"$each": nuevas}}},
+                    )
 
         # Configuración inicial de firmantes designados para certificaciones
         self.coleccion_opciones.update_one(

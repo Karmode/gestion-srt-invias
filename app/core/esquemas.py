@@ -56,6 +56,7 @@ ESQUEMA_USUARIOS = {
                     "radicado_del_contrato": {"bsonType": ["string", "null"]},
                     "valor": {"bsonType": ["int", "long", "double", "null"]},
                     "valor_mensual": {"bsonType": ["int", "long", "double", "null"]},
+                    "valor_primer_pago": {"bsonType": ["int", "long", "double", "null"]},
                     "rp_compromiso_presupuestal": {
                         "bsonType": ["string", "null"],
                         "description": "Código de Registro Presupuestal / compromiso presupuestal (alfanumérico)",
@@ -121,6 +122,10 @@ ESQUEMA_USUARIOS = {
                     "bsonType": ["bool", "null"],
                     "description": "Si es True, AFP y CCF no aplican y no se validan para descarga de formatos",
                 },
+                "planilla_mes_vencido": {
+                    "bsonType": ["bool", "null"],
+                    "description": "True si paga planilla a mes vencido, False en caso contrario",
+                },
                 "grupo_trabajo": {
                     "bsonType": ["string", "null"],
                     "enum": ["despacho", "normativa_tecnica", "innovacion_tecnica", "permisos", "", None],
@@ -167,7 +172,11 @@ ESQUEMA_USUARIOS = {
                     "properties": {
                         "rut": {"bsonType": ["string", "null"], "description": "Número de RUT (alfanumérico, admite símbolos)"},
                         "declarante_renta": {"bsonType": ["bool", "null"]},
-                        "regimen": {"bsonType": ["string", "null"], "description": "Clave del catálogo 'regimen_tributario'"},
+                        "regimen": {
+                            "bsonType": ["string", "null"],
+                            "enum": ["no_responsable_iva", "responsable_iva", "simple_rst", "especial_rte", None],
+                            "description": "Clave del catálogo 'regimen_tributario'"
+                        },
                     },
                 },
                 "dependientes": {
