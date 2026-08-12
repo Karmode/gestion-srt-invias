@@ -41,7 +41,7 @@ class CertificacionRepositorio:
         return list(self.coleccion.find(query))
 
     def buscar_por_hash(self, hash_code: str):
-        return self.coleccion.find_one({"hash_verificacion": hash_code})
+        return self.coleccion.find_one({"hash_verificacion": hash_code, "estado": "aprobado"})
 
     def crear(self, datos: dict):
         return self.coleccion.insert_one(datos).inserted_id

@@ -330,6 +330,7 @@ def render(sesion=None):
     # Idem para los roles de firma de actas (financiera/abogado/jefe) — un usuario
     # puede tener solo permisos de actas y ningún permiso corr/gd/secop.
     mis_roles_actas = [r for r in TIPOS_FIRMA_ACTAS if _META_FIRMA_ACTAS[r][2] in permisos]
+    puede_ver_control = bool(mis_tipos_firma) or es_admin or "certificacion.aprobar" in permisos
 
     if not es_admin and not mis_tipos_firma and not mis_roles_actas:
         st.error("No tienes permiso para acceder a esta sección.")
@@ -378,10 +379,11 @@ def render(sesion=None):
     st.write("")
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        if st.button("1-Formato de control Corr-GD-SECOP", type="primary", use_container_width=True, key="btn_formato_control"):
-            st.session_state["ver_formato_control"] = not st.session_state["ver_formato_control"]
-            st.session_state["tab_actas_activo"] = None
-            st.rerun()
+        if puede_ver_control:
+            if st.button("1-Formato de control Corr-GD-SECOP", type="primary", use_container_width=True, key="btn_formato_control"):
+                st.session_state["ver_formato_control"] = not st.session_state["ver_formato_control"]
+                st.session_state["tab_actas_activo"] = None
+                st.rerun()
     with col2:
         if st.button("2- Acta de compromiso", use_container_width=True, key="btn_acta_compromiso_sup"):
             activo = st.session_state["tab_actas_activo"] == "acta_compromiso"
@@ -404,7 +406,7 @@ def render(sesion=None):
     st.write("")
 
     # Selector de rol cuando el usuario tiene más de un permiso de firma
-    if st.session_state["ver_formato_control"]:
+    if st.session_state["ver_formato_control"] and puede_ver_control:
         if len(mis_tipos_firma) > 1:
             opciones_firma = {t: _META_FIRMA[t][1] for t in mis_tipos_firma}
             tipo_mi_firma = st.radio(
