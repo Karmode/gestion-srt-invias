@@ -446,17 +446,6 @@ def _render_opcion_1_cuenta_cobro(servicio, sesion, año_cert, mes_cert, nombre_
     )
     st.subheader(etiqueta)
 
-    from app.services.firma_service import FirmaService
-    firma_service = FirmaService()
-    if not firma_service.tiene_firma(usuario_id):
-        st.warning(
-            "⚠️ No tienes una firma registrada en tu perfil.\n\n"
-            "Para poder generar y firmar digitalmente este formato, necesitas registrar tu firma. "
-            "Por favor, ve a **Mi Perfil** para subirla."
-        )
-        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
-        return
-
     cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id, "cuenta_cobro")
 
     if cert_actual:
@@ -550,17 +539,6 @@ def _render_opcion_2_retencion_primera(servicio, sesion, año_cert, mes_cert, no
         else f"Período actual — {nombre_mes_cert} {año_cert}"
     )
     st.subheader(etiqueta)
-
-    from app.services.firma_service import FirmaService
-    firma_service = FirmaService()
-    if not firma_service.tiene_firma(usuario_id):
-        st.warning(
-            "⚠️ No tienes una firma registrada en tu perfil.\n\n"
-            "Para poder generar y firmar digitalmente este formato, necesitas registrar tu firma. "
-            "Por favor, ve a **Mi Perfil** para subirla."
-        )
-        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
-        return
 
     cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id, "retencion_fuente_primera")
 
@@ -660,17 +638,6 @@ def _render_opcion_3_retencion_segunda(servicio, sesion, año_cert, mes_cert, no
     )
     st.subheader(etiqueta)
 
-    from app.services.firma_service import FirmaService
-    firma_service = FirmaService()
-    if not firma_service.tiene_firma(usuario_id):
-        st.warning(
-            "⚠️ No tienes una firma registrada en tu perfil.\n\n"
-            "Para poder generar y firmar digitalmente este formato, necesitas registrar tu firma. "
-            "Por favor, ve a **Mi Perfil** para subirla."
-        )
-        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
-        return
-
     cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id, "retencion_fuente_segunda")
 
     if cert_actual:
@@ -769,17 +736,6 @@ def _render_opcion_4_declarante_dependencia(servicio, sesion, año_cert, mes_cer
     )
     st.subheader(etiqueta)
 
-    from app.services.firma_service import FirmaService
-    firma_service = FirmaService()
-    if not firma_service.tiene_firma(usuario_id):
-        st.warning(
-            "⚠️ No tienes una firma registrada en tu perfil.\n\n"
-            "Para poder generar y firmar digitalmente este formato, necesitas registrar tu firma. "
-            "Por favor, ve a **Mi Perfil** para subirla."
-        )
-        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
-        return
-
     cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id, "dependencia_economica")
 
     if cert_actual:
@@ -867,17 +823,6 @@ def _render_opcion_5_acta_compromiso(servicio, sesion, año_cert, mes_cert, nomb
         else f"Período actual — {nombre_mes_cert} {año_cert}"
     )
     st.subheader(etiqueta)
-
-    from app.services.firma_service import FirmaService
-    firma_service = FirmaService()
-    if not firma_service.tiene_firma(usuario_id):
-        st.warning(
-            "⚠️ No tienes una firma registrada en tu perfil.\n\n"
-            "Para poder generar y firmar digitalmente este formato, necesitas registrar tu firma. "
-            "Por favor, ve a **Mi Perfil** para subirla."
-        )
-        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
-        return
 
     cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id, "acta_compromiso")
 
@@ -987,17 +932,6 @@ def _render_opcion_9_acta_recibo_entrega_real(servicio, sesion, año_cert, mes_c
     )
     st.subheader(etiqueta)
 
-    from app.services.firma_service import FirmaService
-    firma_service = FirmaService()
-    if not firma_service.tiene_firma(usuario_id):
-        st.warning(
-            "⚠️ No tienes una firma registrada en tu perfil.\n\n"
-            "Para poder generar y firmar digitalmente este formato, necesitas registrar tu firma. "
-            "Por favor, ve a **Mi Perfil** para subirla."
-        )
-        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
-        return
-
     cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id, "acta_recibo_entrega_cps_real")
 
     if cert_actual:
@@ -1089,17 +1023,6 @@ def _render_opcion_8_acta_recibo_entrega(servicio, sesion, año_cert, mes_cert, 
         else f"Período actual — {nombre_mes_cert} {año_cert}"
     )
     st.subheader(etiqueta)
-
-    from app.services.firma_service import FirmaService
-    firma_service = FirmaService()
-    if not firma_service.tiene_firma(usuario_id):
-        st.warning(
-            "⚠️ No tienes una firma registrada en tu perfil.\n\n"
-            "Para poder generar y firmar digitalmente este formato, necesitas registrar tu firma. "
-            "Por favor, ve a **Mi Perfil** para subirla."
-        )
-        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
-        return
 
     cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id, "acta_recibo_entrega_cps")
 
