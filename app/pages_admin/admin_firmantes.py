@@ -11,7 +11,7 @@ from app.core.ui_titulos import mostrar_titulo_decorado
 from app.core.sesion import obtener_sesion
 from app.core.ui_certificado import obtener_pdf_certificado_cacheado
 from app.core.zona_horaria import formato_fecha_bogota
-from app.services.certificacion_service import CertificacionService, MESES_ES, ORDEN_FIRMAS_ACTAS
+from app.services.certificacion_service import CertificacionService, MESES_ES, ORDEN_FIRMAS_ACTAS, TIPOS_FIRMA_ACTAS
 
 TIPOS_FIRMA = ("corr", "gd", "secop")
 
@@ -327,8 +327,11 @@ def render(sesion=None):
     # Recopilar todos los tipos de firma que tiene este usuario.
     # Un mismo usuario puede tener más de un permiso de firma (ej. corr + gd).
     mis_tipos_firma = [t for t in TIPOS_FIRMA if _META_FIRMA[t][2] in permisos]
+    # Idem para los roles de firma de actas (financiera/abogado/jefe) — un usuario
+    # puede tener solo permisos de actas y ningún permiso corr/gd/secop.
+    mis_roles_actas = [r for r in TIPOS_FIRMA_ACTAS if _META_FIRMA_ACTAS[r][2] in permisos]
 
-    if not es_admin and not mis_tipos_firma:
+    if not es_admin and not mis_tipos_firma and not mis_roles_actas:
         st.error("No tienes permiso para acceder a esta sección.")
         st.stop()
 
