@@ -258,6 +258,11 @@ class CertificacionService:
         return True
 
     def firmar_y_generar_acta_recibo_entrega(self, usuario_id: str, nombre_usuario: str) -> bool:
+        from app.services.usuario_service import UsuarioService
+        req_bg = UsuarioService().validar_datos_balance_general_cps(usuario_id)
+        if not req_bg["valido"]:
+            raise ValueError(f"Faltan requisitos para generar el Balance General CPS: {', '.join(req_bg['faltantes'])}")
+
         año, mes = self.periodo_certificable()
         ahora_utc = datetime.now(timezone.utc)
         
@@ -291,6 +296,11 @@ class CertificacionService:
         return True
 
     def firmar_y_generar_acta_recibo_entrega_cps_real(self, usuario_id: str, nombre_usuario: str) -> bool:
+        from app.services.usuario_service import UsuarioService
+        req_acta = UsuarioService().validar_datos_acta_recibo_entrega_cps(usuario_id)
+        if not req_acta["valido"]:
+            raise ValueError(f"Faltan requisitos para generar el Acta de Recibo y Entrega CPS: {', '.join(req_acta['faltantes'])}")
+
         año, mes = self.periodo_certificable()
         ahora_utc = datetime.now(timezone.utc)
         
@@ -1241,6 +1251,8 @@ class CertificacionService:
         objeto_contrato = contrato_vig.get("objeto") or ""
         
         fecha_ini_raw = contrato_vig.get("fecha_inicio")
+        fecha_fin_raw = contrato_vig.get("fecha_fin")
+        valor_total = contrato_vig.get("valor", 0)
         
         # RP y Fecha RP
         rp_compromiso = contrato_vig.get("rp_compromiso_presupuestal") or "—"
@@ -1405,7 +1417,17 @@ class CertificacionService:
         if fecha_ini_raw and cert_month == fecha_ini_raw.month and cert_year == fecha_ini_raw.year:
             es_primer_mes = True
 
-        if es_primer_mes:
+        es_ultimo_mes = False
+        if fecha_fin_raw and cert_month == fecha_fin_raw.month and cert_year == fecha_fin_raw.year:
+            es_ultimo_mes = True
+
+        if es_primer_mes and es_ultimo_mes:
+            valor_pago = valor_total if valor_total > 0 else (contrato_vig.get("valor_primer_pago") or valor_mensual)
+            dia_ini = fecha_ini_raw.day
+            dia_fin = fecha_fin_raw.day
+            mes_ini = MESES_ES[fecha_ini_raw.month - 1].lower()
+            periodo_html = f"del <b>{dia_ini} al {dia_fin} de {mes_ini} del {cert_year}</b>"
+        elif es_primer_mes:
             valor_pago = contrato_vig.get("valor_primer_pago")
             if valor_pago is None or valor_pago == 0:
                 valor_pago = valor_mensual
@@ -1414,6 +1436,23 @@ class CertificacionService:
             mes_ini = MESES_ES[fecha_ini_raw.month - 1].lower()
             mes_nombre_lower = MESES_ES[cert_month - 1].lower()
             periodo_html = f"del <b>{dia_ini} de {mes_ini} al 30 de {mes_nombre_lower} del {cert_year}</b>"
+        elif es_ultimo_mes:
+            if contrato_vig.get("personalizar_ultimacuenta"):
+                valor_pago = contrato_vig.get("valor_personalizar_ultimacuenta") or 0
+            elif fecha_ini_raw and valor_total > 0:
+                total_meses_contrato = (fecha_fin_raw.year - fecha_ini_raw.year) * 12 + (fecha_fin_raw.month - fecha_ini_raw.month)
+                meses_completos = max(0, total_meses_contrato - 1)
+                val_primer = contrato_vig.get("valor_primer_pago")
+                if val_primer is None or val_primer == 0:
+                    val_primer = valor_mensual
+                valor_pago = valor_total - val_primer - (meses_completos * valor_mensual)
+                valor_pago = max(0, valor_pago)
+            else:
+                valor_pago = valor_mensual
+            
+            dia_fin = fecha_fin_raw.day
+            mes_fin = MESES_ES[fecha_fin_raw.month - 1].lower()
+            periodo_html = f"del <b>1 de {mes_fin} al {dia_fin} de {mes_fin} del {cert_year}</b>"
         else:
             valor_pago = valor_mensual
             periodo_html = f"de <b>{mes_nombre_upper}</b> del <b>{cert_year}</b>"
@@ -2155,10 +2194,35 @@ class CertificacionService:
         story.append(Spacer(1, 0.2 * cm))
 
         # Honorarios
-        val_letras = _numero_a_letras(int(valor_mensual))
-        val_num_fmt = _formatear_pesos(valor_mensual)
+        es_ultimo_mes = False
+        if fecha_fin_raw and mes_num == fecha_fin_raw.month and año_num == fecha_fin_raw.year:
+            es_ultimo_mes = True
+
+        if es_ultimo_mes:
+            if contrato_vig.get("personalizar_ultimacuenta"):
+                valor_pago = contrato_vig.get("valor_personalizar_ultimacuenta") or 0
+            elif fecha_ini_raw and valor_contrato > 0:
+                total_meses_contrato = (fecha_fin_raw.year - fecha_ini_raw.year) * 12 + (fecha_fin_raw.month - fecha_ini_raw.month)
+                meses_completos = max(0, total_meses_contrato - 1)
+                val_primer = contrato_vig.get("valor_primer_pago")
+                if val_primer is None or val_primer == 0:
+                    val_primer = valor_mensual
+                valor_pago = valor_contrato - val_primer - (meses_completos * valor_mensual)
+                valor_pago = max(0, valor_pago)
+            else:
+                valor_pago = valor_mensual
+            
+            dia_fin = fecha_fin_raw.day
+            mes_fin_lower = MESES_ES[fecha_fin_raw.month - 1].lower()
+            periodo_texto = f"DEL 1 DE {mes_fin_lower.upper()} AL {dia_fin} DE {mes_fin_lower.upper()} DEL {año_num}"
+        else:
+            valor_pago = valor_mensual
+            periodo_texto = f"{nombre_mes_exp.upper()}"
+
+        val_letras = _numero_a_letras(int(valor_pago))
+        val_num_fmt = _formatear_pesos(valor_pago)
         p_honorarios = (
-            f"Que el valor a cobrar por concepto de honorarios corresponden al periodo del <b><i>{nombre_mes_exp.upper()}</i></b> "
+            f"Que el valor a cobrar por concepto de honorarios corresponden al periodo del <b><i>{periodo_texto}</i></b> "
             f"y ascienden a la suma de: <b><i>{val_letras} ($ {val_num_fmt}) M/Cte.</i></b>"
         )
         story.append(Paragraph(p_honorarios, s_cuerpo))

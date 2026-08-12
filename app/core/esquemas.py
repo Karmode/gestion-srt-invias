@@ -84,6 +84,8 @@ ESQUEMA_USUARIOS = {
                             "valor_adicion": {"bsonType": ["int", "long", "double", "null"]},
                         },
                     },
+                    "personalizar_ultimacuenta": {"bsonType": ["bool", "null"]},
+                    "valor_personalizar_ultimacuenta": {"bsonType": ["int", "long", "double", "null"]},
                     "pagos": {
                         "bsonType": ["array", "null"],
                         "maxItems": 20,

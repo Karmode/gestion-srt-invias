@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
 """Página: 7 - ADRES · SECOP II · KLIC 2 · AZ Digital · Her. PDF
 
 Acceso rápido a las plataformas externas utilizadas en la gestión de

@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
 """Página de certificaciones mensuales — vista del colaborador.
 
 Cada usuario ve el estado de su certificación del mes actual
@@ -1029,6 +1033,19 @@ def _render_opcion_9_acta_recibo_entrega_real(servicio, sesion, año_cert, mes_c
                     }
                     st.rerun()
     else:
+        # Validar requisitos específicos de Acta de Recibo y Entrega CPS
+        from app.services.usuario_service import UsuarioService
+        req_acta = UsuarioService().validar_datos_acta_recibo_entrega_cps(usuario_id)
+        if not req_acta["valido"]:
+            st.warning(
+                "⚠️ **Requisitos para habilitar el Acta de Recibo y Entrega CPS**\n\n"
+                "Para poder generar y firmar digitalmente este formato, debes completar "
+                "los siguientes datos obligatorios en tu contrato activo en **Mi Perfil**:\n\n" +
+                "\n".join([f"- {item}" for item in req_acta["faltantes"]])
+            )
+            st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
+            return
+
         st.warning(f"Aún no has generado el formato para el período **{nombre_mes_cert} {año_cert}**.")
         
         # Mostrar resumen de datos del usuario
@@ -1119,6 +1136,19 @@ def _render_opcion_8_acta_recibo_entrega(servicio, sesion, año_cert, mes_cert, 
                     }
                     st.rerun()
     else:
+        # Validar requisitos específicos de Balance General CPS
+        from app.services.usuario_service import UsuarioService
+        req_bg = UsuarioService().validar_datos_balance_general_cps(usuario_id)
+        if not req_bg["valido"]:
+            st.warning(
+                "⚠️ **Requisitos para habilitar el Balance General CPS**\n\n"
+                "Para poder generar y firmar digitalmente este formato, debes completar "
+                "los siguientes datos obligatorios en tu contrato activo en **Mi Perfil**:\n\n" +
+                "\n".join([f"- {item}" for item in req_bg["faltantes"]])
+            )
+            st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
+            return
+
         st.warning(f"Aún no has generado el formato para el período **{nombre_mes_cert} {año_cert}**.")
         
         # Mostrar resumen de datos del usuario
