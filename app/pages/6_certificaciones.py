@@ -1195,39 +1195,33 @@ def render(sesion=None):
             if st.button("3- Form. retención en la fuente Segunda cuenta ++", type="primary", disabled=False, use_container_width=True):
                 st.session_state["tab_formato_activo"] = 3
                 st.rerun()
-            
             if st.button("4- Form. condicion de declarante y dep. Economica.", type="primary", disabled=False, use_container_width=True):
                 st.session_state["tab_formato_activo"] = 4
                 st.rerun()
-
-            if st.button("5- Form. Acta compromiso.", type="primary", disabled=False, use_container_width=True):
-                st.session_state["tab_formato_activo"] = 5
-                st.rerun()
-            
-            if st.button("6– Form. Gestión Corr – GD – SECOP II.", type="primary", disabled=False, use_container_width=True):
+            if st.button("5- Form. Gestión Corr – GD – SECOP II.", type="primary", disabled=False, use_container_width=True):
                 st.session_state["tab_formato_activo"] = 6
                 st.rerun()
-
-            if st.button("7- Otros certificados - Herramientas", type="primary", disabled=False, use_container_width=True):
+            if st.button("6- Otros certificados - Herramientas", type="primary", disabled=False, use_container_width=True):
                 st.session_state["tab_formato_activo"] = 7
                 st.rerun()
-            
-            if st.button("8- Balance General CPS.", type="primary", disabled=False, use_container_width=True):
-                st.session_state["tab_formato_activo"] = 8
-                st.rerun()
-            if st.button("9- Formato de acta de recibo y entrega CPS.", type="primary", disabled=False, use_container_width=True):
-                st.session_state["tab_formato_activo"] = 9
-                st.rerun()
-            
-            if st.button("10- Historial de formatos.", type="primary", disabled=False, use_container_width=True):
+            if st.button("7- Historial de formatos.", type="primary", disabled=False, use_container_width=True):
                 st.session_state["tab_formato_activo"] = 10
                 st.rerun()
-                
-            if st.button("11- Verificar formato.", type="primary", disabled=False, use_container_width=True):
+            if st.button("8- Verificar formato.", type="primary", disabled=True, use_container_width=True):
                 st.session_state["tab_formato_activo"] = 11
                 st.rerun()
-            
-        # Fin del primer contenedor de formatos
+
+        with st.container(border=True):
+            st.markdown("### Últimos formatos de contrato")
+            if st.button("1- Form. Acta compromiso.", type="primary", disabled=False, use_container_width=True):
+                st.session_state["tab_formato_activo"] = 5
+                st.rerun()
+            if st.button("2- Balance General CPS.", type="primary", disabled=False, use_container_width=True):
+                st.session_state["tab_formato_activo"] = 8
+                st.rerun()
+            if st.button("3- Formato de acta de recibo y entrega CPS.", type="primary", disabled=False, use_container_width=True):
+                st.session_state["tab_formato_activo"] = 9
+                st.rerun()
         
         # Segundo contenedor para el botón de instructivos (viñeta separada)
         with st.container(border=True):
