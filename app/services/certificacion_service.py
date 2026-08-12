@@ -30,6 +30,16 @@ MESES_ES = [
 # (ver ParametrosService, parámetro "dia_inicio_periodo_certificacion").
 DIA_INICIO_PERIODO = 29
 
+# ── Firmas secuenciales de Actas (Financiera → Abogado → Jefe) ────────────────
+TIPOS_FIRMA_CORR = ("corr", "gd", "secop")
+TIPOS_FIRMA_ACTAS = ("financiera", "abogado", "jefe")
+
+ORDEN_FIRMAS_ACTAS = {
+    "acta_compromiso": ("jefe",),
+    "acta_recibo_entrega_cps": ("financiera", "abogado", "jefe"),        # Balance General CPS
+    "acta_recibo_entrega_cps_real": ("financiera", "abogado", "jefe"),   # Acta recibo y entrega CPS
+}
+
 
 class CertificacionService:
     def __init__(self) -> None:
@@ -226,35 +236,24 @@ class CertificacionService:
 
     def firmar_y_generar_acta_compromiso(self, usuario_id: str, nombre_usuario: str) -> bool:
         año, mes = self.periodo_certificable()
-        ahora_utc = datetime.now(timezone.utc)
-        
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "acta_compromiso")
-        
-        hash_code = (
-            cert_existente["hash_verificacion"]
-            if cert_existente and cert_existente.get("hash_verificacion")
-            else self._generar_hash(usuario_id, año, mes, usuario_id, ahora_utc.isoformat())
-        )
-        
+        if cert_existente:
+            return True
+
+        ahora_utc = datetime.now(timezone.utc)
         campos = {
-            "estado": "aprobado",  # Ya queda aprobado porque lo firma el contratista
+            "usuario_id": ObjectId(usuario_id),
+            "nombre_usuario": nombre_usuario,
+            "año": año,
+            "mes": mes,
+            "estado": "pendiente",  # Se aprueba cuando el Jefe firma (ver registrar_firma_actas)
             "fecha_corte": ahora_utc,
             "snapshot_al_dia": True,
             "tipo_formato": "acta_compromiso",
-            "hash_verificacion": hash_code,
+            "hash_verificacion": None,
             "creado_en": ahora_utc,
         }
-        
-        if cert_existente:
-            self.repo.actualizar(str(cert_existente["_id"]), campos)
-        else:
-            campos.update({
-                "usuario_id": ObjectId(usuario_id),
-                "nombre_usuario": nombre_usuario,
-                "año": año,
-                "mes": mes,
-            })
-            self.repo.crear(campos)
+        self.repo.crear(campos)
         return True
 
     def firmar_y_generar_acta_recibo_entrega(self, usuario_id: str, nombre_usuario: str) -> bool:
@@ -264,35 +263,24 @@ class CertificacionService:
             raise ValueError(f"Faltan requisitos para generar el Balance General CPS: {', '.join(req_bg['faltantes'])}")
 
         año, mes = self.periodo_certificable()
-        ahora_utc = datetime.now(timezone.utc)
-        
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "acta_recibo_entrega_cps")
-        
-        hash_code = (
-            cert_existente["hash_verificacion"]
-            if cert_existente and cert_existente.get("hash_verificacion")
-            else self._generar_hash(usuario_id, año, mes, usuario_id, ahora_utc.isoformat())
-        )
-        
+        if cert_existente:
+            return True
+
+        ahora_utc = datetime.now(timezone.utc)
         campos = {
-            "estado": "aprobado",  # Queda firmado/aprobado por contratista inicialmente
+            "usuario_id": ObjectId(usuario_id),
+            "nombre_usuario": nombre_usuario,
+            "año": año,
+            "mes": mes,
+            "estado": "pendiente",  # Se aprueba cuando Financiera → Abogado → Jefe firman (ver registrar_firma_actas)
             "fecha_corte": ahora_utc,
             "snapshot_al_dia": True,
             "tipo_formato": "acta_recibo_entrega_cps",
-            "hash_verificacion": hash_code,
+            "hash_verificacion": None,
             "creado_en": ahora_utc,
         }
-        
-        if cert_existente:
-            self.repo.actualizar(str(cert_existente["_id"]), campos)
-        else:
-            campos.update({
-                "usuario_id": ObjectId(usuario_id),
-                "nombre_usuario": nombre_usuario,
-                "año": año,
-                "mes": mes,
-            })
-            self.repo.crear(campos)
+        self.repo.crear(campos)
         return True
 
     def firmar_y_generar_acta_recibo_entrega_cps_real(self, usuario_id: str, nombre_usuario: str) -> bool:
@@ -302,35 +290,24 @@ class CertificacionService:
             raise ValueError(f"Faltan requisitos para generar el Acta de Recibo y Entrega CPS: {', '.join(req_acta['faltantes'])}")
 
         año, mes = self.periodo_certificable()
-        ahora_utc = datetime.now(timezone.utc)
-        
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "acta_recibo_entrega_cps_real")
-        
-        hash_code = (
-            cert_existente["hash_verificacion"]
-            if cert_existente and cert_existente.get("hash_verificacion")
-            else self._generar_hash(usuario_id, año, mes, usuario_id, ahora_utc.isoformat())
-        )
-        
+        if cert_existente:
+            return True
+
+        ahora_utc = datetime.now(timezone.utc)
         campos = {
-            "estado": "aprobado",
+            "usuario_id": ObjectId(usuario_id),
+            "nombre_usuario": nombre_usuario,
+            "año": año,
+            "mes": mes,
+            "estado": "pendiente",  # Se aprueba cuando Financiera → Abogado → Jefe firman (ver registrar_firma_actas)
             "fecha_corte": ahora_utc,
             "snapshot_al_dia": True,
             "tipo_formato": "acta_recibo_entrega_cps_real",
-            "hash_verificacion": hash_code,
+            "hash_verificacion": None,
             "creado_en": ahora_utc,
         }
-        
-        if cert_existente:
-            self.repo.actualizar(str(cert_existente["_id"]), campos)
-        else:
-            campos.update({
-                "usuario_id": ObjectId(usuario_id),
-                "nombre_usuario": nombre_usuario,
-                "año": año,
-                "mes": mes,
-            })
-            self.repo.crear(campos)
+        self.repo.crear(campos)
         return True
 
 
@@ -390,22 +367,30 @@ class CertificacionService:
     # Configuración de firmantes designados
     # ──────────────────────────────────────────────────────────────
 
-    def obtener_firmantes_config(self) -> Dict:
-        """Devuelve los 3 firmantes designados desde opciones_configuracion."""
+    def obtener_firmantes_config(
+        self, categoria: str = "firmantes_certificacion", tipos: tuple = TIPOS_FIRMA_CORR
+    ) -> Dict:
+        """Devuelve los firmantes designados de la categoría dada (por defecto, corr/gd/secop)."""
         from app.repositories.opciones_repo import ConfiguracionRepositorio
-        doc = ConfiguracionRepositorio().obtener("firmantes_certificacion")
-        vacio = {"corr": None, "gd": None, "secop": None}
+        doc = ConfiguracionRepositorio().obtener(categoria)
+        vacio = {t: None for t in tipos}
         return doc.get("firmantes", vacio) if doc else vacio
 
-    def guardar_firmante(self, tipo: str, usuario_id: Optional[str], nombre: Optional[str]) -> bool:
-        """Admin designa quién es el firmante de un tipo dado.
+    def guardar_firmante(
+        self,
+        tipo: str,
+        usuario_id: Optional[str],
+        nombre: Optional[str],
+        categoria: str = "firmantes_certificacion",
+    ) -> bool:
+        """Admin designa quién es el firmante de un tipo dado, dentro de la categoría indicada.
         Sincroniza el permiso certificacion.firmar_<tipo> en permisos_extra del usuario.
         """
         from app.repositories.opciones_repo import ConfiguracionRepositorio
         from app.repositories.usuario_repo import UsuarioRepositorio
 
         perm = f"certificacion.firmar_{tipo}"
-        config = self.obtener_firmantes_config()
+        config = self.obtener_firmantes_config(categoria)
         repo_conf = ConfiguracionRepositorio()
         repo_usr = UsuarioRepositorio()
 
@@ -428,9 +413,9 @@ class CertificacionService:
 
         valor = {"usuario_id": usuario_id, "nombre": nombre} if usuario_id else None
         repo_conf.upsert(
-            "firmantes_certificacion",
+            categoria,
             {
-                "categoria": "firmantes_certificacion",
+                "categoria": categoria,
                 f"firmantes.{tipo}": valor,
             },
         )
