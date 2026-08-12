@@ -250,7 +250,6 @@ class CertificacionService:
             "fecha_corte": ahora_utc,
             "snapshot_al_dia": True,
             "tipo_formato": "acta_compromiso",
-            "hash_verificacion": None,
             "creado_en": ahora_utc,
         }
         self.repo.crear(campos)
@@ -277,7 +276,6 @@ class CertificacionService:
             "fecha_corte": ahora_utc,
             "snapshot_al_dia": True,
             "tipo_formato": "acta_recibo_entrega_cps",
-            "hash_verificacion": None,
             "creado_en": ahora_utc,
         }
         self.repo.crear(campos)
@@ -304,7 +302,6 @@ class CertificacionService:
             "fecha_corte": ahora_utc,
             "snapshot_al_dia": True,
             "tipo_formato": "acta_recibo_entrega_cps_real",
-            "hash_verificacion": None,
             "creado_en": ahora_utc,
         }
         self.repo.crear(campos)
