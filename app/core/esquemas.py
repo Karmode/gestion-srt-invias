@@ -310,7 +310,7 @@ ESQUEMA_CERTIFICACIONES = {
         },
         "firmas": {
             "bsonType": ["object", "null"],
-            "description": "Aprobaciones de los 3 firmantes designados (corr, gd, secop)",
+            "description": "Aprobaciones de firmantes designados: corr/gd/secop (correspondencia) o financiera/abogado/jefe (actas)",
             "properties": {
                 "corr":  {
                     "bsonType": "object",
@@ -341,6 +341,49 @@ ESQUEMA_CERTIFICACIONES = {
                         "fecha":           {"bsonType": "date"},
                         "comentario":      {"bsonType": ["string", "null"]},
                     },
+                },
+                "financiera": {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
+                    },
+                },
+                "abogado": {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
+                    },
+                },
+                "jefe": {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
+                    },
+                },
+            },
+        },
+        "eventos": {
+            "bsonType": ["array", "null"],
+            "description": "Bitácora de eventos del documento (ej. revocaciones en cascada de firmas de actas)",
+            "items": {
+                "bsonType": "object",
+                "properties": {
+                    "tipo":         {"bsonType": "string"},
+                    "rol_revocado": {"bsonType": "string"},
+                    "causada_por":  {"bsonType": "string"},
+                    "fecha":        {"bsonType": "date"},
                 },
             },
         },
