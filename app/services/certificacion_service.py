@@ -477,6 +477,88 @@ class CertificacionService:
         año, mes = self.periodo_certificable()
         return self.repo.revocar_firma(empleado_id, año, mes, tipo)
 
+    def registrar_firma_actas(
+        self,
+        usuario_id: str,
+        tipo_formato: str,
+        rol: str,
+        firmante_id: str,
+        firmante_nombre: str,
+        comentario: str | None = None,
+    ) -> bool:
+        """Registra la aprobación de un rol (financiera/abogado/jefe) sobre un formato
+        de actas. Exige que el rol anterior en ORDEN_FIRMAS_ACTAS ya haya firmado. Si con
+        esta firma se completa el orden requerido, aprueba el documento y genera (o
+        preserva) su hash de verificación."""
+        orden = ORDEN_FIRMAS_ACTAS.get(tipo_formato)
+        if not orden or rol not in orden:
+            raise ValueError(f"El rol '{rol}' no aplica para el formato '{tipo_formato}'.")
+
+        año, mes = self.periodo_certificable()
+        cert = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, tipo_formato)
+        if not cert:
+            raise ValueError("No existe un formato generado para este período.")
+
+        idx = orden.index(rol)
+        if idx > 0:
+            rol_anterior = orden[idx - 1]
+            if not (cert.get("firmas") or {}).get(rol_anterior):
+                raise ValueError(
+                    f"Aún falta la firma de '{rol_anterior}' antes de poder firmar como '{rol}'."
+                )
+
+        self.repo.registrar_firma_actas(
+            usuario_id, año, mes, tipo_formato, rol, firmante_id, firmante_nombre, comentario
+        )
+
+        cert_actualizado = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, tipo_formato)
+        firmas = cert_actualizado.get("firmas") or {}
+        if all(firmas.get(r) for r in orden):
+            ahora_utc = datetime.now(timezone.utc)
+            hash_code = cert_actualizado.get("hash_verificacion") or self._generar_hash(
+                usuario_id, año, mes, firmante_id, ahora_utc.isoformat()
+            )
+            self.repo.actualizar(str(cert_actualizado["_id"]), {
+                "estado": "aprobado",
+                "hash_verificacion": hash_code,
+            })
+        return True
+
+    def revocar_firma_actas(self, usuario_id: str, tipo_formato: str, rol: str) -> bool:
+        """Revoca la firma de un rol y, en cascada, las de los roles posteriores en el
+        orden (que dependían de esta). Registra un evento por cada firma revocada en
+        cascada para que el firmante afectado sepa por qué desapareció, y vuelve el
+        documento a 'pendiente' si estaba aprobado."""
+        orden = ORDEN_FIRMAS_ACTAS.get(tipo_formato)
+        if not orden or rol not in orden:
+            raise ValueError(f"El rol '{rol}' no aplica para el formato '{tipo_formato}'.")
+
+        año, mes = self.periodo_certificable()
+        cert = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, tipo_formato)
+        if not cert:
+            return False
+
+        idx = orden.index(rol)
+        firmas = cert.get("firmas") or {}
+        posteriores_firmados = [r for r in orden[idx + 1:] if firmas.get(r)]
+        roles_a_borrar = [rol] + posteriores_firmados
+
+        self.repo.revocar_firmas_actas(usuario_id, año, mes, tipo_formato, roles_a_borrar)
+
+        ahora_utc = datetime.now(timezone.utc)
+        for r in posteriores_firmados:
+            self.repo.agregar_evento_actas(usuario_id, año, mes, tipo_formato, {
+                "tipo": "revocacion_cascada",
+                "rol_revocado": r,
+                "causada_por": rol,
+                "fecha": ahora_utc,
+            })
+
+        if cert.get("estado") == "aprobado":
+            self.repo.actualizar(str(cert["_id"]), {"estado": "pendiente"})
+
+        return True
+
     def recuperar_auto_cert(self, empleado_id: str, cert: dict) -> bool:
         """Certifica retroactivamente si el cert ya tiene las 3 firmas + contrato activo
         pero quedó en 'pendiente' por un fallo anterior en _intentar_auto_certificar.
