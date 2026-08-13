@@ -1778,7 +1778,10 @@ else:
     if "reporte.ver" in permisos_sesion:
         admin_pages.append(st.Page("pages/4_reportes.py", title="Reportes y Evidencias", icon="📄"))
     # Páginas de Gestión de contratos / Formatos
-    _perms_firma = {"certificacion.firmar_corr", "certificacion.firmar_gd", "certificacion.firmar_secop"}
+    _perms_firma = {
+        "certificacion.firmar_corr", "certificacion.firmar_gd", "certificacion.firmar_secop",
+        "certificacion.firmar_financiera", "certificacion.firmar_abogado", "certificacion.firmar_jefe",
+    }
     es_admin_main = any(r in {"admin", "administrador"} for r in sesion.get("roles", []))
     es_firmante_o_supervisor = bool(_perms_firma & set(permisos_sesion)) or es_admin_main or "certificacion.aprobar" in permisos_sesion
 

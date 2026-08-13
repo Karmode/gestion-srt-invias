@@ -54,6 +54,9 @@ PERMISOS_BASE = [
     {"clave": "certificacion.firmar_corr", "descripcion": "Firmar aprobación de Correspondencia", "modulo": "certificaciones"},
     {"clave": "certificacion.firmar_gd", "descripcion": "Firmar aprobación de Gestión Documental", "modulo": "certificaciones"},
     {"clave": "certificacion.firmar_secop", "descripcion": "Firmar aprobación de SECOP II", "modulo": "certificaciones"},
+    {"clave": "certificacion.firmar_financiera", "descripcion": "Firmar aprobación Financiera (actas)", "modulo": "certificaciones"},
+    {"clave": "certificacion.firmar_abogado", "descripcion": "Firmar aprobación Jurídica (actas)", "modulo": "certificaciones"},
+    {"clave": "certificacion.firmar_jefe", "descripcion": "Firmar aprobación del Jefe (actas)", "modulo": "certificaciones"},
     {"clave": "certificacion.gestionar_firmantes", "descripcion": "Configurar firmantes designados de certificaciones", "modulo": "certificaciones"},
 ]
 
@@ -61,6 +64,9 @@ _PERMISOS_SOLO_FIRMANTES = {
     "certificacion.firmar_corr",
     "certificacion.firmar_gd",
     "certificacion.firmar_secop",
+    "certificacion.firmar_financiera",
+    "certificacion.firmar_abogado",
+    "certificacion.firmar_jefe",
 }
 
 ROLES_BASE = [

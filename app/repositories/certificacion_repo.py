@@ -41,7 +41,7 @@ class CertificacionRepositorio:
         return list(self.coleccion.find(query))
 
     def buscar_por_hash(self, hash_code: str):
-        return self.coleccion.find_one({"hash_verificacion": hash_code})
+        return self.coleccion.find_one({"hash_verificacion": hash_code, "estado": "aprobado"})
 
     def crear(self, datos: dict):
         return self.coleccion.insert_one(datos).inserted_id
@@ -102,4 +102,107 @@ class CertificacionRepositorio:
             {"$unset": {f"firmas.{tipo}": ""}},
         )
         return True
+
+    def registrar_firma_actas(
+        self,
+        usuario_id: str,
+        año: int,
+        mes: int,
+        tipo_formato: str,
+        rol: str,
+        firmante_id: str,
+        firmante_nombre: str,
+        comentario: str | None = None,
+    ) -> None:
+        """Guarda la firma de un rol (financiera/abogado/jefe) sobre el documento
+        exacto (usuario_id, año, mes, tipo_formato) que ya debe existir."""
+        ahora = datetime.now(timezone.utc)
+        self.coleccion.update_one(
+            {
+                "usuario_id": ObjectId(usuario_id),
+                "año": año,
+                "mes": mes,
+                "tipo_formato": tipo_formato,
+            },
+            {
+                "$set": {
+                    f"firmas.{rol}": {
+                        "firmante_id": ObjectId(firmante_id),
+                        "firmante_nombre": firmante_nombre,
+                        "fecha": ahora,
+                        "comentario": comentario.strip() if comentario and comentario.strip() else None,
+                    }
+                }
+            },
+        )
+
+    def revocar_firmas_actas(
+        self, usuario_id: str, año: int, mes: int, tipo_formato: str, roles: list
+    ) -> None:
+        """Borra las firmas de los roles indicados (el revocado + los posteriores en cascada)."""
+        if not roles:
+            return
+        self.coleccion.update_one(
+            {
+                "usuario_id": ObjectId(usuario_id),
+                "año": año,
+                "mes": mes,
+                "tipo_formato": tipo_formato,
+            },
+            {"$unset": {f"firmas.{r}": "" for r in roles}},
+        )
+
+    def agregar_evento_actas(
+        self, usuario_id: str, año: int, mes: int, tipo_formato: str, evento: dict
+    ) -> None:
+        """Agrega una entrada a la bitácora `eventos` del documento (ej. revocación en cascada)."""
+        self.coleccion.update_one(
+            {
+                "usuario_id": ObjectId(usuario_id),
+                "año": año,
+                "mes": mes,
+                "tipo_formato": tipo_formato,
+            },
+            {"$push": {"eventos": evento}},
+        )
+
+    def buscar_por_id(self, cert_id: str):
+        return self.coleccion.find_one({"_id": ObjectId(cert_id)})
+
+    def registrar_firma_actas_por_id(
+        self,
+        cert_id: str,
+        rol: str,
+        firmante_id: str,
+        firmante_nombre: str,
+        comentario: str | None = None,
+    ) -> None:
+        ahora = datetime.now(timezone.utc)
+        self.coleccion.update_one(
+            {"_id": ObjectId(cert_id)},
+            {
+                "$set": {
+                    f"firmas.{rol}": {
+                        "firmante_id": ObjectId(firmante_id),
+                        "firmante_nombre": firmante_nombre,
+                        "fecha": ahora,
+                        "comentario": comentario.strip() if comentario and comentario.strip() else None,
+                    }
+                }
+            },
+        )
+
+    def revocar_firmas_actas_por_id(self, cert_id: str, roles: list) -> None:
+        if not roles:
+            return
+        self.coleccion.update_one(
+            {"_id": ObjectId(cert_id)},
+            {"$unset": {f"firmas.{r}": "" for r in roles}},
+        )
+
+    def agregar_evento_actas_por_id(self, cert_id: str, evento: dict) -> None:
+        self.coleccion.update_one(
+            {"_id": ObjectId(cert_id)},
+            {"$push": {"eventos": evento}},
+        )
 
