@@ -476,8 +476,7 @@ class CertificacionService:
 
     def registrar_firma_actas(
         self,
-        usuario_id: str,
-        tipo_formato: str,
+        cert_id: str,
         rol: str,
         firmante_id: str,
         firmante_nombre: str,
@@ -487,14 +486,14 @@ class CertificacionService:
         de actas. Exige que el rol anterior en ORDEN_FIRMAS_ACTAS ya haya firmado. Si con
         esta firma se completa el orden requerido, aprueba el documento y genera (o
         preserva) su hash de verificación."""
+        cert = self.repo.buscar_por_id(cert_id)
+        if not cert:
+            raise ValueError("No existe el formato especificado.")
+
+        tipo_formato = cert.get("tipo_formato")
         orden = ORDEN_FIRMAS_ACTAS.get(tipo_formato)
         if not orden or rol not in orden:
             raise ValueError(f"El rol '{rol}' no aplica para el formato '{tipo_formato}'.")
-
-        año, mes = self.periodo_certificable()
-        cert = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, tipo_formato)
-        if not cert:
-            raise ValueError("No existe un formato generado para este período.")
 
         idx = orden.index(rol)
         if idx > 0:
@@ -504,14 +503,17 @@ class CertificacionService:
                     f"Aún falta la firma de '{rol_anterior}' antes de poder firmar como '{rol}'."
                 )
 
-        self.repo.registrar_firma_actas(
-            usuario_id, año, mes, tipo_formato, rol, firmante_id, firmante_nombre, comentario
+        self.repo.registrar_firma_actas_por_id(
+            cert_id, rol, firmante_id, firmante_nombre, comentario
         )
 
-        cert_actualizado = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, tipo_formato)
+        cert_actualizado = self.repo.buscar_por_id(cert_id)
         firmas = cert_actualizado.get("firmas") or {}
         if all(firmas.get(r) for r in orden):
             ahora_utc = datetime.now(timezone.utc)
+            usuario_id = str(cert_actualizado.get("usuario_id"))
+            año = cert_actualizado.get("año")
+            mes = cert_actualizado.get("mes")
             hash_code = cert_actualizado.get("hash_verificacion") or self._generar_hash(
                 usuario_id, año, mes, firmante_id, ahora_utc.isoformat()
             )
@@ -521,30 +523,30 @@ class CertificacionService:
             })
         return True
 
-    def revocar_firma_actas(self, usuario_id: str, tipo_formato: str, rol: str) -> bool:
+    def revocar_firma_actas(self, cert_id: str, rol: str) -> bool:
         """Revoca la firma de un rol y, en cascada, las de los roles posteriores en el
         orden (que dependían de esta). Registra un evento por cada firma revocada en
         cascada para que el firmante afectado sepa por qué desapareció, y vuelve el
         documento a 'pendiente' si estaba aprobado."""
+        cert = self.repo.buscar_por_id(cert_id)
+        if not cert:
+            return False
+
+        tipo_formato = cert.get("tipo_formato")
         orden = ORDEN_FIRMAS_ACTAS.get(tipo_formato)
         if not orden or rol not in orden:
             raise ValueError(f"El rol '{rol}' no aplica para el formato '{tipo_formato}'.")
-
-        año, mes = self.periodo_certificable()
-        cert = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, tipo_formato)
-        if not cert:
-            return False
 
         idx = orden.index(rol)
         firmas = cert.get("firmas") or {}
         posteriores_firmados = [r for r in orden[idx + 1:] if firmas.get(r)]
         roles_a_borrar = [rol] + posteriores_firmados
 
-        self.repo.revocar_firmas_actas(usuario_id, año, mes, tipo_formato, roles_a_borrar)
+        self.repo.revocar_firmas_actas_por_id(cert_id, roles_a_borrar)
 
         ahora_utc = datetime.now(timezone.utc)
         for r in posteriores_firmados:
-            self.repo.agregar_evento_actas(usuario_id, año, mes, tipo_formato, {
+            self.repo.agregar_evento_actas_por_id(cert_id, {
                 "tipo": "revocacion_cascada",
                 "rol_revocado": r,
                 "causada_por": rol,
@@ -1526,7 +1528,7 @@ class CertificacionService:
         objeto_sostenida = objeto_contrato.upper()
         
         p_valor = (
-            f"La suma de <b>{val_letras}</b> /Cte <b>(${val_num_fmt})</b> <b>MONEDA CORRIENTE</b> "
+            f"La suma de <b>{val_letras} PESOS MONEDA CORRIENTE </b><b>(${val_num_fmt})</b>  "
             f"por concepto del Contrato de Prestación de Servicios No. <b>{no_contrato}</b> de <b>{fecha_ini_raw.year if fecha_ini_raw else dt.year}</b> "
             f"cuyo objeto es: “<b>{objeto_sostenida}</b>”, en el periodo correspondiente {periodo_html}."
         )
@@ -2524,11 +2526,30 @@ class CertificacionService:
         from app.services.firma_service import FirmaService
         firma_contratista_bytes = FirmaService().obtener_imagen(usuario_id)
 
-        # Cargar firma de Gladys
-        firma_gladys_path = os.path.join("app", "assets", "firma_gla.png")
-        firma_gladys_img = None
-        if os.path.exists(firma_gladys_path):
-            firma_gladys_img = Image(firma_gladys_path, width=4.0 * cm, height=1.2 * cm, kind="proportional")
+        # Cargar firma del Jefe
+        jefe_nombre = "Gladys Gutiérrez Buitrago"
+        jefe_firma_img = None
+
+        firma_jefe_doc = certificacion.get("firmas", {}).get("jefe")
+        jefe_id_str = None
+        if firma_jefe_doc:
+            jefe_nombre = firma_jefe_doc.get("firmante_nombre", jefe_nombre)
+            jefe_id_str = str(firma_jefe_doc.get("firmante_id", ""))
+        else:
+            config_firmantes = self.obtener_firmantes_config("firmantes_formatos_actas", TIPOS_FIRMA_ACTAS)
+            jefe_config = config_firmantes.get("jefe") or {}
+            jefe_nombre = jefe_config.get("nombre", jefe_nombre)
+            jefe_id_str = jefe_config.get("usuario_id")
+
+        if jefe_id_str:
+            jefe_firma_bytes = FirmaService().obtener_imagen(jefe_id_str)
+            if jefe_firma_bytes:
+                jefe_firma_img = Image(io.BytesIO(jefe_firma_bytes), width=4.0 * cm, height=1.2 * cm, kind="proportional")
+
+        if not jefe_firma_img and jefe_nombre == "Gladys Gutiérrez Buitrago":
+            firma_gladys_path = os.path.join("app", "assets", "firma_gla.png")
+            if os.path.exists(firma_gladys_path):
+                jefe_firma_img = Image(firma_gladys_path, width=4.0 * cm, height=1.2 * cm, kind="proportional")
 
         firma_contratista_img = ""
         if firma_contratista_bytes:
@@ -2553,9 +2574,9 @@ class CertificacionService:
         ]
 
         col_der = [
-            firma_gladys_img if firma_gladys_img else "",
-            Paragraph("<b>Gladys Gutiérrez Buitrago</b>", s_firma_lbl),
-            Paragraph("Subdirectora de Reglamentación Técnica e Innovación", s_firma_desc),
+            jefe_firma_img if jefe_firma_img else "",
+            Paragraph(f"<b>{jefe_nombre}</b>", s_firma_lbl),
+            Paragraph("Subdirectora de Reglamentación Técnica e Innovación", s_firma_desc) if jefe_nombre == "Gladys Gutiérrez Buitrago" else Paragraph("Supervisora de Reglamentación Técnica y Innovación", s_firma_desc),
             Paragraph(f"SUPERVISOR CTO {no_contrato} de {año_contrato}", s_firma_desc)
         ]
 

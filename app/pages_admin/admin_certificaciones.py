@@ -91,16 +91,20 @@ def _seccion_config_firmantes(servicio: CertificacionService, sesion: dict) -> N
                     st.rerun()
 
 
-def _seccion_config_firmantes_actas(servicio: CertificacionService, sesion: dict) -> None:
+def _seccion_config_firmantes_actas(servicio: CertificacionService, sesion: dict, tipo_acta_activo: str) -> None:
     if "certificacion.gestionar_firmantes" not in sesion.get("permisos", []):
         return
 
     from app.repositories.usuario_repo import UsuarioRepositorio
 
-    with st.expander("⚙️ Configurar firmantes de Actas (Financiera / Abogado / Jefe)", expanded=False):
+    orden = ORDEN_FIRMAS_ACTAS.get(tipo_acta_activo, TIPOS_FIRMA_ACTAS)
+    titulo_formato = _TITULO_ACTAS.get(tipo_acta_activo, "Actas")
+    label_roles = " / ".join(_META_FIRMA_ACTAS[r][1] for r in orden)
+    expander_title = f"⚙️ Configurar firmantes de {titulo_formato} ({label_roles})"
+
+    with st.expander(expander_title, expanded=False):
         st.caption(
-            "Designa qué usuario ejerce cada rol de aprobación para Acta de compromiso, "
-            "Balance General CPS y Acta de recibo y entrega CPS. "
+            f"Designa qué usuario ejerce cada rol de aprobación para {titulo_formato}. "
             "Al guardar se asigna automáticamente el permiso correspondiente."
         )
 
@@ -110,7 +114,7 @@ def _seccion_config_firmantes_actas(servicio: CertificacionService, sesion: dict
         opciones_lista = ["(ninguno)"] + sorted(id_a_nombre.values())
         nombre_a_id = {v: k for k, v in id_a_nombre.items()}
 
-        for tipo in TIPOS_FIRMA_ACTAS:
+        for tipo in orden:
             label_largo = _META_FIRMA_ACTAS[tipo][1]
             actual = config.get(tipo) or {}
             actual_nombre = actual.get("nombre") if actual else None
@@ -124,11 +128,11 @@ def _seccion_config_firmantes_actas(servicio: CertificacionService, sesion: dict
                     f"Firmante · {label_largo}",
                     options=opciones_lista,
                     index=idx_actual,
-                    key=f"sel_firmante_actas_{tipo}",
+                    key=f"sel_firmante_actas_{tipo_acta_activo}_{tipo}",
                 )
             with c2:
                 st.write("")
-                if st.button("Guardar", key=f"btn_firmante_actas_{tipo}", use_container_width=True):
+                if st.button("Guardar", key=f"btn_firmante_actas_{tipo_acta_activo}_{tipo}", use_container_width=True):
                     if seleccionado == "(ninguno)":
                         servicio.guardar_firmante(tipo, None, None, categoria="firmantes_formatos_actas")
                         st.success(f"Firmante de {label_largo} eliminado.")
@@ -288,7 +292,7 @@ def render(sesion=None):
 
     tipo_acta_activo = st.session_state.get("tipo_acta_seg_activo")
     if tipo_acta_activo:
-        _seccion_config_firmantes_actas(servicio, sesion)
+        _seccion_config_firmantes_actas(servicio, sesion, tipo_acta_activo)
         st.divider()
 
         orden = ORDEN_FIRMAS_ACTAS[tipo_acta_activo]

@@ -166,3 +166,43 @@ class CertificacionRepositorio:
             {"$push": {"eventos": evento}},
         )
 
+    def buscar_por_id(self, cert_id: str):
+        return self.coleccion.find_one({"_id": ObjectId(cert_id)})
+
+    def registrar_firma_actas_por_id(
+        self,
+        cert_id: str,
+        rol: str,
+        firmante_id: str,
+        firmante_nombre: str,
+        comentario: str | None = None,
+    ) -> None:
+        ahora = datetime.now(timezone.utc)
+        self.coleccion.update_one(
+            {"_id": ObjectId(cert_id)},
+            {
+                "$set": {
+                    f"firmas.{rol}": {
+                        "firmante_id": ObjectId(firmante_id),
+                        "firmante_nombre": firmante_nombre,
+                        "fecha": ahora,
+                        "comentario": comentario.strip() if comentario and comentario.strip() else None,
+                    }
+                }
+            },
+        )
+
+    def revocar_firmas_actas_por_id(self, cert_id: str, roles: list) -> None:
+        if not roles:
+            return
+        self.coleccion.update_one(
+            {"_id": ObjectId(cert_id)},
+            {"$unset": {f"firmas.{r}": "" for r in roles}},
+        )
+
+    def agregar_evento_actas_por_id(self, cert_id: str, evento: dict) -> None:
+        self.coleccion.update_one(
+            {"_id": ObjectId(cert_id)},
+            {"$push": {"eventos": evento}},
+        )
+
