@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
 """Página de certificaciones mensuales — vista del colaborador.
 
 Cada usuario ve el estado de su certificación del mes actual
@@ -13,7 +17,7 @@ from app.core.ui_titulos import mostrar_titulo_decorado
 from app.core.sesion import obtener_sesion
 from app.core.ui_certificado import render_preview_cert
 from app.core.zona_horaria import formato_fecha_bogota
-from app.services.certificacion_service import CertificacionService, MESES_ES
+from app.services.certificacion_service import CertificacionService, MESES_ES, ORDEN_FIRMAS_ACTAS
 from app.services.usuario_service import UsuarioService
 
 
@@ -35,6 +39,35 @@ _PREFIJO_ARCHIVO = {
     "acta_recibo_entrega_cps_real": "Acta_Recibo_Entrega_CPS",
 }
 _PREFIJO_ARCHIVO_DEFAULT = "Certificado_correspondencia"
+
+
+_LABEL_ROL_ACTAS = {
+    "financiera": "Financiera",
+    "abogado": "Jurídico",
+    "jefe": "Jefe inmediato",
+}
+
+
+def _mostrar_avance_actas(tipo_formato: str, cert_actual: dict) -> None:
+    """Stepper de avance de firmas para los formatos de actas (financiera/abogado/jefe)."""
+    firmas = (cert_actual or {}).get("firmas", {}) or {}
+    orden = ORDEN_FIRMAS_ACTAS.get(tipo_formato, ())
+    pasos = [
+        f"✅ {_LABEL_ROL_ACTAS[rol]}" if firmas.get(rol) else f"⏳ {_LABEL_ROL_ACTAS[rol]}"
+        for rol in orden
+    ]
+    st.markdown(" &nbsp;→&nbsp; ".join(pasos))
+
+    eventos = (cert_actual or {}).get("eventos") or []
+    if eventos:
+        ultimo = eventos[-1]
+        rol_afectado = ultimo.get("rol_revocado")
+        if rol_afectado and not firmas.get(rol_afectado):
+            causante = _LABEL_ROL_ACTAS.get(ultimo.get("causada_por"), ultimo.get("causada_por"))
+            st.caption(
+                f"⚠️ La firma de **{_LABEL_ROL_ACTAS.get(rol_afectado, rol_afectado)}** fue removida "
+                f"porque **{causante}** revocó la suya."
+            )
 
 
 def _nombre_archivo_pdf(cert: dict, mes_nombre: str, año) -> str:
@@ -442,17 +475,6 @@ def _render_opcion_1_cuenta_cobro(servicio, sesion, año_cert, mes_cert, nombre_
     )
     st.subheader(etiqueta)
 
-    from app.services.firma_service import FirmaService
-    firma_service = FirmaService()
-    if not firma_service.tiene_firma(usuario_id):
-        st.warning(
-            "⚠️ No tienes una firma registrada en tu perfil.\n\n"
-            "Para poder generar y firmar digitalmente este formato, necesitas registrar tu firma. "
-            "Por favor, ve a **Mi Perfil** para subirla."
-        )
-        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
-        return
-
     cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id, "cuenta_cobro")
 
     if cert_actual:
@@ -546,17 +568,6 @@ def _render_opcion_2_retencion_primera(servicio, sesion, año_cert, mes_cert, no
         else f"Período actual — {nombre_mes_cert} {año_cert}"
     )
     st.subheader(etiqueta)
-
-    from app.services.firma_service import FirmaService
-    firma_service = FirmaService()
-    if not firma_service.tiene_firma(usuario_id):
-        st.warning(
-            "⚠️ No tienes una firma registrada en tu perfil.\n\n"
-            "Para poder generar y firmar digitalmente este formato, necesitas registrar tu firma. "
-            "Por favor, ve a **Mi Perfil** para subirla."
-        )
-        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
-        return
 
     cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id, "retencion_fuente_primera")
 
@@ -656,17 +667,6 @@ def _render_opcion_3_retencion_segunda(servicio, sesion, año_cert, mes_cert, no
     )
     st.subheader(etiqueta)
 
-    from app.services.firma_service import FirmaService
-    firma_service = FirmaService()
-    if not firma_service.tiene_firma(usuario_id):
-        st.warning(
-            "⚠️ No tienes una firma registrada en tu perfil.\n\n"
-            "Para poder generar y firmar digitalmente este formato, necesitas registrar tu firma. "
-            "Por favor, ve a **Mi Perfil** para subirla."
-        )
-        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
-        return
-
     cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id, "retencion_fuente_segunda")
 
     if cert_actual:
@@ -765,17 +765,6 @@ def _render_opcion_4_declarante_dependencia(servicio, sesion, año_cert, mes_cer
     )
     st.subheader(etiqueta)
 
-    from app.services.firma_service import FirmaService
-    firma_service = FirmaService()
-    if not firma_service.tiene_firma(usuario_id):
-        st.warning(
-            "⚠️ No tienes una firma registrada en tu perfil.\n\n"
-            "Para poder generar y firmar digitalmente este formato, necesitas registrar tu firma. "
-            "Por favor, ve a **Mi Perfil** para subirla."
-        )
-        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
-        return
-
     cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id, "dependencia_economica")
 
     if cert_actual:
@@ -864,25 +853,14 @@ def _render_opcion_5_acta_compromiso(servicio, sesion, año_cert, mes_cert, nomb
     )
     st.subheader(etiqueta)
 
-    from app.services.firma_service import FirmaService
-    firma_service = FirmaService()
-    if not firma_service.tiene_firma(usuario_id):
-        st.warning(
-            "⚠️ No tienes una firma registrada en tu perfil.\n\n"
-            "Para poder generar y firmar digitalmente este formato, necesitas registrar tu firma. "
-            "Por favor, ve a **Mi Perfil** para subirla."
-        )
-        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
-        return
-
     cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id, "acta_compromiso")
 
-    if cert_actual:
+    if cert_actual and cert_actual.get("estado") == "aprobado":
         st.success(
             f"Tu formato de **Acta de compromiso** para **{nombre_mes_cert} {año_cert}** "
             f"ha sido generado y firmado digitalmente."
         )
-        
+
         try:
             pdf_bytes = servicio.generar_pdf(cert_actual)
         except Exception as e:
@@ -909,6 +887,12 @@ def _render_opcion_5_acta_compromiso(servicio, sesion, año_cert, mes_cert, nomb
                         "año": año_cert,
                     }
                     st.rerun()
+    elif cert_actual:
+        st.info(
+            f"Tu formato de **Acta de compromiso** para **{nombre_mes_cert} {año_cert}** "
+            "fue generado y está en espera de aprobación."
+        )
+        _mostrar_avance_actas("acta_compromiso", cert_actual)
     else:
         st.warning(f"Aún no has generado el formato para el período **{nombre_mes_cert} {año_cert}**.")
         
@@ -983,25 +967,14 @@ def _render_opcion_9_acta_recibo_entrega_real(servicio, sesion, año_cert, mes_c
     )
     st.subheader(etiqueta)
 
-    from app.services.firma_service import FirmaService
-    firma_service = FirmaService()
-    if not firma_service.tiene_firma(usuario_id):
-        st.warning(
-            "⚠️ No tienes una firma registrada en tu perfil.\n\n"
-            "Para poder generar y firmar digitalmente este formato, necesitas registrar tu firma. "
-            "Por favor, ve a **Mi Perfil** para subirla."
-        )
-        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
-        return
-
     cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id, "acta_recibo_entrega_cps_real")
 
-    if cert_actual:
+    if cert_actual and cert_actual.get("estado") == "aprobado":
         st.success(
             f"Tu formato de **Acta de recibo y entrega CPS** para **{nombre_mes_cert} {año_cert}** "
             f"ha sido generado y firmado digitalmente."
         )
-        
+
         try:
             pdf_bytes = servicio.generar_pdf(cert_actual)
         except Exception as e:
@@ -1028,7 +1001,26 @@ def _render_opcion_9_acta_recibo_entrega_real(servicio, sesion, año_cert, mes_c
                         "año": año_cert,
                     }
                     st.rerun()
+    elif cert_actual:
+        st.info(
+            f"Tu formato de **Acta de recibo y entrega CPS** para **{nombre_mes_cert} {año_cert}** "
+            "fue generado y está en espera de aprobación."
+        )
+        _mostrar_avance_actas("acta_recibo_entrega_cps_real", cert_actual)
     else:
+        # Validar requisitos específicos de Acta de Recibo y Entrega CPS
+        from app.services.usuario_service import UsuarioService
+        req_acta = UsuarioService().validar_datos_acta_recibo_entrega_cps(usuario_id)
+        if not req_acta["valido"]:
+            st.warning(
+                "⚠️ **Requisitos para habilitar el Acta de Recibo y Entrega CPS**\n\n"
+                "Para poder generar y firmar digitalmente este formato, debes completar "
+                "los siguientes datos obligatorios en tu contrato activo en **Mi Perfil**:\n\n" +
+                "\n".join([f"- {item}" for item in req_acta["faltantes"]])
+            )
+            st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
+            return
+
         st.warning(f"Aún no has generado el formato para el período **{nombre_mes_cert} {año_cert}**.")
         
         # Mostrar resumen de datos del usuario
@@ -1073,25 +1065,14 @@ def _render_opcion_8_acta_recibo_entrega(servicio, sesion, año_cert, mes_cert, 
     )
     st.subheader(etiqueta)
 
-    from app.services.firma_service import FirmaService
-    firma_service = FirmaService()
-    if not firma_service.tiene_firma(usuario_id):
-        st.warning(
-            "⚠️ No tienes una firma registrada en tu perfil.\n\n"
-            "Para poder generar y firmar digitalmente este formato, necesitas registrar tu firma. "
-            "Por favor, ve a **Mi Perfil** para subirla."
-        )
-        st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
-        return
-
     cert_actual = servicio.obtener_certificacion_periodo_actual(usuario_id, "acta_recibo_entrega_cps")
 
-    if cert_actual:
+    if cert_actual and cert_actual.get("estado") == "aprobado":
         st.success(
             f"Tu formato de **Balance General CPS** para **{nombre_mes_cert} {año_cert}** "
             f"ha sido generado y firmado digitalmente."
         )
-        
+
         try:
             pdf_bytes = servicio.generar_pdf(cert_actual)
         except Exception as e:
@@ -1118,7 +1099,26 @@ def _render_opcion_8_acta_recibo_entrega(servicio, sesion, año_cert, mes_cert, 
                         "año": año_cert,
                     }
                     st.rerun()
+    elif cert_actual:
+        st.info(
+            f"Tu formato de **Balance General CPS** para **{nombre_mes_cert} {año_cert}** "
+            "fue generado y está en espera de aprobación."
+        )
+        _mostrar_avance_actas("acta_recibo_entrega_cps", cert_actual)
     else:
+        # Validar requisitos específicos de Balance General CPS
+        from app.services.usuario_service import UsuarioService
+        req_bg = UsuarioService().validar_datos_balance_general_cps(usuario_id)
+        if not req_bg["valido"]:
+            st.warning(
+                "⚠️ **Requisitos para habilitar el Balance General CPS**\n\n"
+                "Para poder generar y firmar digitalmente este formato, debes completar "
+                "los siguientes datos obligatorios en tu contrato activo en **Mi Perfil**:\n\n" +
+                "\n".join([f"- {item}" for item in req_bg["faltantes"]])
+            )
+            st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
+            return
+
         st.warning(f"Aún no has generado el formato para el período **{nombre_mes_cert} {año_cert}**.")
         
         # Mostrar resumen de datos del usuario
@@ -1242,39 +1242,33 @@ def render(sesion=None):
             if st.button("3- Form. retención en la fuente Segunda cuenta ++", type="primary", disabled=False, use_container_width=True):
                 st.session_state["tab_formato_activo"] = 3
                 st.rerun()
-            
             if st.button("4- Form. condicion de declarante y dep. Economica.", type="primary", disabled=False, use_container_width=True):
                 st.session_state["tab_formato_activo"] = 4
                 st.rerun()
-
-            if st.button("5- Form. Acta compromiso.", type="primary", disabled=False, use_container_width=True):
-                st.session_state["tab_formato_activo"] = 5
-                st.rerun()
-            
-            if st.button("6– Form. Gestión Corr – GD – SECOP II.", type="primary", disabled=False, use_container_width=True):
+            if st.button("5- Form. Gestión Corr – GD – SECOP II.", type="primary", disabled=False, use_container_width=True):
                 st.session_state["tab_formato_activo"] = 6
                 st.rerun()
-
-            if st.button("7- Otros certificados - Herramientas", type="primary", disabled=False, use_container_width=True):
+            if st.button("6- Otros certificados - Herramientas", type="primary", disabled=False, use_container_width=True):
                 st.session_state["tab_formato_activo"] = 7
                 st.rerun()
-            
-            if st.button("8- Balance General CPS.", type="primary", disabled=False, use_container_width=True):
-                st.session_state["tab_formato_activo"] = 8
-                st.rerun()
-            if st.button("9- Formato de acta de recibo y entrega CPS.", type="primary", disabled=False, use_container_width=True):
-                st.session_state["tab_formato_activo"] = 9
-                st.rerun()
-            
-            if st.button("10- Historial de formatos.", type="primary", disabled=False, use_container_width=True):
+            if st.button("7- Historial de formatos.", type="primary", disabled=False, use_container_width=True):
                 st.session_state["tab_formato_activo"] = 10
                 st.rerun()
-                
-            if st.button("11- Verificar formato.", type="primary", disabled=False, use_container_width=True):
+            if st.button("8- Verificar formato.", type="primary", disabled=True, use_container_width=True):
                 st.session_state["tab_formato_activo"] = 11
                 st.rerun()
-            
-        # Fin del primer contenedor de formatos
+
+        with st.container(border=True):
+            st.markdown("### Últimos formatos de contrato")
+            if st.button("1- Form. Acta compromiso.", type="primary", disabled=False, use_container_width=True):
+                st.session_state["tab_formato_activo"] = 5
+                st.rerun()
+            if st.button("2- Balance General CPS.", type="primary", disabled=False, use_container_width=True):
+                st.session_state["tab_formato_activo"] = 8
+                st.rerun()
+            if st.button("3- Formato de acta de recibo y entrega CPS.", type="primary", disabled=False, use_container_width=True):
+                st.session_state["tab_formato_activo"] = 9
+                st.rerun()
         
         # Segundo contenedor para el botón de instructivos (viñeta separada)
         with st.container(border=True):

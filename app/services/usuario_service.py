@@ -367,6 +367,11 @@ class UsuarioService:
             })
         contrato["pagos"] = pagos_procesados
 
+        # Personalizar última cuenta
+        contrato["personalizar_ultimacuenta"] = bool(datos.get("personalizar_ultimacuenta"))
+        val_personalizar = datos.get("valor_personalizar_ultimacuenta")
+        contrato["valor_personalizar_ultimacuenta"] = int(val_personalizar) if contrato["personalizar_ultimacuenta"] and val_personalizar is not None else None
+
         return contrato
 
     def agregar_contrato(self, id_usuario: str, datos_contrato: dict):
@@ -562,6 +567,96 @@ class UsuarioService:
             })
 
         return {"puede_descargar": not secciones, "secciones": secciones}
+
+    def validar_datos_balance_general_cps(self, id_usuario: str) -> dict:
+        """Evalúa si el usuario cumple con los requisitos específicos para el formato
+        Balance General CPS.
+
+        Retorna {"valido": bool, "faltantes": [str]}
+        """
+        usuario = self.repositorio.buscar_por_id(id_usuario) or {}
+        contratos = usuario.get("contratos") or []
+        activos = [c for c in contratos if not self._contrato_finalizado(c)]
+
+        faltantes = []
+
+        if not activos:
+            faltantes.append("No tienes ningún contrato activo registrado.")
+            return {"valido": False, "faltantes": faltantes}
+
+        contrato_activo = activos[-1]
+
+        # 1. Valor contratado (campo 'valor')
+        valor_contratado = contrato_activo.get("valor")
+        if self._vacio(valor_contratado):
+            faltantes.append("Valor contratado (debe ser mayor a cero)")
+
+        # 2. Valor total Pagado
+        valor_total_pagado = contrato_activo.get("valor_total_pagado")
+        if self._vacio(valor_total_pagado):
+            faltantes.append("Valor total pagado (debe ser mayor a cero)")
+
+        # 3. Pagos: al menos un pago registrado en el último contrato activo
+        pagos = contrato_activo.get("pagos") or []
+        if not pagos:
+            faltantes.append("Plan de pagos: al menos un pago registrado")
+        else:
+            # 4. Valores acumulados en los pagos
+            primer_pago = pagos[0]
+            val_bruto_tot = primer_pago.get("valor_bruto_total")
+            deduc_tot = primer_pago.get("deducciones_pago_total")
+            val_neto_tot = primer_pago.get("valor_neto_pago_total")
+
+            if self._vacio(val_bruto_tot):
+                faltantes.append("Valor Bruto Total (Acumulado) (debe ser mayor a cero)")
+
+            if deduc_tot is None or (isinstance(deduc_tot, str) and not deduc_tot.strip()):
+                faltantes.append("Deducciones Total (Acumulado) (debe estar diligenciado)")
+
+            if self._vacio(val_neto_tot):
+                faltantes.append("Valor Neto Total (Acumulado) (debe ser mayor a cero)")
+
+        return {"valido": not faltantes, "faltantes": faltantes}
+
+    def validar_datos_acta_recibo_entrega_cps(self, id_usuario: str) -> dict:
+        """Evalúa si el usuario cumple con los requisitos específicos para el formato
+        Acta de Recibo y Entrega CPS.
+
+        Retorna {"valido": bool, "faltantes": [str]}
+        """
+        usuario = self.repositorio.buscar_por_id(id_usuario) or {}
+        contratos = usuario.get("contratos") or []
+        activos = [c for c in contratos if not self._contrato_finalizado(c)]
+
+        faltantes = []
+
+        if not activos:
+            faltantes.append("No tienes ningún contrato activo registrado.")
+            return {"valido": False, "faltantes": faltantes}
+
+        contrato_activo = activos[-1]
+
+        # 1. Contrato Nº (campo 'numero')
+        if self._vacio(contrato_activo.get("numero")):
+            faltantes.append("Número de contrato")
+
+        # 2. Fecha de inicio del contrato
+        if not contrato_activo.get("fecha_inicio"):
+            faltantes.append("Fecha de inicio del contrato")
+
+        # 3. Objeto del contrato
+        if self._vacio(contrato_activo.get("objeto")):
+            faltantes.append("Objeto del contrato")
+
+        # 4. Radicado del contrato (del último contrato activo)
+        if self._vacio(contrato_activo.get("radicado_del_contrato")):
+            faltantes.append("Radicado del contrato")
+
+        # 5. RP / compromiso presupuestal
+        if self._vacio(contrato_activo.get("rp_compromiso_presupuestal")):
+            faltantes.append("RP / compromiso presupuestal")
+
+        return {"valido": not faltantes, "faltantes": faltantes}
 
     def activar_usuario(self, id_usuario: str, validar_permisos: bool = True, permisos_usuario: list = None, usuario_actual: str = None):
         if validar_permisos and permisos_usuario:

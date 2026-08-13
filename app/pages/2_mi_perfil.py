@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
 from datetime import datetime, timezone
 
 import streamlit as st
@@ -266,6 +270,33 @@ with tab_contrato:
                     unsafe_allow_html=True
                 )
                 _n_vpp = st.number_input("Valor primer pago", min_value=0, step=100000, format="%d", label_visibility="collapsed")
+                st.markdown(
+                    """
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                        <span style="font-size: 14px; font-weight: 500; color: #333333;">Personalizar valor última cuenta</span>
+                        <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                            <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                <div class="srti-tooltip-content" style="font-weight: normal;">
+                                    <h4>Personalizar valor última cuenta</h4>
+                                    <p>Active esta función solo si desea personalizar el valor de su última cuenta del contrato, de lo contrario no lo use.</p>
+                                </div>
+                            </span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                _n_personalizar = st.checkbox("Personalizar valor última cuenta", value=False, key="n_personalizar_check")
+                _n_val_personalizar = st.number_input(
+                    "Valor personalizar última cuenta",
+                    min_value=0,
+                    value=0,
+                    step=100000,
+                    format="%d",
+                    disabled=not _n_personalizar,
+                    label_visibility="collapsed",
+                    key="n_personalizar_val"
+                )
             st.markdown(
                 """
                 <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
@@ -389,6 +420,8 @@ with tab_contrato:
                     "fecha_recurso_presupuestal": _n_frp,
                     "valor_mensual": _n_vm if _n_vm > 0 else None,
                     "valor_primer_pago": _n_vpp if _n_vpp > 0 else None,
+                    "personalizar_ultimacuenta": _n_personalizar,
+                    "valor_personalizar_ultimacuenta": _n_val_personalizar if _n_personalizar else None,
                     "objeto": _n_obj.strip(),
                     "radicado_del_contrato": _n_rad.strip() if _n_rad else None,
                 })
@@ -420,6 +453,9 @@ with tab_contrato:
                     st.write(f"**Valor mensual:** {'${:,.0f}'.format(_vm) if _vm else '—'}")
                     _vpp = _c.get("valor_primer_pago")
                     st.write(f"**Valor primer pago:** {'${:,.0f}'.format(_vpp) if _vpp else '—'}")
+                    if _c.get("personalizar_ultimacuenta"):
+                        _vuc = _c.get("valor_personalizar_ultimacuenta")
+                        st.write(f"**Valor personalizado última cuenta:** {'${:,.0f}'.format(_vuc) if _vuc else '—'}")
                     st.write(f"**RP / compromiso presupuestal:** {_c.get('rp_compromiso_presupuestal') or '—'}")
                 _d3, _d4, _d5 = st.columns(3)
                 with _d3:
@@ -516,6 +552,37 @@ with tab_contrato:
                             "Valor primer pago", min_value=0, value=int(_c.get("valor_primer_pago") or 0),
                             step=100000, format="%d", key=f"e_vpp_{_c_num}",
                             label_visibility="collapsed"
+                        )
+                        st.markdown(
+                            """
+                            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                                <span style="font-size: 14px; font-weight: 500; color: #333333;">Personalizar valor última cuenta</span>
+                                <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                                    <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                        <div class="srti-tooltip-content" style="font-weight: normal;">
+                                            <h4>Personalizar valor última cuenta</h4>
+                                            <p>Active esta función solo si desea personalizar el valor de su última cuenta del contrato, de lo contrario no lo use.</p>
+                                        </div>
+                                    </span>
+                                </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+                        _e_personalizar = st.checkbox(
+                            "Personalizar valor última cuenta",
+                            value=bool(_c.get("personalizar_ultimacuenta")),
+                            key=f"e_personalizar_check_{_c_num}"
+                        )
+                        _e_val_personalizar = st.number_input(
+                            "Valor personalizar última cuenta",
+                            min_value=0,
+                            value=int(_c.get("valor_personalizar_ultimacuenta") or 0),
+                            step=100000,
+                            format="%d",
+                            disabled=not _e_personalizar,
+                            label_visibility="collapsed",
+                            key=f"e_personalizar_val_{_c_num}"
                         )
                     st.markdown(
                         """
@@ -650,6 +717,8 @@ with tab_contrato:
                             "fecha_recurso_presupuestal": _e_frp,
                             "valor_mensual": _e_vm if _e_vm > 0 else None,
                             "valor_primer_pago": _e_vpp if _e_vpp > 0 else None,
+                            "personalizar_ultimacuenta": _e_personalizar,
+                            "valor_personalizar_ultimacuenta": _e_val_personalizar if _e_personalizar else None,
                             "objeto": _e_obj.strip(),
                             "radicado_del_contrato": _e_rad.strip() if _e_rad else None,
                         }
