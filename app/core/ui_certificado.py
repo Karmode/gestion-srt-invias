@@ -5,10 +5,11 @@ from streamlit_pdf_viewer import pdf_viewer
 
 
 @st.cache_data(show_spinner=False)
-def obtener_pdf_certificado_cacheado(_servicio, cert_id: str, hash_verificacion: str, _certificacion: dict) -> bytes:
+def obtener_pdf_certificado_cacheado(_servicio, cert_id: str, hash_verificacion: str, _certificacion: dict, version_key: str = "") -> bytes:
     """PDF de un certificado ya aprobado no cambia una vez emitido (el hash se
     preserva). Se cachea por id + hash para no regenerarlo con ReportLab
-    (más su consulta a usuario) en cada rerun de Streamlit."""
+    (más su consulta a usuario) en cada rerun de Streamlit.
+    El parámetro version_key (sin guión bajo) sirve para invalidar la caché cuando cambian las firmas."""
     return _servicio.generar_pdf(_certificacion)
 
 

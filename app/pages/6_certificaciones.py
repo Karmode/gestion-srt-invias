@@ -547,7 +547,7 @@ def _render_opcion_1_cuenta_cobro(servicio, sesion, año_cert, mes_cert, nombre_
         st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
         
         st.write("---")
-        if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True):
+        if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
             if servicio.firmar_y_generar_cuenta_cobro(usuario_id, nombre_usuario_actual):
                 st.success("¡Formato generado y firmado digitalmente con éxito!")
                 st.rerun()
@@ -645,7 +645,7 @@ def _render_opcion_2_retencion_primera(servicio, sesion, año_cert, mes_cert, no
         st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
         
         st.write("---")
-        if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True):
+        if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
             if servicio.firmar_y_generar_retencion_primera(usuario_id, nombre_usuario_actual):
                 st.success("¡Formato generado y firmado digitalmente con éxito!")
                 st.rerun()
@@ -743,7 +743,7 @@ def _render_opcion_3_retencion_segunda(servicio, sesion, año_cert, mes_cert, no
         st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
         
         st.write("---")
-        if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True):
+        if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
             if servicio.firmar_y_generar_retencion_segunda(usuario_id, nombre_usuario_actual):
                 st.success("¡Formato generado y firmado digitalmente con éxito!")
                 st.rerun()
@@ -810,11 +810,20 @@ def _render_opcion_4_declarante_dependencia(servicio, sesion, año_cert, mes_cer
         declarante_renta = tributaria.get("declarante_renta", False)
         dependientes = info_laboral.get("dependientes") or []
 
+        # Contrato vigente
+        contratos = usuario_data.get("contratos") or []
+        contrato_vig = servicio._contrato_vigente(contratos)
+
         st.write("### Datos para generación de formato")
         st.write(f"**Contratista:** {usuario_data.get('nombre_completo', '')}")
         st.write(f"**Identificación:** {usuario_data.get('tipo_documento', '')} Nº {usuario_data.get('numero_documento', '')}")
         st.write(f"**Lugar de expedición:** {usuario_data.get('lugar_expedicion_documento', '—')}")
         
+        if contrato_vig:
+            st.write(f"**Contrato:** {contrato_vig.get('numero', '')}")
+        else:
+            st.write("**Contrato:** No se detectó contrato vigente")
+            
         renta_str = "Declarante de Renta" if declarante_renta else "No Declarante de Renta"
         st.write(f"**Condición Tributaria:** {renta_str}")
         
@@ -831,7 +840,7 @@ def _render_opcion_4_declarante_dependencia(servicio, sesion, año_cert, mes_cer
         st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
         
         st.write("---")
-        if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True):
+        if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
             if servicio.firmar_y_generar_dependencia(usuario_id, nombre_usuario_actual):
                 st.success("¡Formato generado y firmado digitalmente con éxito!")
                 st.rerun()
@@ -945,7 +954,7 @@ def _render_opcion_5_acta_compromiso(servicio, sesion, año_cert, mes_cert, nomb
         st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
         
         st.write("---")
-        if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True):
+        if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
             if servicio.firmar_y_generar_acta_compromiso(usuario_id, nombre_usuario_actual):
                 st.success("¡Formato generado y firmado digitalmente con éxito!")
                 st.rerun()
@@ -1043,7 +1052,7 @@ def _render_opcion_9_acta_recibo_entrega_real(servicio, sesion, año_cert, mes_c
         st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
         
         st.write("---")
-        if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True):
+        if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
             if servicio.firmar_y_generar_acta_recibo_entrega_cps_real(usuario_id, nombre_usuario_actual):
                 st.success("¡Formato generado y firmado digitalmente con éxito!")
                 st.rerun()
@@ -1141,7 +1150,7 @@ def _render_opcion_8_acta_recibo_entrega(servicio, sesion, año_cert, mes_cert, 
         st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
         
         st.write("---")
-        if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True):
+        if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
             if servicio.firmar_y_generar_acta_recibo_entrega(usuario_id, nombre_usuario_actual):
                 st.success("¡Formato generado y firmado digitalmente con éxito!")
                 st.rerun()
