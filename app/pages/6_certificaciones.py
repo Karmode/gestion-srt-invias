@@ -86,11 +86,19 @@ def _dialog_preview_cert(servicio: CertificacionService) -> None:
     mes_nombre = data["mes_nombre"]
     año = data["año"]
 
+    tipo_formato = data["cert"].get("tipo_formato")
+    show_dl = tipo_formato not in [
+        "acta_compromiso",
+        "acta_recibo_entrega_cps",
+        "acta_recibo_entrega_cps_real"
+    ]
+
     render_preview_cert(
         pdf_bytes=pdf_bytes,
         caption=f"{mes_nombre} {año}",
         file_name=_nombre_archivo_pdf(data["cert"], mes_nombre, año),
         dl_key="_dl_preview_user",
+        show_download=show_dl,
     )
 
 
@@ -877,25 +885,13 @@ def _render_opcion_5_acta_compromiso(servicio, sesion, año_cert, mes_cert, nomb
             pdf_bytes = None
 
         if pdf_bytes:
-            nombre_archivo = _nombre_archivo_pdf(cert_actual, nombre_mes_cert, año_cert)
-            c_dl, c_prev = st.columns(2)
-            with c_dl:
-                st.download_button(
-                    "⬇️ Descargar PDF",
-                    data=pdf_bytes,
-                    file_name=nombre_archivo,
-                    mime="application/pdf",
-                    type="primary",
-                    use_container_width=True,
-                )
-            with c_prev:
-                if st.button("👁️ Ver formato", use_container_width=True):
-                    st.session_state["_preview_cert_user"] = {
-                        "cert": cert_actual,
-                        "mes_nombre": nombre_mes_cert,
-                        "año": año_cert,
-                    }
-                    st.rerun()
+            if st.button("👁️ Ver formato", type="primary", use_container_width=True):
+                st.session_state["_preview_cert_user"] = {
+                    "cert": cert_actual,
+                    "mes_nombre": nombre_mes_cert,
+                    "año": año_cert,
+                }
+                st.rerun()
     elif cert_actual:
         st.info(
             f"Tu formato de **Acta de compromiso** para **{nombre_mes_cert} {año_cert}** "
@@ -991,25 +987,13 @@ def _render_opcion_9_acta_recibo_entrega_real(servicio, sesion, año_cert, mes_c
             pdf_bytes = None
 
         if pdf_bytes:
-            nombre_archivo = _nombre_archivo_pdf(cert_actual, nombre_mes_cert, año_cert)
-            c_dl, c_prev = st.columns(2)
-            with c_dl:
-                st.download_button(
-                    "⬇️ Descargar PDF",
-                    data=pdf_bytes,
-                    file_name=nombre_archivo,
-                    mime="application/pdf",
-                    type="primary",
-                    use_container_width=True,
-                )
-            with c_prev:
-                if st.button("👁️ Ver formato", use_container_width=True):
-                    st.session_state["_preview_cert_user"] = {
-                        "cert": cert_actual,
-                        "mes_nombre": nombre_mes_cert,
-                        "año": año_cert,
-                    }
-                    st.rerun()
+            if st.button("👁️ Ver formato", type="primary", use_container_width=True):
+                st.session_state["_preview_cert_user"] = {
+                    "cert": cert_actual,
+                    "mes_nombre": nombre_mes_cert,
+                    "año": año_cert,
+                }
+                st.rerun()
     elif cert_actual:
         st.info(
             f"Tu formato de **Acta de recibo y entrega CPS** para **{nombre_mes_cert} {año_cert}** "
@@ -1089,25 +1073,13 @@ def _render_opcion_8_acta_recibo_entrega(servicio, sesion, año_cert, mes_cert, 
             pdf_bytes = None
 
         if pdf_bytes:
-            nombre_archivo = _nombre_archivo_pdf(cert_actual, nombre_mes_cert, año_cert)
-            c_dl, c_prev = st.columns(2)
-            with c_dl:
-                st.download_button(
-                    "⬇️ Descargar PDF",
-                    data=pdf_bytes,
-                    file_name=nombre_archivo,
-                    mime="application/pdf",
-                    type="primary",
-                    use_container_width=True,
-                )
-            with c_prev:
-                if st.button("👁️ Ver formato", use_container_width=True):
-                    st.session_state["_preview_cert_user"] = {
-                        "cert": cert_actual,
-                        "mes_nombre": nombre_mes_cert,
-                        "año": año_cert,
-                    }
-                    st.rerun()
+            if st.button("👁️ Ver formato", type="primary", use_container_width=True):
+                st.session_state["_preview_cert_user"] = {
+                    "cert": cert_actual,
+                    "mes_nombre": nombre_mes_cert,
+                    "año": año_cert,
+                }
+                st.rerun()
     elif cert_actual:
         st.info(
             f"Tu formato de **Balance General CPS** para **{nombre_mes_cert} {año_cert}** "

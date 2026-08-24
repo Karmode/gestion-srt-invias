@@ -2641,7 +2641,7 @@ class CertificacionService:
         ]
 
         col_der = [
-            jefe_firma_img if jefe_firma_img else "",
+            Spacer(1, 1.2 * cm),
             Paragraph(f"<b>{jefe_nombre}</b>", s_firma_lbl),
             Paragraph("Subdirectora de Reglamentación Técnica e Innovación", s_firma_desc) if jefe_nombre == "Gladys Gutiérrez Buitrago" else Paragraph("Supervisora de Reglamentación Técnica y Innovación", s_firma_desc),
             Paragraph(f"SUPERVISOR CTO {no_contrato} de {año_contrato}", s_firma_desc)
@@ -3382,7 +3382,7 @@ class CertificacionService:
         )
 
         col_der = [
-            jefe_firma_img if jefe_firma_img else "",
+            Spacer(1, 1.2 * cm),
             Paragraph(f"<b>{jefe_nombre.upper()}</b>", s_firma_lbl),
             Paragraph("Subdirectora de Reglamentación Técnica e Innovación", s_firma_desc) if jefe_nombre == "GLADYS GUTIÉRREZ BUITRAGO" else Paragraph("Supervisora de Reglamentación Técnica e Innovación", s_firma_desc),
             Paragraph("Supervisor (a) del Contrato", s_firma_desc)
@@ -4474,7 +4474,7 @@ class CertificacionService:
         ]
 
         col_supervisor = [
-            jefe_firma_img if jefe_firma_img else Spacer(1, 1.2 * cm),
+            Spacer(1, 1.2 * cm),
             Paragraph(jefe_nombre.upper(), s_firma_name),
             Paragraph("SUPERVISOR DEL CONTRATO", s_firma_role)
         ]
