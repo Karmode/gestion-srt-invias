@@ -534,8 +534,12 @@ def render_balance_y_pagos(prefijo: str, c: dict, deshabilitado: bool = False):
             if f_p and hasattr(f_p, "date"):
                 f_p = f_p.date()
 
+            num_val = p.get("numero_pago") or ""
+            if num_val.startswith("Pago No."):
+                num_val = ""
+
             pagos_datos[pid] = {
-                "num": p.get("numero_pago") or "",
+                "num": num_val,
                 "fec": f_p,
                 "bruto": int(p.get("valor_bruto_pago") or 0),
                 "deduc": int(p.get("deducciones_pago") or 0),
@@ -566,7 +570,7 @@ def render_balance_y_pagos(prefijo: str, c: dict, deshabilitado: bool = False):
                 # Valores por defecto para el nuevo pago (vía espejo; las
                 # claves de widget se siembran arriba en el próximo render)
                 pagos_datos[new_id] = {
-                    "num": f"Pago No. {len(pids) + 1}",
+                    "num": "",
                     "fec": date.today(),
                     "bruto": 0,
                     "deduc": 0,
@@ -583,23 +587,21 @@ def render_balance_y_pagos(prefijo: str, c: dict, deshabilitado: bool = False):
     for index, pid in enumerate(pids):
         st.markdown(f"**Pago #{index + 1}**")
         
-        # Fila de Inputs
-        r1, r2, r3 = st.columns(3)
+        # Fila de Inputs en una sola línea compacta
+        r1, r2, r3, r4, r5, r_del = st.columns([2, 1.5, 2, 2, 2, 0.8])
         with r1:
-            num_pago = st.text_input("Número de Pago", key=f"{prefijo}_pago_num_{pid}", disabled=deshabilitado)
+            num_pago = st.text_input("N° Pago", key=f"{prefijo}_pago_num_{pid}", disabled=deshabilitado)
         with r2:
-            fecha_pago = st.date_input("Fecha de Pago", key=f"{prefijo}_pago_fec_{pid}", format="DD/MM/YYYY", disabled=deshabilitado)
+            fecha_pago = st.date_input("Fecha", key=f"{prefijo}_pago_fec_{pid}", format="DD/MM/YYYY", disabled=deshabilitado)
         with r3:
             val_bruto = st.number_input("Valor Bruto", min_value=0, step=10000, key=f"{prefijo}_pago_bruto_{pid}", disabled=deshabilitado)
-            
-        r5, r6, col_del = st.columns([3, 3, 2])
-        with r5:
+        with r4:
             deduc = st.number_input("Deducciones", min_value=0, step=10000, key=f"{prefijo}_pago_deduc_{pid}", disabled=deshabilitado)
-        with r6:
+        with r5:
             val_neto = st.number_input("Valor Neto", min_value=0, step=10000, key=f"{prefijo}_pago_neto_{pid}", disabled=deshabilitado)
-        with col_del:
-            st.write("")  # Espaciado para alinear con el botón
-            if st.button("🗑️ Eliminar pago", key=f"{prefijo}_pago_del_{pid}", type="secondary", use_container_width=True, disabled=deshabilitado):
+        with r_del:
+            st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)  # Espaciado para alinear con los inputs
+            if st.button("🗑️", key=f"{prefijo}_pago_del_{pid}", type="secondary", use_container_width=True, disabled=deshabilitado, help="Eliminar pago"):
                 st.session_state[pagos_ids_key].remove(pid)
                 pagos_datos.pop(pid, None)
                 st.rerun()
