@@ -215,7 +215,8 @@ def _dialog_preview(servicio: CertificacionService) -> None:
     nombre_mes = data["nombre_mes"]
 
     pdf_bytes = obtener_pdf_certificado_cacheado(
-        servicio, str(cert["_id"]), cert.get("hash_verificacion", ""), cert
+        servicio, str(cert["_id"]), cert.get("hash_verificacion", ""), cert,
+        version_key=str(cert.get("firmas", {}))
     )
     render_preview_cert(
         pdf_bytes=pdf_bytes,
@@ -380,7 +381,8 @@ def render(sesion=None):
                         with c_btn:
                             if estado_cert == "aprobado":
                                 pdf_bytes = obtener_pdf_certificado_cacheado(
-                                    servicio, str(cert["_id"]), cert.get("hash_verificacion", ""), cert
+                                    servicio, str(cert["_id"]), cert.get("hash_verificacion", ""), cert,
+                                    version_key=str(cert.get("firmas", {}))
                                 )
                                 prefijo = _PREFIJO_ARCHIVO_ACTAS[tipo_acta_activo]
                                 st.download_button(
@@ -575,7 +577,8 @@ def render(sesion=None):
                     with c_btn:
                         if estado_cert == "aprobado":
                             pdf_bytes = obtener_pdf_certificado_cacheado(
-                                servicio, str(cert["_id"]), cert.get("hash_verificacion", ""), cert
+                                servicio, str(cert["_id"]), cert.get("hash_verificacion", ""), cert,
+                                version_key=str(cert.get("firmas", {}))
                             )
                             st.download_button(
                                 "⬇️ Descargar",

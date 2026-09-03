@@ -59,6 +59,12 @@ class UsuarioService:
         if not contrato:
             return False
         fecha_fin = contrato.get("fecha_fin")
+        
+        # Considerar prórroga si existe para la fecha de fin efectiva
+        prorroga = contrato.get("prorrogra_contrato") or {}
+        if prorroga.get("tiene_prorroga") and prorroga.get("fecha_prorrogra"):
+            fecha_fin = prorroga.get("fecha_prorrogra")
+            
         if not fecha_fin:
             return False
         hoy = datetime.now(_ZONA_BOGOTA).date()
@@ -331,6 +337,13 @@ class UsuarioService:
         prorroga = datos.get("prorrogra_contrato") or {}
         tiene_pror = bool(prorroga.get("tiene_prorroga"))
         f_pror = prorroga.get("fecha_prorrogra")
+        
+        if tiene_pror and f_pror and fecha_fin:
+            dt_fin = UsuarioService._fecha_a_datetime(fecha_fin)
+            dt_pror = UsuarioService._fecha_a_datetime(f_pror)
+            if dt_pror <= dt_fin:
+                raise ValueError("La fecha de la prórroga debe ser posterior a la fecha de fin del contrato.")
+
         contrato["prorrogra_contrato"] = {
             "tiene_prorroga": tiene_pror,
             "fecha_prorrogra": UsuarioService._fecha_a_datetime(f_pror) if tiene_pror and f_pror else None,
