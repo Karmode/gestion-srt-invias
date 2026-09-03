@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytz
 
@@ -39,6 +39,10 @@ _AFILIACIONES_REQUERIDAS = [
     ("afp", "Fondo de pensiones (AFP)"),
 ]
 
+# Días de gracia tras la fecha de fin del contrato (o su prórroga) durante los
+# cuales el contratista sigue pudiendo descargar/generar formatos.
+DIAS_GRACIA_DESCARGA_FORMATOS = 60
+
 
 class UsuarioService:
     def __init__(self) -> None:
@@ -55,22 +59,28 @@ class UsuarioService:
         return numero
 
     @staticmethod
-    def _contrato_finalizado(contrato) -> bool:
+    def _contrato_finalizado(contrato, dias_gracia: int = 0) -> bool:
+        """``dias_gracia`` permite seguir considerando el contrato como no finalizado
+        durante N días después de su fecha de fin (o de la prórroga), para dar margen
+        a trámites posteriores al cierre del contrato (p. ej. descarga de formatos)."""
         if not contrato:
             return False
         fecha_fin = contrato.get("fecha_fin")
-        
+
         # Considerar prórroga si existe para la fecha de fin efectiva
         prorroga = contrato.get("prorrogra_contrato") or {}
         if prorroga.get("tiene_prorroga") and prorroga.get("fecha_prorrogra"):
             fecha_fin = prorroga.get("fecha_prorrogra")
-            
+
         if not fecha_fin:
             return False
         hoy = datetime.now(_ZONA_BOGOTA).date()
         if fecha_fin.tzinfo is None:
             fecha_fin = fecha_fin.replace(tzinfo=timezone.utc)
-        return fecha_fin.astimezone(_ZONA_BOGOTA).date() < hoy
+        fecha_limite = fecha_fin.astimezone(_ZONA_BOGOTA).date()
+        if dias_gracia:
+            fecha_limite += timedelta(days=dias_gracia)
+        return fecha_limite < hoy
 
     @staticmethod
     def _afiliacion(datos) -> dict:
@@ -502,7 +512,10 @@ class UsuarioService:
 
         # 2) Al menos un contrato activo con todos sus datos completos
         contratos = usuario.get("contratos") or []
-        activos = [c for c in contratos if not self._contrato_finalizado(c)]
+        activos = [
+            c for c in contratos
+            if not self._contrato_finalizado(c, dias_gracia=DIAS_GRACIA_DESCARGA_FORMATOS)
+        ]
         if not activos:
             secciones.append({
                 "titulo": "Contrato activo",
@@ -589,7 +602,10 @@ class UsuarioService:
         """
         usuario = self.repositorio.buscar_por_id(id_usuario) or {}
         contratos = usuario.get("contratos") or []
-        activos = [c for c in contratos if not self._contrato_finalizado(c)]
+        activos = [
+            c for c in contratos
+            if not self._contrato_finalizado(c, dias_gracia=DIAS_GRACIA_DESCARGA_FORMATOS)
+        ]
 
         faltantes = []
 
@@ -639,7 +655,10 @@ class UsuarioService:
         """
         usuario = self.repositorio.buscar_por_id(id_usuario) or {}
         contratos = usuario.get("contratos") or []
-        activos = [c for c in contratos if not self._contrato_finalizado(c)]
+        activos = [
+            c for c in contratos
+            if not self._contrato_finalizado(c, dias_gracia=DIAS_GRACIA_DESCARGA_FORMATOS)
+        ]
 
         faltantes = []
 
