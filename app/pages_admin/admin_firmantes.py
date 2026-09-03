@@ -427,6 +427,7 @@ def _render_panel_actas(servicio: CertificacionService, sesion: dict, tipo_forma
                         str(cert["_id"]),
                         cert.get("hash_verificacion", ""),
                         cert,
+                        version_key=str(cert.get("firmas", {})),
                     )
                     prefijos_archivo = {
                         "acta_compromiso": "Acta_Compromiso",
@@ -778,6 +779,7 @@ def render(sesion=None):
                                     str(cert_emp["_id"]),
                                     cert_emp.get("hash_verificacion", ""),
                                     cert_emp,
+                                    version_key=str(cert_emp.get("firmas", {})),
                                 )
                                 st.download_button(
                                     "⬇️ Certificado",
