@@ -9,7 +9,7 @@ import hashlib
 import hmac
 import io
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 from bson import ObjectId
@@ -646,9 +646,14 @@ class CertificacionService:
     # Generación de PDF
     # ──────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _contrato_vigente(contratos: list) -> dict:
-        """Devuelve el contrato activo hoy (sin fecha_fin o con fecha_fin futura, incluyendo prórrogas).
+    # Días de gracia tras la fecha de fin del contrato (o su prórroga) durante los
+    # cuales sigue considerándose "vigente" para efectos de generar/descargar formatos.
+    DIAS_GRACIA_CONTRATO_VIGENTE = 60
+
+    @classmethod
+    def _contrato_vigente(cls, contratos: list) -> dict:
+        """Devuelve el contrato activo hoy (sin fecha_fin, con fecha_fin futura, o dentro
+        del período de gracia posterior a su fin), incluyendo prórrogas.
         Si no hay contratos activos hoy, retorna {} (no cae en fallback de vencidos)."""
         if not contratos:
             return {}
@@ -656,17 +661,20 @@ class CertificacionService:
         activos = []
         for c in contratos:
             fecha_fin = c.get("fecha_fin")
-            
+
             # Considerar prórroga si existe para la vigencia real
             prorroga = c.get("prorrogra_contrato") or {}
             if prorroga.get("tiene_prorroga") and prorroga.get("fecha_prorrogra"):
                 fecha_fin = prorroga.get("fecha_prorrogra")
-                
+
             if fecha_fin:
                 if fecha_fin.tzinfo is None:
                     from datetime import timezone as _tz
                     fecha_fin = fecha_fin.replace(tzinfo=_tz.utc)
-                if fecha_fin.astimezone(ZONA_BOGOTA).date() >= hoy:
+                fecha_limite = fecha_fin.astimezone(ZONA_BOGOTA).date() + timedelta(
+                    days=cls.DIAS_GRACIA_CONTRATO_VIGENTE
+                )
+                if fecha_limite >= hoy:
                     activos.append(c)
             else:
                 activos.append(c)
