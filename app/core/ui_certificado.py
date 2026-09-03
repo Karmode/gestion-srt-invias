@@ -5,10 +5,12 @@ from streamlit_pdf_viewer import pdf_viewer
 
 
 @st.cache_data(show_spinner=False)
-def obtener_pdf_certificado_cacheado(_servicio, cert_id: str, hash_verificacion: str, _certificacion: dict) -> bytes:
+def obtener_pdf_certificado_cacheado(_servicio, cert_id: str, hash_verificacion: str, _certificacion: dict, version_key: str = "") -> bytes:
     """PDF de un certificado ya aprobado no cambia una vez emitido (el hash se
     preserva). Se cachea por id + hash para no regenerarlo con ReportLab
-    (más su consulta a usuario) en cada rerun de Streamlit."""
+    (más su consulta a usuario) en cada rerun de Streamlit.
+    El parámetro version_key (sin guión bajo) sirve para invalidar la caché cuando cambian las firmas."""
+    # Invalida caché por cambio en formato de firma de supervisor (v3)
     return _servicio.generar_pdf(_certificacion)
 
 
@@ -17,16 +19,18 @@ def render_preview_cert(
     caption: str,
     file_name: str,
     dl_key: str,
+    show_download: bool = True,
 ) -> None:
     """Renderiza el visor PDF + botón de descarga dentro de un diálogo de certificado."""
     st.caption(caption)
     pdf_viewer(input=pdf_bytes, width=800, height=620)
-    st.download_button(
-        "⬇️ Descargar PDF",
-        data=pdf_bytes,
-        file_name=file_name,
-        mime="application/pdf",
-        type="primary",
-        use_container_width=True,
-        key=dl_key,
-    )
+    if show_download:
+        st.download_button(
+            "⬇️ Descargar PDF",
+            data=pdf_bytes,
+            file_name=file_name,
+            mime="application/pdf",
+            type="primary",
+            use_container_width=True,
+            key=dl_key,
+        )

@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytz
 
@@ -39,6 +39,10 @@ _AFILIACIONES_REQUERIDAS = [
     ("afp", "Fondo de pensiones (AFP)"),
 ]
 
+# Días de gracia tras la fecha de fin del contrato (o su prórroga) durante los
+# cuales el contratista sigue pudiendo descargar/generar formatos.
+DIAS_GRACIA_DESCARGA_FORMATOS = 60
+
 
 class UsuarioService:
     def __init__(self) -> None:
@@ -55,16 +59,28 @@ class UsuarioService:
         return numero
 
     @staticmethod
-    def _contrato_finalizado(contrato) -> bool:
+    def _contrato_finalizado(contrato, dias_gracia: int = 0) -> bool:
+        """``dias_gracia`` permite seguir considerando el contrato como no finalizado
+        durante N días después de su fecha de fin (o de la prórroga), para dar margen
+        a trámites posteriores al cierre del contrato (p. ej. descarga de formatos)."""
         if not contrato:
             return False
         fecha_fin = contrato.get("fecha_fin")
+
+        # Considerar prórroga si existe para la fecha de fin efectiva
+        prorroga = contrato.get("prorrogra_contrato") or {}
+        if prorroga.get("tiene_prorroga") and prorroga.get("fecha_prorrogra"):
+            fecha_fin = prorroga.get("fecha_prorrogra")
+
         if not fecha_fin:
             return False
         hoy = datetime.now(_ZONA_BOGOTA).date()
         if fecha_fin.tzinfo is None:
             fecha_fin = fecha_fin.replace(tzinfo=timezone.utc)
-        return fecha_fin.astimezone(_ZONA_BOGOTA).date() < hoy
+        fecha_limite = fecha_fin.astimezone(_ZONA_BOGOTA).date()
+        if dias_gracia:
+            fecha_limite += timedelta(days=dias_gracia)
+        return fecha_limite < hoy
 
     @staticmethod
     def _afiliacion(datos) -> dict:
@@ -331,6 +347,13 @@ class UsuarioService:
         prorroga = datos.get("prorrogra_contrato") or {}
         tiene_pror = bool(prorroga.get("tiene_prorroga"))
         f_pror = prorroga.get("fecha_prorrogra")
+        
+        if tiene_pror and f_pror and fecha_fin:
+            dt_fin = UsuarioService._fecha_a_datetime(fecha_fin)
+            dt_pror = UsuarioService._fecha_a_datetime(f_pror)
+            if dt_pror <= dt_fin:
+                raise ValueError("La fecha de la prórroga debe ser posterior a la fecha de fin del contrato.")
+
         contrato["prorrogra_contrato"] = {
             "tiene_prorroga": tiene_pror,
             "fecha_prorrogra": UsuarioService._fecha_a_datetime(f_pror) if tiene_pror and f_pror else None,
@@ -366,6 +389,11 @@ class UsuarioService:
                 "valor_neto_pago_total": int(p.get("valor_neto_pago_total") or 0),
             })
         contrato["pagos"] = pagos_procesados
+
+        # Personalizar última cuenta
+        contrato["personalizar_ultimacuenta"] = bool(datos.get("personalizar_ultimacuenta"))
+        val_personalizar = datos.get("valor_personalizar_ultimacuenta")
+        contrato["valor_personalizar_ultimacuenta"] = int(val_personalizar) if contrato["personalizar_ultimacuenta"] and val_personalizar is not None else None
 
         return contrato
 
@@ -484,7 +512,10 @@ class UsuarioService:
 
         # 2) Al menos un contrato activo con todos sus datos completos
         contratos = usuario.get("contratos") or []
-        activos = [c for c in contratos if not self._contrato_finalizado(c)]
+        activos = [
+            c for c in contratos
+            if not self._contrato_finalizado(c, dias_gracia=DIAS_GRACIA_DESCARGA_FORMATOS)
+        ]
         if not activos:
             secciones.append({
                 "titulo": "Contrato activo",
@@ -562,6 +593,102 @@ class UsuarioService:
             })
 
         return {"puede_descargar": not secciones, "secciones": secciones}
+
+    def validar_datos_balance_general_cps(self, id_usuario: str) -> dict:
+        """Evalúa si el usuario cumple con los requisitos específicos para el formato
+        Balance General CPS.
+
+        Retorna {"valido": bool, "faltantes": [str]}
+        """
+        usuario = self.repositorio.buscar_por_id(id_usuario) or {}
+        contratos = usuario.get("contratos") or []
+        activos = [
+            c for c in contratos
+            if not self._contrato_finalizado(c, dias_gracia=DIAS_GRACIA_DESCARGA_FORMATOS)
+        ]
+
+        faltantes = []
+
+        if not activos:
+            faltantes.append("No tienes ningún contrato activo registrado.")
+            return {"valido": False, "faltantes": faltantes}
+
+        contrato_activo = activos[-1]
+
+        # 1. Valor contratado (campo 'valor')
+        valor_contratado = contrato_activo.get("valor")
+        if self._vacio(valor_contratado):
+            faltantes.append("Valor contratado (debe ser mayor a cero)")
+
+        # 2. Valor total Pagado
+        valor_total_pagado = contrato_activo.get("valor_total_pagado")
+        if self._vacio(valor_total_pagado):
+            faltantes.append("Valor total pagado (debe ser mayor a cero)")
+
+        # 3. Pagos: al menos un pago registrado en el último contrato activo
+        pagos = contrato_activo.get("pagos") or []
+        if not pagos:
+            faltantes.append("Plan de pagos: al menos un pago registrado")
+        else:
+            # 4. Valores acumulados en los pagos
+            primer_pago = pagos[0]
+            val_bruto_tot = primer_pago.get("valor_bruto_total")
+            deduc_tot = primer_pago.get("deducciones_pago_total")
+            val_neto_tot = primer_pago.get("valor_neto_pago_total")
+
+            if self._vacio(val_bruto_tot):
+                faltantes.append("Valor Bruto Total (Acumulado) (debe ser mayor a cero)")
+
+            if deduc_tot is None or (isinstance(deduc_tot, str) and not deduc_tot.strip()):
+                faltantes.append("Deducciones Total (Acumulado) (debe estar diligenciado)")
+
+            if self._vacio(val_neto_tot):
+                faltantes.append("Valor Neto Total (Acumulado) (debe ser mayor a cero)")
+
+        return {"valido": not faltantes, "faltantes": faltantes}
+
+    def validar_datos_acta_recibo_entrega_cps(self, id_usuario: str) -> dict:
+        """Evalúa si el usuario cumple con los requisitos específicos para el formato
+        Acta de Recibo y Entrega CPS.
+
+        Retorna {"valido": bool, "faltantes": [str]}
+        """
+        usuario = self.repositorio.buscar_por_id(id_usuario) or {}
+        contratos = usuario.get("contratos") or []
+        activos = [
+            c for c in contratos
+            if not self._contrato_finalizado(c, dias_gracia=DIAS_GRACIA_DESCARGA_FORMATOS)
+        ]
+
+        faltantes = []
+
+        if not activos:
+            faltantes.append("No tienes ningún contrato activo registrado.")
+            return {"valido": False, "faltantes": faltantes}
+
+        contrato_activo = activos[-1]
+
+        # 1. Contrato Nº (campo 'numero')
+        if self._vacio(contrato_activo.get("numero")):
+            faltantes.append("Número de contrato")
+
+        # 2. Fecha de inicio del contrato
+        if not contrato_activo.get("fecha_inicio"):
+            faltantes.append("Fecha de inicio del contrato")
+
+        # 3. Objeto del contrato
+        if self._vacio(contrato_activo.get("objeto")):
+            faltantes.append("Objeto del contrato")
+
+        # 4. Radicado del contrato (del último contrato activo)
+        if self._vacio(contrato_activo.get("radicado_del_contrato")):
+            faltantes.append("Radicado del contrato")
+
+        # 5. RP / compromiso presupuestal
+        if self._vacio(contrato_activo.get("rp_compromiso_presupuestal")):
+            faltantes.append("RP / compromiso presupuestal")
+
+        return {"valido": not faltantes, "faltantes": faltantes}
 
     def activar_usuario(self, id_usuario: str, validar_permisos: bool = True, permisos_usuario: list = None, usuario_actual: str = None):
         if validar_permisos and permisos_usuario:

@@ -9,7 +9,7 @@ import hashlib
 import hmac
 import io
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 from bson import ObjectId
@@ -29,6 +29,16 @@ MESES_ES = [
 # Es el valor DEFAULT/fallback: el admin puede sobreescribirlo en runtime
 # (ver ParametrosService, parámetro "dia_inicio_periodo_certificacion").
 DIA_INICIO_PERIODO = 29
+
+# ── Firmas secuenciales de Actas (Financiera → Abogado → Jefe) ────────────────
+TIPOS_FIRMA_CORR = ("corr", "gd", "secop")
+TIPOS_FIRMA_ACTAS = ("financiera", "abogado", "jefe")
+
+ORDEN_FIRMAS_ACTAS = {
+    "acta_compromiso": ("jefe",),
+    "acta_recibo_entrega_cps": ("financiera", "abogado", "jefe"),        # Balance General CPS
+    "acta_recibo_entrega_cps_real": ("financiera", "abogado", "jefe"),   # Acta recibo y entrega CPS
+}
 
 
 class CertificacionService:
@@ -226,101 +236,75 @@ class CertificacionService:
 
     def firmar_y_generar_acta_compromiso(self, usuario_id: str, nombre_usuario: str) -> bool:
         año, mes = self.periodo_certificable()
-        ahora_utc = datetime.now(timezone.utc)
-        
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "acta_compromiso")
-        
-        hash_code = (
-            cert_existente["hash_verificacion"]
-            if cert_existente and cert_existente.get("hash_verificacion")
-            else self._generar_hash(usuario_id, año, mes, usuario_id, ahora_utc.isoformat())
-        )
-        
+        if cert_existente:
+            return True
+
+        ahora_utc = datetime.now(timezone.utc)
         campos = {
-            "estado": "aprobado",  # Ya queda aprobado porque lo firma el contratista
+            "usuario_id": ObjectId(usuario_id),
+            "nombre_usuario": nombre_usuario,
+            "año": año,
+            "mes": mes,
+            "estado": "pendiente",  # Se aprueba cuando el Jefe firma (ver registrar_firma_actas)
             "fecha_corte": ahora_utc,
             "snapshot_al_dia": True,
             "tipo_formato": "acta_compromiso",
-            "hash_verificacion": hash_code,
             "creado_en": ahora_utc,
         }
-        
-        if cert_existente:
-            self.repo.actualizar(str(cert_existente["_id"]), campos)
-        else:
-            campos.update({
-                "usuario_id": ObjectId(usuario_id),
-                "nombre_usuario": nombre_usuario,
-                "año": año,
-                "mes": mes,
-            })
-            self.repo.crear(campos)
+        self.repo.crear(campos)
         return True
 
     def firmar_y_generar_acta_recibo_entrega(self, usuario_id: str, nombre_usuario: str) -> bool:
+        from app.services.usuario_service import UsuarioService
+        req_bg = UsuarioService().validar_datos_balance_general_cps(usuario_id)
+        if not req_bg["valido"]:
+            raise ValueError(f"Faltan requisitos para generar el Balance General CPS: {', '.join(req_bg['faltantes'])}")
+
         año, mes = self.periodo_certificable()
-        ahora_utc = datetime.now(timezone.utc)
-        
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "acta_recibo_entrega_cps")
-        
-        hash_code = (
-            cert_existente["hash_verificacion"]
-            if cert_existente and cert_existente.get("hash_verificacion")
-            else self._generar_hash(usuario_id, año, mes, usuario_id, ahora_utc.isoformat())
-        )
-        
+        if cert_existente:
+            return True
+
+        ahora_utc = datetime.now(timezone.utc)
         campos = {
-            "estado": "aprobado",  # Queda firmado/aprobado por contratista inicialmente
+            "usuario_id": ObjectId(usuario_id),
+            "nombre_usuario": nombre_usuario,
+            "año": año,
+            "mes": mes,
+            "estado": "pendiente",  # Se aprueba cuando Financiera → Abogado → Jefe firman (ver registrar_firma_actas)
             "fecha_corte": ahora_utc,
             "snapshot_al_dia": True,
             "tipo_formato": "acta_recibo_entrega_cps",
-            "hash_verificacion": hash_code,
             "creado_en": ahora_utc,
         }
-        
-        if cert_existente:
-            self.repo.actualizar(str(cert_existente["_id"]), campos)
-        else:
-            campos.update({
-                "usuario_id": ObjectId(usuario_id),
-                "nombre_usuario": nombre_usuario,
-                "año": año,
-                "mes": mes,
-            })
-            self.repo.crear(campos)
+        self.repo.crear(campos)
         return True
 
     def firmar_y_generar_acta_recibo_entrega_cps_real(self, usuario_id: str, nombre_usuario: str) -> bool:
+        from app.services.usuario_service import UsuarioService
+        req_acta = UsuarioService().validar_datos_acta_recibo_entrega_cps(usuario_id)
+        if not req_acta["valido"]:
+            raise ValueError(f"Faltan requisitos para generar el Acta de Recibo y Entrega CPS: {', '.join(req_acta['faltantes'])}")
+
         año, mes = self.periodo_certificable()
-        ahora_utc = datetime.now(timezone.utc)
-        
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "acta_recibo_entrega_cps_real")
-        
-        hash_code = (
-            cert_existente["hash_verificacion"]
-            if cert_existente and cert_existente.get("hash_verificacion")
-            else self._generar_hash(usuario_id, año, mes, usuario_id, ahora_utc.isoformat())
-        )
-        
+        if cert_existente:
+            return True
+
+        ahora_utc = datetime.now(timezone.utc)
         campos = {
-            "estado": "aprobado",
+            "usuario_id": ObjectId(usuario_id),
+            "nombre_usuario": nombre_usuario,
+            "año": año,
+            "mes": mes,
+            "estado": "pendiente",  # Se aprueba cuando Financiera → Abogado → Jefe firman (ver registrar_firma_actas)
             "fecha_corte": ahora_utc,
             "snapshot_al_dia": True,
             "tipo_formato": "acta_recibo_entrega_cps_real",
-            "hash_verificacion": hash_code,
             "creado_en": ahora_utc,
         }
-        
-        if cert_existente:
-            self.repo.actualizar(str(cert_existente["_id"]), campos)
-        else:
-            campos.update({
-                "usuario_id": ObjectId(usuario_id),
-                "nombre_usuario": nombre_usuario,
-                "año": año,
-                "mes": mes,
-            })
-            self.repo.crear(campos)
+        self.repo.crear(campos)
         return True
 
 
@@ -380,22 +364,30 @@ class CertificacionService:
     # Configuración de firmantes designados
     # ──────────────────────────────────────────────────────────────
 
-    def obtener_firmantes_config(self) -> Dict:
-        """Devuelve los 3 firmantes designados desde opciones_configuracion."""
+    def obtener_firmantes_config(
+        self, categoria: str = "firmantes_certificacion", tipos: tuple = TIPOS_FIRMA_CORR
+    ) -> Dict:
+        """Devuelve los firmantes designados de la categoría dada (por defecto, corr/gd/secop)."""
         from app.repositories.opciones_repo import ConfiguracionRepositorio
-        doc = ConfiguracionRepositorio().obtener("firmantes_certificacion")
-        vacio = {"corr": None, "gd": None, "secop": None}
+        doc = ConfiguracionRepositorio().obtener(categoria)
+        vacio = {t: None for t in tipos}
         return doc.get("firmantes", vacio) if doc else vacio
 
-    def guardar_firmante(self, tipo: str, usuario_id: Optional[str], nombre: Optional[str]) -> bool:
-        """Admin designa quién es el firmante de un tipo dado.
+    def guardar_firmante(
+        self,
+        tipo: str,
+        usuario_id: Optional[str],
+        nombre: Optional[str],
+        categoria: str = "firmantes_certificacion",
+    ) -> bool:
+        """Admin designa quién es el firmante de un tipo dado, dentro de la categoría indicada.
         Sincroniza el permiso certificacion.firmar_<tipo> en permisos_extra del usuario.
         """
         from app.repositories.opciones_repo import ConfiguracionRepositorio
         from app.repositories.usuario_repo import UsuarioRepositorio
 
         perm = f"certificacion.firmar_{tipo}"
-        config = self.obtener_firmantes_config()
+        config = self.obtener_firmantes_config(categoria)
         repo_conf = ConfiguracionRepositorio()
         repo_usr = UsuarioRepositorio()
 
@@ -418,9 +410,9 @@ class CertificacionService:
 
         valor = {"usuario_id": usuario_id, "nombre": nombre} if usuario_id else None
         repo_conf.upsert(
-            "firmantes_certificacion",
+            categoria,
             {
-                "categoria": "firmantes_certificacion",
+                "categoria": categoria,
                 f"firmantes.{tipo}": valor,
             },
         )
@@ -481,6 +473,90 @@ class CertificacionService:
         """Revoca una firma previamente registrada."""
         año, mes = self.periodo_certificable()
         return self.repo.revocar_firma(empleado_id, año, mes, tipo)
+
+    def registrar_firma_actas(
+        self,
+        cert_id: str,
+        rol: str,
+        firmante_id: str,
+        firmante_nombre: str,
+        comentario: str | None = None,
+    ) -> bool:
+        """Registra la aprobación de un rol (financiera/abogado/jefe) sobre un formato
+        de actas. Exige que el rol anterior en ORDEN_FIRMAS_ACTAS ya haya firmado. Si con
+        esta firma se completa el orden requerido, aprueba el documento y genera (o
+        preserva) su hash de verificación."""
+        cert = self.repo.buscar_por_id(cert_id)
+        if not cert:
+            raise ValueError("No existe el formato especificado.")
+
+        tipo_formato = cert.get("tipo_formato")
+        orden = ORDEN_FIRMAS_ACTAS.get(tipo_formato)
+        if not orden or rol not in orden:
+            raise ValueError(f"El rol '{rol}' no aplica para el formato '{tipo_formato}'.")
+
+        idx = orden.index(rol)
+        if idx > 0:
+            rol_anterior = orden[idx - 1]
+            if not (cert.get("firmas") or {}).get(rol_anterior):
+                raise ValueError(
+                    f"Aún falta la firma de '{rol_anterior}' antes de poder firmar como '{rol}'."
+                )
+
+        self.repo.registrar_firma_actas_por_id(
+            cert_id, rol, firmante_id, firmante_nombre, comentario
+        )
+
+        cert_actualizado = self.repo.buscar_por_id(cert_id)
+        firmas = cert_actualizado.get("firmas") or {}
+        if all(firmas.get(r) for r in orden):
+            ahora_utc = datetime.now(timezone.utc)
+            usuario_id = str(cert_actualizado.get("usuario_id"))
+            año = cert_actualizado.get("año")
+            mes = cert_actualizado.get("mes")
+            hash_code = cert_actualizado.get("hash_verificacion") or self._generar_hash(
+                usuario_id, año, mes, firmante_id, ahora_utc.isoformat()
+            )
+            self.repo.actualizar(str(cert_actualizado["_id"]), {
+                "estado": "aprobado",
+                "hash_verificacion": hash_code,
+            })
+        return True
+
+    def revocar_firma_actas(self, cert_id: str, rol: str) -> bool:
+        """Revoca la firma de un rol y, en cascada, las de los roles posteriores en el
+        orden (que dependían de esta). Registra un evento por cada firma revocada en
+        cascada para que el firmante afectado sepa por qué desapareció, y vuelve el
+        documento a 'pendiente' si estaba aprobado."""
+        cert = self.repo.buscar_por_id(cert_id)
+        if not cert:
+            return False
+
+        tipo_formato = cert.get("tipo_formato")
+        orden = ORDEN_FIRMAS_ACTAS.get(tipo_formato)
+        if not orden or rol not in orden:
+            raise ValueError(f"El rol '{rol}' no aplica para el formato '{tipo_formato}'.")
+
+        idx = orden.index(rol)
+        firmas = cert.get("firmas") or {}
+        posteriores_firmados = [r for r in orden[idx + 1:] if firmas.get(r)]
+        roles_a_borrar = [rol] + posteriores_firmados
+
+        self.repo.revocar_firmas_actas_por_id(cert_id, roles_a_borrar)
+
+        ahora_utc = datetime.now(timezone.utc)
+        for r in posteriores_firmados:
+            self.repo.agregar_evento_actas_por_id(cert_id, {
+                "tipo": "revocacion_cascada",
+                "rol_revocado": r,
+                "causada_por": rol,
+                "fecha": ahora_utc,
+            })
+
+        if cert.get("estado") == "aprobado":
+            self.repo.actualizar(str(cert["_id"]), {"estado": "pendiente"})
+
+        return True
 
     def recuperar_auto_cert(self, empleado_id: str, cert: dict) -> bool:
         """Certifica retroactivamente si el cert ya tiene las 3 firmas + contrato activo
@@ -570,28 +646,93 @@ class CertificacionService:
     # Generación de PDF
     # ──────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _contrato_vigente(contratos: list) -> dict:
-        """Devuelve el contrato activo (sin fecha_fin o con fecha_fin futura).
-        Si hay varios activos, retorna el de fecha_inicio más reciente."""
+    # Días de gracia tras la fecha de fin del contrato (o su prórroga) durante los
+    # cuales sigue considerándose "vigente" para efectos de generar/descargar formatos.
+    DIAS_GRACIA_CONTRATO_VIGENTE = 60
+
+    @classmethod
+    def _contrato_vigente(cls, contratos: list) -> dict:
+        """Devuelve el contrato activo hoy (sin fecha_fin, con fecha_fin futura, o dentro
+        del período de gracia posterior a su fin), incluyendo prórrogas.
+        Si no hay contratos activos hoy, retorna {} (no cae en fallback de vencidos)."""
         if not contratos:
             return {}
         hoy = datetime.now(ZONA_BOGOTA).date()
         activos = []
         for c in contratos:
             fecha_fin = c.get("fecha_fin")
+
+            # Considerar prórroga si existe para la vigencia real
+            prorroga = c.get("prorrogra_contrato") or {}
+            if prorroga.get("tiene_prorroga") and prorroga.get("fecha_prorrogra"):
+                fecha_fin = prorroga.get("fecha_prorrogra")
+
             if fecha_fin:
                 if fecha_fin.tzinfo is None:
                     from datetime import timezone as _tz
                     fecha_fin = fecha_fin.replace(tzinfo=_tz.utc)
-                if fecha_fin.astimezone(ZONA_BOGOTA).date() >= hoy:
+                fecha_limite = fecha_fin.astimezone(ZONA_BOGOTA).date() + timedelta(
+                    days=cls.DIAS_GRACIA_CONTRATO_VIGENTE
+                )
+                if fecha_limite >= hoy:
                     activos.append(c)
             else:
                 activos.append(c)
-        pool = activos or contratos
-        # Usar datetime.min (naive) como fallback para que la comparación sea homogénea:
-        # PyMongo devuelve datetimes naive; datetime.min.replace(tzinfo=...) sería aware y
-        # lanzaría TypeError cuando se mezclan contratos con y sin fecha_inicio.
+                
+        if not activos:
+            return {}
+            
+        activos.sort(
+            key=lambda c: c.get("fecha_inicio") or datetime.min,
+            reverse=True,
+        )
+        return activos[0]
+
+    @staticmethod
+    def _contrato_para_periodo(contratos: list, anio: int, mes: int) -> dict:
+        """Devuelve el contrato que estaba activo durante el año y mes indicados.
+        Si no hay ninguno que coincida, retorna el de fecha_inicio más reciente (comportamiento de fallback)."""
+        if not contratos:
+            return {}
+        
+        import calendar
+        from datetime import datetime, timezone
+        
+        # Rango de fechas del período (zona horaria Bogotá)
+        _, ultimo_dia = calendar.monthrange(anio, mes)
+        inicio_periodo = datetime(anio, mes, 1, 0, 0, 0, tzinfo=ZONA_BOGOTA)
+        fin_periodo = datetime(anio, mes, ultimo_dia, 23, 59, 59, tzinfo=ZONA_BOGOTA)
+        
+        coincidentes = []
+        for c in contratos:
+            fi = c.get("fecha_inicio")
+            ff = c.get("fecha_fin")
+            
+            # Prórroga si existe
+            prorroga = c.get("prorrogra_contrato") or {}
+            if prorroga.get("tiene_prorroga") and prorroga.get("fecha_prorrogra"):
+                ff = prorroga.get("fecha_prorrogra")
+                
+            if not fi:
+                continue
+                
+            # Normalizar zonas horarias a Bogotá
+            if fi.tzinfo is None:
+                fi = fi.replace(tzinfo=timezone.utc)
+            fi_bog = fi.astimezone(ZONA_BOGOTA)
+            
+            ff_bog = None
+            if ff:
+                if ff.tzinfo is None:
+                    ff = ff.replace(tzinfo=timezone.utc)
+                ff_bog = ff.astimezone(ZONA_BOGOTA)
+                
+            # Activo si inicio es <= fin_periodo y fin es >= inicio_periodo (o no tiene fin)
+            if fi_bog <= fin_periodo:
+                if ff_bog is None or ff_bog >= inicio_periodo:
+                    coincidentes.append(c)
+                    
+        pool = coincidentes or contratos
         pool.sort(
             key=lambda c: c.get("fecha_inicio") or datetime.min,
             reverse=True,
@@ -641,7 +782,9 @@ class CertificacionService:
             except Exception:
                 pass
         contratos = usuario_data.get("contratos") or []
-        contrato = self._contrato_vigente(contratos)
+        año_cert = certificacion.get("año")
+        mes_cert = certificacion.get("mes", 1)
+        contrato = self._contrato_para_periodo(contratos, año_cert, mes_cert)
         numero_contrato = contrato.get("numero") or "—"
         cedula = usuario_data.get("numero_documento") or "—"
 
@@ -1235,12 +1378,16 @@ class CertificacionService:
 
         # Contrato vigente
         contratos = usuario_data.get("contratos") or []
-        contrato_vig = self._contrato_vigente(contratos)
+        año_cert = certificacion.get("año")
+        mes_cert = certificacion.get("mes", 1)
+        contrato_vig = self._contrato_para_periodo(contratos, año_cert, mes_cert)
         no_contrato = contrato_vig.get("numero", "—")
         valor_mensual = contrato_vig.get("valor_mensual", 0)
         objeto_contrato = contrato_vig.get("objeto") or ""
         
         fecha_ini_raw = contrato_vig.get("fecha_inicio")
+        fecha_fin_raw = contrato_vig.get("fecha_fin")
+        valor_total = contrato_vig.get("valor", 0)
         
         # RP y Fecha RP
         rp_compromiso = contrato_vig.get("rp_compromiso_presupuestal") or "—"
@@ -1405,7 +1552,17 @@ class CertificacionService:
         if fecha_ini_raw and cert_month == fecha_ini_raw.month and cert_year == fecha_ini_raw.year:
             es_primer_mes = True
 
-        if es_primer_mes:
+        es_ultimo_mes = False
+        if fecha_fin_raw and cert_month == fecha_fin_raw.month and cert_year == fecha_fin_raw.year:
+            es_ultimo_mes = True
+
+        if es_primer_mes and es_ultimo_mes:
+            valor_pago = valor_total if valor_total > 0 else (contrato_vig.get("valor_primer_pago") or valor_mensual)
+            dia_ini = fecha_ini_raw.day
+            dia_fin = fecha_fin_raw.day
+            mes_ini = MESES_ES[fecha_ini_raw.month - 1].lower()
+            periodo_html = f"del <b>{dia_ini} al {dia_fin} de {mes_ini} del {cert_year}</b>"
+        elif es_primer_mes:
             valor_pago = contrato_vig.get("valor_primer_pago")
             if valor_pago is None or valor_pago == 0:
                 valor_pago = valor_mensual
@@ -1414,6 +1571,23 @@ class CertificacionService:
             mes_ini = MESES_ES[fecha_ini_raw.month - 1].lower()
             mes_nombre_lower = MESES_ES[cert_month - 1].lower()
             periodo_html = f"del <b>{dia_ini} de {mes_ini} al 30 de {mes_nombre_lower} del {cert_year}</b>"
+        elif es_ultimo_mes:
+            if contrato_vig.get("personalizar_ultimacuenta"):
+                valor_pago = contrato_vig.get("valor_personalizar_ultimacuenta") or 0
+            elif fecha_ini_raw and valor_total > 0:
+                total_meses_contrato = (fecha_fin_raw.year - fecha_ini_raw.year) * 12 + (fecha_fin_raw.month - fecha_ini_raw.month)
+                meses_completos = max(0, total_meses_contrato - 1)
+                val_primer = contrato_vig.get("valor_primer_pago")
+                if val_primer is None or val_primer == 0:
+                    val_primer = valor_mensual
+                valor_pago = valor_total - val_primer - (meses_completos * valor_mensual)
+                valor_pago = max(0, valor_pago)
+            else:
+                valor_pago = valor_mensual
+            
+            dia_fin = fecha_fin_raw.day
+            mes_fin = MESES_ES[fecha_fin_raw.month - 1].lower()
+            periodo_html = f"del <b>1 de {mes_fin} al {dia_fin} de {mes_fin} del {cert_year}</b>"
         else:
             valor_pago = valor_mensual
             periodo_html = f"de <b>{mes_nombre_upper}</b> del <b>{cert_year}</b>"
@@ -1423,7 +1597,7 @@ class CertificacionService:
         objeto_sostenida = objeto_contrato.upper()
         
         p_valor = (
-            f"La suma de <b>{val_letras}</b> /Cte <b>(${val_num_fmt})</b> <b>MONEDA CORRIENTE</b> "
+            f"La suma de <b>{val_letras} PESOS MONEDA CORRIENTE </b><b>(${val_num_fmt})</b>  "
             f"por concepto del Contrato de Prestación de Servicios No. <b>{no_contrato}</b> de <b>{fecha_ini_raw.year if fecha_ini_raw else dt.year}</b> "
             f"cuyo objeto es: “<b>{objeto_sostenida}</b>”, en el periodo correspondiente {periodo_html}."
         )
@@ -1536,7 +1710,9 @@ class CertificacionService:
 
         # Contrato vigente
         contratos = usuario_data.get("contratos") or []
-        contrato_vig = self._contrato_vigente(contratos)
+        año_cert = certificacion.get("año")
+        mes_cert = certificacion.get("mes", 1)
+        contrato_vig = self._contrato_para_periodo(contratos, año_cert, mes_cert)
         no_contrato = contrato_vig.get("numero", "—")
         valor_contrato = contrato_vig.get("valor", 0)
         valor_mensual = contrato_vig.get("valor_mensual", 0)
@@ -1869,7 +2045,9 @@ class CertificacionService:
 
         # Contrato vigente
         contratos = usuario_data.get("contratos") or []
-        contrato_vig = self._contrato_vigente(contratos)
+        año_cert = certificacion.get("año")
+        mes_cert = certificacion.get("mes", 1)
+        contrato_vig = self._contrato_para_periodo(contratos, año_cert, mes_cert)
         no_contrato = contrato_vig.get("numero", "—")
         valor_contrato = contrato_vig.get("valor", 0)
         valor_mensual = contrato_vig.get("valor_mensual", 0)
@@ -2155,10 +2333,35 @@ class CertificacionService:
         story.append(Spacer(1, 0.2 * cm))
 
         # Honorarios
-        val_letras = _numero_a_letras(int(valor_mensual))
-        val_num_fmt = _formatear_pesos(valor_mensual)
+        es_ultimo_mes = False
+        if fecha_fin_raw and mes_num == fecha_fin_raw.month and año_num == fecha_fin_raw.year:
+            es_ultimo_mes = True
+
+        if es_ultimo_mes:
+            if contrato_vig.get("personalizar_ultimacuenta"):
+                valor_pago = contrato_vig.get("valor_personalizar_ultimacuenta") or 0
+            elif fecha_ini_raw and valor_contrato > 0:
+                total_meses_contrato = (fecha_fin_raw.year - fecha_ini_raw.year) * 12 + (fecha_fin_raw.month - fecha_ini_raw.month)
+                meses_completos = max(0, total_meses_contrato - 1)
+                val_primer = contrato_vig.get("valor_primer_pago")
+                if val_primer is None or val_primer == 0:
+                    val_primer = valor_mensual
+                valor_pago = valor_contrato - val_primer - (meses_completos * valor_mensual)
+                valor_pago = max(0, valor_pago)
+            else:
+                valor_pago = valor_mensual
+            
+            dia_fin = fecha_fin_raw.day
+            mes_fin_lower = MESES_ES[fecha_fin_raw.month - 1].lower()
+            periodo_texto = f"DEL 1 DE {mes_fin_lower.upper()} AL {dia_fin} DE {mes_fin_lower.upper()} DEL {año_num}"
+        else:
+            valor_pago = valor_mensual
+            periodo_texto = f"{nombre_mes_exp.upper()}"
+
+        val_letras = _numero_a_letras(int(valor_pago))
+        val_num_fmt = _formatear_pesos(valor_pago)
         p_honorarios = (
-            f"Que el valor a cobrar por concepto de honorarios corresponden al periodo del <b><i>{nombre_mes_exp.upper()}</i></b> "
+            f"Que el valor a cobrar por concepto de honorarios corresponden al periodo del <b><i>{periodo_texto}</i></b> "
             f"y ascienden a la suma de: <b><i>{val_letras} ($ {val_num_fmt}) M/Cte.</i></b>"
         )
         story.append(Paragraph(p_honorarios, s_cuerpo))
@@ -2269,7 +2472,9 @@ class CertificacionService:
 
         # Contrato del usuario
         contratos = usuario_data.get("contratos") or []
-        contrato_vig = self._contrato_vigente(contratos)
+        año_cert = certificacion.get("año")
+        mes_cert = certificacion.get("mes", 1)
+        contrato_vig = self._contrato_para_periodo(contratos, año_cert, mes_cert)
         no_contrato = contrato_vig.get("numero", "—")
         fecha_ini_raw = contrato_vig.get("fecha_inicio")
         año_contrato = str(fecha_ini_raw.year) if fecha_ini_raw else "—"
@@ -2396,11 +2601,30 @@ class CertificacionService:
         from app.services.firma_service import FirmaService
         firma_contratista_bytes = FirmaService().obtener_imagen(usuario_id)
 
-        # Cargar firma de Gladys
-        firma_gladys_path = os.path.join("app", "assets", "firma_gla.png")
-        firma_gladys_img = None
-        if os.path.exists(firma_gladys_path):
-            firma_gladys_img = Image(firma_gladys_path, width=4.0 * cm, height=1.2 * cm, kind="proportional")
+        # Cargar firma del Jefe
+        jefe_nombre = "Gladys Gutiérrez Buitrago"
+        jefe_firma_img = None
+
+        firma_jefe_doc = certificacion.get("firmas", {}).get("jefe")
+        jefe_id_str = None
+        if firma_jefe_doc:
+            jefe_nombre = firma_jefe_doc.get("firmante_nombre", jefe_nombre)
+            jefe_id_str = str(firma_jefe_doc.get("firmante_id", ""))
+        else:
+            config_firmantes = self.obtener_firmantes_config("firmantes_formatos_actas", TIPOS_FIRMA_ACTAS)
+            jefe_config = config_firmantes.get("jefe") or {}
+            jefe_nombre = jefe_config.get("nombre", jefe_nombre)
+            jefe_id_str = jefe_config.get("usuario_id")
+
+        if jefe_id_str:
+            jefe_firma_bytes = FirmaService().obtener_imagen(jefe_id_str)
+            if jefe_firma_bytes:
+                jefe_firma_img = Image(io.BytesIO(jefe_firma_bytes), width=4.0 * cm, height=1.2 * cm, kind="proportional")
+
+        if not jefe_firma_img and jefe_nombre == "Gladys Gutiérrez Buitrago":
+            firma_gladys_path = os.path.join("app", "assets", "firma_gla.png")
+            if os.path.exists(firma_gladys_path):
+                jefe_firma_img = Image(firma_gladys_path, width=4.0 * cm, height=1.2 * cm, kind="proportional")
 
         firma_contratista_img = ""
         if firma_contratista_bytes:
@@ -2425,9 +2649,9 @@ class CertificacionService:
         ]
 
         col_der = [
-            firma_gladys_img if firma_gladys_img else "",
-            Paragraph("<b>Gladys Gutiérrez Buitrago</b>", s_firma_lbl),
-            Paragraph("Subdirectora de Reglamentación Técnica e Innovación", s_firma_desc),
+            Spacer(1, 1.2 * cm),
+            Paragraph(f"<b>{jefe_nombre}</b>", s_firma_lbl),
+            Paragraph("Subdirectora de Reglamentación Técnica e Innovación", s_firma_desc) if jefe_nombre == "Gladys Gutiérrez Buitrago" else Paragraph("Supervisora de Reglamentación Técnica y Innovación", s_firma_desc),
             Paragraph(f"SUPERVISOR CTO {no_contrato} de {año_contrato}", s_firma_desc)
         ]
 
@@ -2488,7 +2712,9 @@ class CertificacionService:
         lugar_exp = usuario_data.get("lugar_expedicion_documento") or "—"
 
         contratos = usuario_data.get("contratos") or []
-        contrato_vig = self._contrato_vigente(contratos)
+        año_cert = certificacion.get("año")
+        mes_cert = certificacion.get("mes", 1)
+        contrato_vig = self._contrato_para_periodo(contratos, año_cert, mes_cert)
         no_contrato = contrato_vig.get("numero") or "—"
         
         año = certificacion.get("año")
@@ -2497,16 +2723,6 @@ class CertificacionService:
 
         buf = io.BytesIO()
         custom_width = letter[0] + 2.0 * cm
-        custom_height = letter[1] + 16.0 * cm
-        custom_pagesize = (custom_width, custom_height)
-        doc = SimpleDocTemplate(
-            buf,
-            pagesize=custom_pagesize,
-            leftMargin=2.0 * cm,
-            rightMargin=2.0 * cm,
-            topMargin=2.0 * cm,
-            bottomMargin=2.0 * cm,
-        )
 
         estilos = getSampleStyleSheet()
         s_titulo = ParagraphStyle(
@@ -3106,11 +3322,57 @@ class CertificacionService:
         from app.services.firma_service import FirmaService
         firma_contratista_bytes = FirmaService().obtener_imagen(usuario_id)
 
-        # Firma Gladys (supervisor)
-        firma_gladys_path = os.path.join("app", "assets", "firma_gla.png")
-        firma_gladys_img = None
-        if os.path.exists(firma_gladys_path):
-            firma_gladys_img = Image(firma_gladys_path, width=4.0 * cm, height=1.2 * cm, kind="proportional")
+        # Buscar nombres e IDs de Financiera, Abogado y Jefe
+        config_firmantes = self.obtener_firmantes_config("firmantes_formatos_actas", TIPOS_FIRMA_ACTAS)
+        
+        # Financiera
+        firma_fin_doc = certificacion.get("firmas", {}).get("financiera")
+        fin_nombre = "sin nombre_financiera"
+        fin_id_str = None
+        if firma_fin_doc:
+            fin_nombre = firma_fin_doc.get("firmante_nombre", fin_nombre)
+            fin_id_str = str(firma_fin_doc.get("firmante_id", ""))
+        else:
+            fin_config = config_firmantes.get("financiera") or {}
+            fin_nombre = fin_config.get("nombre", fin_nombre)
+            fin_id_str = fin_config.get("usuario_id")
+
+        # Abogado
+        firma_abog_doc = certificacion.get("firmas", {}).get("abogado")
+        abog_nombre = "sin nombre_abogado"
+        abog_id_str = None
+        if firma_abog_doc:
+            abog_nombre = firma_abog_doc.get("firmante_nombre", abog_nombre)
+            abog_id_str = str(firma_abog_doc.get("firmante_id", ""))
+        else:
+            abog_config = config_firmantes.get("abogado") or {}
+            abog_nombre = abog_config.get("nombre", abog_nombre)
+            abog_id_str = abog_config.get("usuario_id")
+
+        # Jefe (Supervisor)
+        firma_jefe_doc = certificacion.get("firmas", {}).get("jefe")
+        jefe_nombre = "GLADYS GUTIÉRREZ BUITRAGO"
+        jefe_id_str = None
+        if firma_jefe_doc:
+            jefe_nombre = firma_jefe_doc.get("firmante_nombre", jefe_nombre)
+            jefe_id_str = str(firma_jefe_doc.get("firmante_id", ""))
+        else:
+            jefe_config = config_firmantes.get("jefe") or {}
+            jefe_nombre = jefe_config.get("nombre", jefe_nombre)
+            jefe_id_str = jefe_config.get("usuario_id")
+
+        # Cargar firma del Jefe
+        jefe_firma_img = None
+        if jefe_id_str:
+            jefe_firma_bytes = FirmaService().obtener_imagen(jefe_id_str)
+            if jefe_firma_bytes:
+                jefe_firma_img = Image(io.BytesIO(jefe_firma_bytes), width=4.0 * cm, height=1.2 * cm, kind="proportional")
+
+        # Fallback a Gladys si no hay firma registrada y es su nombre
+        if not jefe_firma_img and jefe_nombre == "GLADYS GUTIÉRREZ BUITRAGO":
+            firma_gladys_path = os.path.join("app", "assets", "firma_gla.png")
+            if os.path.exists(firma_gladys_path):
+                jefe_firma_img = Image(firma_gladys_path, width=4.0 * cm, height=1.2 * cm, kind="proportional")
 
         firma_contratista_img = ""
         if firma_contratista_bytes:
@@ -3128,9 +3390,9 @@ class CertificacionService:
         )
 
         col_der = [
-            firma_gladys_img if firma_gladys_img else "",
-            Paragraph("<b>GLADYS GUTIÉRREZ BUITRAGO</b>", s_firma_lbl),
-            Paragraph("Subdirectora de Reglamentación Técnica e Innovación", s_firma_desc),
+            Spacer(1, 1.2 * cm),
+            Paragraph(f"<b>{jefe_nombre.upper()}</b>", s_firma_lbl),
+            Paragraph("Subdirectora de Reglamentación Técnica e Innovación", s_firma_desc) if jefe_nombre == "GLADYS GUTIÉRREZ BUITRAGO" else Paragraph("Supervisora de Reglamentación Técnica e Innovación", s_firma_desc),
             Paragraph("Supervisor (a) del Contrato", s_firma_desc)
         ]
 
@@ -3165,22 +3427,61 @@ class CertificacionService:
             fontSize=6.5, fontName="Helvetica", alignment=TA_LEFT,
             leading=8.0, textColor=NEGRO
         )
-        p_meta_elaboro = Paragraph("<b>Elaboró:</b>", s_metadata_text)
-        p_meta_reviso1 = Paragraph("<b>Revisó:</b>", s_metadata_text)
-        p_meta_reviso2 = Paragraph("<b>Revisó:</b>", s_metadata_text)
+
+        # Cargar firmas pequeñas para Financiera y Abogado
+        firma_fin_img = ""
+        if fin_id_str and firma_fin_doc:
+            fin_bytes = FirmaService().obtener_imagen(fin_id_str)
+            if fin_bytes:
+                firma_fin_img = Image(io.BytesIO(fin_bytes), width=1.4 * cm, height=0.4 * cm, kind="proportional")
+
+        firma_abog_img = ""
+        if abog_id_str and firma_abog_doc:
+            abog_bytes = FirmaService().obtener_imagen(abog_id_str)
+            if abog_bytes:
+                firma_abog_img = Image(io.BytesIO(abog_bytes), width=1.4 * cm, height=0.4 * cm, kind="proportional")
+
+        p_meta_elaboro = Paragraph(f"<b>Elaboró:</b> {nombre}", s_metadata_text)
+        
+        # Tablas anidadas para alinear firmas pequeñas al frente de los nombres
+        t_reviso1 = Table(
+            [[Paragraph(f"<b>Revisó:</b> {fin_nombre}", s_metadata_text), firma_fin_img]],
+            colWidths=[6.0 * cm, 2.0 * cm]
+        )
+        t_reviso1.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ]))
+
+        t_reviso2 = Table(
+            [[Paragraph(f"<b>Revisó:</b> {abog_nombre}", s_metadata_text), firma_abog_img]],
+            colWidths=[6.0 * cm, 2.0 * cm]
+        )
+        t_reviso2.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ]))
+
         p_meta_anexo = Paragraph("<b>Anexo:</b> Relación de Pagos Generada por SIIF NACION – Un (1) Folio.", s_metadata_text)
         p_meta_acta = Paragraph(f"<b>Acta de Entrega y Recibo del Contrato No</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {no_contrato} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Un (1) Folio", s_metadata_text)
 
         t_wrapper_metadata = Table(
             [
                 ["", p_meta_elaboro, ""],
-                ["", p_meta_reviso1, ""],
-                ["", p_meta_reviso2, ""],
+                ["", t_reviso1, ""],
+                ["", t_reviso2, ""],
                 ["", p_meta_anexo, ""],
                 ["", p_meta_acta, ""]
             ],
             colWidths=[1.5 * cm, 16.59 * cm, 1.5 * cm]
         )
+
         t_wrapper_metadata.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
@@ -3297,6 +3598,25 @@ class CertificacionService:
         ]))
         story.append(t_cuerpo)
 
+        # Calcular altura dinámica de la página para que se adapte exactamente a 1 hoja
+        ancho_util = custom_width - 4.0 * cm  # Margen izquierdo y derecho de 2cm cada uno
+        altura_total = 0
+        for elemento in story:
+            _, h_el = elemento.wrap(ancho_util, 100000)
+            altura_total += h_el
+            
+        custom_height = altura_total + 4.0 * cm + 0.5 * cm
+        custom_pagesize = (custom_width, custom_height)
+        
+        doc = SimpleDocTemplate(
+            buf,
+            pagesize=custom_pagesize,
+            leftMargin=2.0 * cm,
+            rightMargin=2.0 * cm,
+            topMargin=2.0 * cm,
+            bottomMargin=2.0 * cm,
+        )
+
         def draw_page_number(canvas, doc_obj):
             canvas.saveState()
             canvas.setFont("Helvetica", 8)
@@ -3352,7 +3672,9 @@ class CertificacionService:
                 pass
 
         contratos = usuario_data.get("contratos") or []
-        contrato_vig = self._contrato_vigente(contratos)
+        año_cert = certificacion.get("año")
+        mes_cert = certificacion.get("mes", 1)
+        contrato_vig = self._contrato_para_periodo(contratos, año_cert, mes_cert)
         no_contrato = contrato_vig.get("numero", "") if contrato_vig else ""
 
         # Obtener valores para Adiciones y Prórroga
@@ -3373,16 +3695,6 @@ class CertificacionService:
 
         buf = io.BytesIO()
         custom_width = letter[0] + 2.0 * cm
-        custom_height = letter[1] + 12.0 * cm
-        custom_pagesize = (custom_width, custom_height)
-        doc = SimpleDocTemplate(
-            buf,
-            pagesize=custom_pagesize,
-            leftMargin=2.0 * cm,
-            rightMargin=2.0 * cm,
-            topMargin=2.0 * cm,
-            bottomMargin=2.0 * cm,
-        )
 
         estilos = getSampleStyleSheet()
         
@@ -3492,9 +3804,9 @@ class CertificacionService:
         fecha_fin_efectiva_dt = None
         if contrato_vig and contrato_vig.get("fecha_fin"):
             if tiene_prorroga and fecha_prorroga_dt:
-                fecha_fin_efectiva_dt = utc_a_bogota(fecha_prorroga_dt)
+                fecha_fin_efectiva_dt = fecha_prorroga_dt
             else:
-                fecha_fin_efectiva_dt = utc_a_bogota(contrato_vig["fecha_fin"])
+                fecha_fin_efectiva_dt = contrato_vig["fecha_fin"]
         
         dia_str = fecha_fin_efectiva_dt.strftime("%d") if fecha_fin_efectiva_dt else "—"
         mes_str = fecha_fin_efectiva_dt.strftime("%m") if fecha_fin_efectiva_dt else "—"
@@ -3537,7 +3849,7 @@ class CertificacionService:
         # --- CONFIGURACIÓN Y VALORES DE DATOS DE CONTRATO ---
         nombre_contratista = usuario_data.get("nombre_completo", "").upper()
         
-        fecha_ini_dt = utc_a_bogota(contrato_vig["fecha_inicio"]) if contrato_vig and contrato_vig.get("fecha_inicio") else None
+        fecha_ini_dt = contrato_vig.get("fecha_inicio") if contrato_vig and contrato_vig.get("fecha_inicio") else None
         fecha_inicio_str = fecha_ini_dt.strftime("%d/%m/%Y") if fecha_ini_dt else "—"
 
         objeto_contrato_upper = (contrato_vig.get("objeto") or "—").upper()
@@ -3551,8 +3863,10 @@ class CertificacionService:
         # Cálculo de plazo exacto en meses y días
         plazo_str = "—"
         if contrato_vig and contrato_vig.get("fecha_inicio") and contrato_vig.get("fecha_fin"):
-            d1 = utc_a_bogota(contrato_vig["fecha_inicio"]).date()
-            d2 = fecha_fin_efectiva_dt.date() if fecha_fin_efectiva_dt else utc_a_bogota(contrato_vig["fecha_fin"]).date()
+            d1 = contrato_vig["fecha_inicio"]
+            d2 = fecha_fin_efectiva_dt if fecha_fin_efectiva_dt else contrato_vig["fecha_fin"]
+            if hasattr(d1, "date"): d1 = d1.date()
+            if hasattr(d2, "date"): d2 = d2.date()
             years = d2.year - d1.year
             months = d2.month - d1.month
             days = d2.day - d1.day
@@ -3593,8 +3907,7 @@ class CertificacionService:
         fecha_prorrogra_str = "—"
         if tiene_prorroga and fecha_prorroga_dt:
             try:
-                fecha_prorrogra_bog = utc_a_bogota(fecha_prorroga_dt)
-                fecha_prorrogra_str = fecha_prorrogra_bog.strftime("%d/%m/%Y")
+                fecha_prorrogra_str = fecha_prorroga_dt.strftime("%d/%m/%Y")
             except Exception:
                 fecha_prorrogra_str = "—"
 
@@ -3623,9 +3936,8 @@ class CertificacionService:
         fecha_rp_str = "—"
         if fecha_rp_dt:
             try:
-                fecha_rp_bog = utc_a_bogota(fecha_rp_dt)
                 meses_es = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
-                fecha_rp_str = f"{fecha_rp_bog.day:02d} de {meses_es[fecha_rp_bog.month - 1]} de {fecha_rp_bog.year}"
+                fecha_rp_str = f"{fecha_rp_dt.day:02d} de {meses_es[fecha_rp_dt.month - 1]} de {fecha_rp_dt.year}"
             except Exception:
                 fecha_rp_str = "—"
 
@@ -4096,10 +4408,57 @@ class CertificacionService:
         if firma_contratista_bytes:
             firma_contratista_img = Image(io.BytesIO(firma_contratista_bytes), width=4.0 * cm, height=1.2 * cm, kind="proportional")
 
-        firma_gladys_path = os.path.join("app", "assets", "firma_gla.png")
-        firma_gladys_img = ""
-        if os.path.exists(firma_gladys_path):
-            firma_gladys_img = Image(firma_gladys_path, width=4.0 * cm, height=1.2 * cm, kind="proportional")
+        # Buscar nombres e IDs de Financiera, Abogado y Jefe
+        config_firmantes = self.obtener_firmantes_config("firmantes_formatos_actas", TIPOS_FIRMA_ACTAS)
+        
+        # Financiera
+        firma_fin_doc = certificacion.get("firmas", {}).get("financiera")
+        fin_nombre = "sin nombre_financiera"
+        fin_id_str = None
+        if firma_fin_doc:
+            fin_nombre = firma_fin_doc.get("firmante_nombre", fin_nombre)
+            fin_id_str = str(firma_fin_doc.get("firmante_id", ""))
+        else:
+            fin_config = config_firmantes.get("financiera") or {}
+            fin_nombre = fin_config.get("nombre", fin_nombre)
+            fin_id_str = fin_config.get("usuario_id")
+
+        # Abogado
+        firma_abog_doc = certificacion.get("firmas", {}).get("abogado")
+        abog_nombre = "sin nombre_abogado"
+        abog_id_str = None
+        if firma_abog_doc:
+            abog_nombre = firma_abog_doc.get("firmante_nombre", abog_nombre)
+            abog_id_str = str(firma_abog_doc.get("firmante_id", ""))
+        else:
+            abog_config = config_firmantes.get("abogado") or {}
+            abog_nombre = abog_config.get("nombre", abog_nombre)
+            abog_id_str = abog_config.get("usuario_id")
+
+        # Jefe (Supervisor)
+        firma_jefe_doc = certificacion.get("firmas", {}).get("jefe")
+        jefe_nombre = "GLADYS GUTIÉRREZ BUITRAGO"
+        jefe_id_str = None
+        if firma_jefe_doc:
+            jefe_nombre = firma_jefe_doc.get("firmante_nombre", jefe_nombre)
+            jefe_id_str = str(firma_jefe_doc.get("firmante_id", ""))
+        else:
+            jefe_config = config_firmantes.get("jefe") or {}
+            jefe_nombre = jefe_config.get("nombre", jefe_nombre)
+            jefe_id_str = jefe_config.get("usuario_id")
+
+        # Cargar firma del Jefe
+        jefe_firma_img = None
+        if jefe_id_str:
+            jefe_firma_bytes = FirmaService().obtener_imagen(jefe_id_str)
+            if jefe_firma_bytes:
+                jefe_firma_img = Image(io.BytesIO(jefe_firma_bytes), width=4.0 * cm, height=1.2 * cm, kind="proportional")
+
+        # Fallback a Gladys si no hay firma registrada y es su nombre
+        if not jefe_firma_img and jefe_nombre.upper() in ["GLADYS GUTIERREZ BUITRAGO", "GLADYS GUTIÉRREZ BUITRAGO"]:
+            firma_gladys_path = os.path.join("app", "assets", "firma_gla.png")
+            if os.path.exists(firma_gladys_path):
+                jefe_firma_img = Image(firma_gladys_path, width=4.0 * cm, height=1.2 * cm, kind="proportional")
 
         s_firma_side_lbl = ParagraphStyle(
             "firma_side_lbl", parent=estilos["Normal"],
@@ -4123,8 +4482,8 @@ class CertificacionService:
         ]
 
         col_supervisor = [
-            firma_gladys_img if firma_gladys_img else Spacer(1, 1.2 * cm),
-            Paragraph("GLADYS GUTIERREZ BUITRAGO", s_firma_name),
+            Spacer(1, 1.2 * cm),
+            Paragraph(jefe_nombre.upper(), s_firma_name),
             Paragraph("SUPERVISOR DEL CONTRATO", s_firma_role)
         ]
 
@@ -4196,17 +4555,54 @@ class CertificacionService:
             fontSize=6.5, fontName="Helvetica", alignment=TA_LEFT,
             leading=8.0, textColor=NEGRO
         )
-        p_meta_elaboro = Paragraph("<b>Elaboró:</b>", s_metadata_text)
-        p_meta_reviso1 = Paragraph("<b>Revisó:</b>", s_metadata_text)
-        p_meta_reviso2 = Paragraph("<b>Revisó:</b>", s_metadata_text)
-        p_meta_anexo = Paragraph("<b>Anexo:</b> Relación de Pagos Generada por SIIF NACION – Un (1) Folio.", s_metadata_text)
+
+        # Cargar firmas pequeñas para Financiera y Abogado
+        firma_fin_img = ""
+        if fin_id_str and firma_fin_doc:
+            fin_bytes = FirmaService().obtener_imagen(fin_id_str)
+            if fin_bytes:
+                firma_fin_img = Image(io.BytesIO(fin_bytes), width=1.4 * cm, height=0.4 * cm, kind="proportional")
+
+        firma_abog_img = ""
+        if abog_id_str and firma_abog_doc:
+            abog_bytes = FirmaService().obtener_imagen(abog_id_str)
+            if abog_bytes:
+                firma_abog_img = Image(io.BytesIO(abog_bytes), width=1.4 * cm, height=0.4 * cm, kind="proportional")
+
+        p_meta_elaboro = Paragraph(f"<b>Elaboró:</b> {nombre_contratista}", s_metadata_text)
+        
+        # Tablas anidadas para alinear firmas pequeñas al frente de los nombres (estrechas)
+        t_reviso1 = Table(
+            [[Paragraph(f"<b>Revisó:</b> {fin_nombre}", s_metadata_text), firma_fin_img]],
+            colWidths=[6.0 * cm, 2.0 * cm]
+        )
+        t_reviso1.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ]))
+
+        t_reviso2 = Table(
+            [[Paragraph(f"<b>Revisó:</b> {abog_nombre}", s_metadata_text), firma_abog_img]],
+            colWidths=[6.0 * cm, 2.0 * cm]
+        )
+        t_reviso2.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ]))
+
         p_meta_acta = Paragraph(f"<b>Acta de Entrega y Recibo del Contrato No</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {no_contrato} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Un (1) Folio", s_metadata_text)
 
         t_wrapper_metadata = Table(
             [
                 ["", p_meta_elaboro, ""],
-                ["", p_meta_reviso1, ""],
-                ["", p_meta_reviso2, ""],
+                ["", t_reviso1, ""],
+                ["", t_reviso2, ""],
                 ["", p_meta_acta, ""]
             ],
             colWidths=[0.15 * cm, 17.94 * cm, 1.5 * cm]
@@ -4257,6 +4653,25 @@ class CertificacionService:
             ("SPAN", (0, 10), (2, 10)),
         ]))
         story.append(t_cuerpo)
+
+        # Calcular altura dinámica de la página para que se adapte exactamente a 1 hoja
+        ancho_util = custom_width - 4.0 * cm  # Margen izquierdo y derecho de 2cm cada uno
+        altura_total = 0
+        for elemento in story:
+            _, h_el = elemento.wrap(ancho_util, 100000)
+            altura_total += h_el
+            
+        custom_height = altura_total + 4.0 * cm + 0.5 * cm
+        custom_pagesize = (custom_width, custom_height)
+        
+        doc = SimpleDocTemplate(
+            buf,
+            pagesize=custom_pagesize,
+            leftMargin=2.0 * cm,
+            rightMargin=2.0 * cm,
+            topMargin=2.0 * cm,
+            bottomMargin=2.0 * cm,
+        )
 
         def draw_page_number(canvas, doc_obj):
             canvas.saveState()

@@ -27,8 +27,11 @@
 | `certificacion.firmar_gd` | Firmar aprobación de Gestión Documental (firmante designado) | Certificaciones |
 | `certificacion.firmar_secop` | Firmar aprobación de SECOP II (firmante designado) | Certificaciones |
 | `certificacion.gestionar_firmantes` | Configurar quién ocupa cada rol de firmante | Certificaciones |
+| `certificacion.firmar_financiera` | Firmar aprobación Financiera de actas (firmante designado) | Certificaciones |
+| `certificacion.firmar_abogado` | Firmar aprobación Jurídica de actas (firmante designado) | Certificaciones |
+| `certificacion.firmar_jefe` | Firmar aprobación del Jefe de actas (firmante designado) | Certificaciones |
 
-> **Nota importante sobre los permisos de firma:** `firmar_corr`, `firmar_gd` y `firmar_secop` **no se asignan por rol**, se otorgan individualmente como `permisos_extra` al usuario cuando el administrador lo designa como firmante desde la página "Aprobar Certificaciones" → panel de configuración. Esto permite que un administrador también pueda ser firmante sin que todos los admins tengan ese permiso.
+> **Nota importante sobre los permisos de firma:** `firmar_corr`, `firmar_gd`, `firmar_secop`, `firmar_financiera`, `firmar_abogado` y `firmar_jefe` **no se asignan por rol**, se otorgan individualmente como `permisos_extra` al usuario cuando el administrador lo designa como firmante (Correspondencia/GD/SECOP desde "Aprobar Certificaciones"; Financiera/Abogado/Jefe desde "Seguimiento - Formatos" o "Sup. Formatos"). Esto permite que un administrador también pueda ser firmante sin que todos los admins tengan ese permiso.
 
 ---
 
@@ -36,7 +39,7 @@
 
 | Rol | Descripción | Permisos incluidos |
 |---|---|---|
-| `admin` | Administrador del sistema | Todos excepto `firmar_corr`, `firmar_gd`, `firmar_secop` |
+| `admin` | Administrador del sistema | Todos excepto `firmar_corr`, `firmar_gd`, `firmar_secop`, `firmar_financiera`, `firmar_abogado`, `firmar_jefe` |
 | `supervisor` | Supervisor de certificaciones mensuales | `certificacion.ver`, `certificacion.aprobar`, `correspondencia.ver`, `dashboard.ver` |
 | `firmante_certificacion` | Firmante designado — solo como base; el permiso específico de firma va en `permisos_extra` | `certificacion.ver` |
 | `coordinador` | Coordinador de área | `correspondencia.ver`, `dashboard.ver`, `reporte.ver` |
@@ -145,7 +148,26 @@ Tiene todos los permisos del sistema excepto los de firma de certificaciones (qu
 
 ---
 
-## 6. Acciones puntuales y el permiso que las habilita
+## 6. Firmas secuenciales de Actas (Financiera / Abogado / Jefe)
+
+Aplican a 3 formatos generados por el propio contratista desde "Formatos de contrato" (botón "✍️ Firmar y Generar Formato"): **Acta de compromiso**, **Balance General CPS** y **Acta de recibo y entrega CPS**. A diferencia del formato de Correspondencia/GD/SECOP, estos NO quedan aprobados de inmediato: nacen en estado `pendiente` y requieren aprobación de los roles designados, **en orden estricto**:
+
+- **Acta de compromiso:** solo **Jefe**.
+- **Balance General CPS** y **Acta de recibo y entrega CPS:** **Financiera → Abogado → Jefe**, en ese orden — un rol solo puede firmar si el anterior ya lo hizo.
+
+Si un firmante revoca su aprobación después de que alguien firmó detrás de él, las firmas posteriores se revocan también en cascada y el documento vuelve a `pendiente`; el firmante afectado ve un aviso explicando por qué.
+
+| Tipo de firma (actas) | `permisos_extra` que se otorga |
+|---|---|
+| Financiera | `certificacion.firmar_financiera` |
+| Abogado | `certificacion.firmar_abogado` |
+| Jefe | `certificacion.firmar_jefe` |
+
+Se configuran desde el expander "⚙️ Configurar firmantes de Actas" en **Seguimiento - Formatos** (`pages/7_admin_certif.py`), y se aprueban desde los botones 2/3/4 de **Sup. Formatos** (`pages/9_firmantes_certif.py`).
+
+---
+
+## 7. Acciones puntuales y el permiso que las habilita
 
 | Acción | Permiso requerido |
 |---|---|
