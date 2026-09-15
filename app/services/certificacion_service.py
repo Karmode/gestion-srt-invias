@@ -3665,16 +3665,13 @@ class CertificacionService:
         fecha_fin_str = fecha_fin_dt.strftime("%d/%m/%Y") if fecha_fin_dt else "—"
         objeto_str = (contrato_vig.get("objeto") or "").upper()
 
-        adiciones = (contrato_vig.get("adiciones_contrato") or {}) if contrato_vig else {}
-        tiene_adiciones = bool(adiciones.get("tiene_adiciones"))
-        valor_adicion = adiciones.get("valor_adicion") or 0 if tiene_adiciones else 0
-
         valor_inicial = contrato_vig.get("valor") or 0
-        valor_total = valor_inicial + valor_adicion
+        valor_total = valor_inicial
         valor_str = f"$   {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        valor_total_ejecutado = contrato_vig.get("valor_total_ejecutado_contrato", 0) or 0
+        valor_total_por_pagar = contrato_vig.get("valor_total_por_pagar_contrato", 0) or 0
         valor_total_pagado = contrato_vig.get("valor_total_pagado", 0) or 0
-        saldo_liberar = contrato_vig.get("saldo_presp_lib_contrato", 0) or 0
+        saldo_presp_lib_contrato_1 = abs(valor_total - valor_total_por_pagar)
+        saldo_presp_lib_contrato_2 = abs(valor_total - valor_total_pagado)
 
         s_lbl_body = ParagraphStyle(
             "lbl_body", parent=estilos["Normal"],
@@ -3803,10 +3800,12 @@ class CertificacionService:
         else:
             row_2 = [Paragraph("Valor IVA", s_lbl_body_normal), "", ""]
 
-        row_3 = [Paragraph("Valor Total Ejecutado", s_lbl_body_normal), crear_celda_moneda(valor_total_ejecutado, 4.54 * cm), ""]
+        row_3 = [Paragraph("Valor Total por Pagar", s_lbl_body_normal), crear_celda_moneda(valor_total_por_pagar, 4.54 * cm), ""]
         row_4 = [Paragraph("Valor total Pagado", s_lbl_body_normal), "", crear_celda_moneda(valor_total_pagado, 4.55 * cm)]
-        row_5 = [Paragraph("Saldo presupuestal a Liberar", s_lbl_body_normal), crear_celda_moneda(saldo_liberar, 4.54 * cm), crear_celda_moneda(saldo_liberar, 4.55 * cm)]
-        row_6 = [Paragraph("SUMAS IGUALES", s_lbl_body), crear_celda_moneda(valor_total, 4.54 * cm), crear_celda_moneda(valor_total, 4.55 * cm)]
+        row_5 = [Paragraph("Saldo presupuestal a Liberar", s_lbl_body_normal), crear_celda_moneda(saldo_presp_lib_contrato_1, 4.54 * cm), crear_celda_moneda(saldo_presp_lib_contrato_2, 4.55 * cm)]
+        sumas_iguales_col2 = valor_total_por_pagar + saldo_presp_lib_contrato_1
+        sumas_iguales_col3 = valor_total_pagado + saldo_presp_lib_contrato_2
+        row_6 = [Paragraph("SUMAS IGUALES", s_lbl_body), crear_celda_moneda(sumas_iguales_col2, 4.54 * cm), crear_celda_moneda(sumas_iguales_col3, 4.55 * cm)]
 
         t_balance = Table(
             [row_0, row_1, row_2, row_3, row_4, row_5, row_6],
@@ -3970,15 +3969,10 @@ class CertificacionService:
                     crear_celda_moneda_pagos(None, ancho_mon_col_neto)
                 ])
 
-        # Fila 15: Totales
-        tot_bruto = 0
-        tot_deduc = 0
-        tot_neto = 0
-        if pagos_lista:
-            p_last = pagos_lista[-1]
-            tot_bruto = p_last.get("valor_bruto_total") or 0
-            tot_deduc = p_last.get("deducciones_pago_total") or 0
-            tot_neto = p_last.get("valor_neto_pago_total") or 0
+        # Fila 15: Totales (sumatoria de todos los pagos registrados)
+        tot_bruto = sum(p.get("valor_bruto_pago") or 0 for p in pagos_lista)
+        tot_deduc = sum(p.get("deducciones_pago") or 0 for p in pagos_lista)
+        tot_neto = sum(p.get("valor_neto_pago") or 0 for p in pagos_lista)
 
         rows_pagos.append([
             Paragraph("<b>TOTALES</b>", s_lbl_body_center_bold_pagos), "", "",
@@ -4035,11 +4029,11 @@ class CertificacionService:
             s_cuerpo_texto
         )
 
-        # Formato de valor ejecutado
-        valor_ejec_fmt = f"$ {valor_total_ejecutado:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        valor_ejec_letras = numero_a_letras(valor_total_ejecutado)
+        # Formato de valor por pagar
+        valor_por_pagar_fmt = f"$ {valor_total_por_pagar:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        valor_por_pagar_letras = numero_a_letras(valor_total_por_pagar)
         p_texto_2 = Paragraph(
-            f"El valor ejecutado y pagado, ascendió a la suma de {valor_ejec_fmt} {valor_ejec_letras} PESOS M/CTE",
+            f"El valor ejecutado y pagado, ascendió a la suma de {valor_por_pagar_fmt} {valor_por_pagar_letras} PESOS M/CTE",
             s_cuerpo_texto
         )
 
@@ -4475,15 +4469,12 @@ class CertificacionService:
         fecha_fin_str = fecha_fin_dt.strftime("%d/%m/%Y") if fecha_fin_dt else "—"
         objeto_str = (contrato_vig.get("objeto") or "").upper()
 
-        adiciones = (contrato_vig.get("adiciones_contrato") or {}) if contrato_vig else {}
-        tiene_adiciones = bool(adiciones.get("tiene_adiciones"))
-        valor_adicion = adiciones.get("valor_adicion") or 0 if tiene_adiciones else 0
-
         valor_inicial = contrato_vig.get("valor") or 0
-        valor_total = valor_inicial + valor_adicion
-        valor_total_ejecutado = contrato_vig.get("valor_total_ejecutado_contrato", 0) or 0
+        valor_total = valor_inicial
+        valor_total_por_pagar = contrato_vig.get("valor_total_por_pagar_contrato", 0) or 0
         valor_total_pagado = contrato_vig.get("valor_total_pagado", 0) or 0
-        saldo_liberar = contrato_vig.get("saldo_presp_lib_contrato", 0) or 0
+        saldo_presp_lib_contrato_1 = abs(valor_total - valor_total_por_pagar)
+        saldo_presp_lib_contrato_2 = abs(valor_total - valor_total_pagado)
 
         from datetime import datetime as _dt
         pagos_lista = contrato_vig.get("pagos") or []
@@ -4492,14 +4483,11 @@ class CertificacionService:
         except Exception:
             pass
 
-        tot_bruto = tot_deduc = tot_neto = 0
-        if pagos_lista:
-            p_last = pagos_lista[-1]
-            tot_bruto = p_last.get("valor_bruto_total") or 0
-            tot_deduc = p_last.get("deducciones_pago_total") or 0
-            tot_neto = p_last.get("valor_neto_pago_total") or 0
+        tot_bruto = sum(p.get("valor_bruto_pago") or 0 for p in pagos_lista)
+        tot_deduc = sum(p.get("deducciones_pago") or 0 for p in pagos_lista)
+        tot_neto = sum(p.get("valor_neto_pago") or 0 for p in pagos_lista)
 
-        valor_ejec_letras = _xlsx_numero_a_letras(valor_total_ejecutado)
+        valor_por_pagar_letras = _xlsx_numero_a_letras(valor_total_por_pagar)
 
         dia_fin = fecha_fin_dt.day if fecha_fin_dt else datetime.now().day
         mes_fin_text = MESES_ES[(fecha_fin_dt.month - 1) if fecha_fin_dt else 0].capitalize()
@@ -4721,8 +4709,8 @@ class CertificacionService:
         else:
             _mr(r, c2_0, r, c3_1, "", fmt_blanco)
         r += 1
-        _mr(r, c1_0, r, c1_1, "Valor Total Ejecutado", fmt_bal_lbl)
-        _dinero(r, c2_0, c2_1, valor_total_ejecutado, fmt_money_bg)
+        _mr(r, c1_0, r, c1_1, "Valor Total por Pagar", fmt_bal_lbl)
+        _dinero(r, c2_0, c2_1, valor_total_por_pagar, fmt_money_bg)
         _mr(r, c3_0, r, c3_1, "", fmt_blanco_sin_bg)
         r += 1
         _mr(r, c1_0, r, c1_1, "Valor total Pagado", fmt_bal_lbl)
@@ -4730,12 +4718,14 @@ class CertificacionService:
         _dinero(r, c3_0, c3_1, valor_total_pagado, fmt_money_bg)
         r += 1
         _mr(r, c1_0, r, c1_1, "Saldo presupuestal a Liberar", fmt_bal_lbl)
-        _dinero(r, c2_0, c2_1, saldo_liberar, fmt_money)
-        _dinero(r, c3_0, c3_1, saldo_liberar, fmt_money)
+        _dinero(r, c2_0, c2_1, saldo_presp_lib_contrato_1, fmt_money)
+        _dinero(r, c3_0, c3_1, saldo_presp_lib_contrato_2, fmt_money)
         r += 1
+        sumas_iguales_col2 = valor_total_por_pagar + saldo_presp_lib_contrato_1
+        sumas_iguales_col3 = valor_total_pagado + saldo_presp_lib_contrato_2
         _mr(r, c1_0, r, c1_1, "SUMAS IGUALES", fmt_sumas_lbl)
-        _dinero(r, c2_0, c2_1, valor_total, fmt_money)
-        _dinero(r, c3_0, c3_1, valor_total, fmt_money)
+        _dinero(r, c2_0, c2_1, sumas_iguales_col2, fmt_money)
+        _dinero(r, c3_0, c3_1, sumas_iguales_col3, fmt_money)
         r += 2
 
         # --- CONSOLIDADO PAGOS CONTRATO ---
@@ -4774,7 +4764,7 @@ class CertificacionService:
         r += 2
 
         # --- Párrafos de cierre ---
-        valor_ejec_fmt = f"$ {valor_total_ejecutado:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        valor_por_pagar_fmt = f"$ {valor_total_por_pagar:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         ancho_parrafo_cm = (b_wrap[2] - b_wrap[1]) * COL_CM
         texto_1 = (
             "Previo al pago de cada una de las cuentas se verificaron los pagos de seguridad social tal "
@@ -4783,7 +4773,7 @@ class CertificacionService:
         ws.set_row(r, _xlsx_cm_a_puntos(_xlsx_altura_para_texto(texto_1, ancho_parrafo_cm, tam_fuente=7.5)))
         _mr(r, b_wrap[1], r, b_wrap[2] - 1, texto_1, fmt_texto)
         r += 1
-        texto_2 = f"El valor ejecutado y pagado, ascendió a la suma de {valor_ejec_fmt} {valor_ejec_letras} PESOS M/CTE"
+        texto_2 = f"El valor ejecutado y pagado, ascendió a la suma de {valor_por_pagar_fmt} {valor_por_pagar_letras} PESOS M/CTE"
         ws.set_row(r, _xlsx_cm_a_puntos(_xlsx_altura_para_texto(texto_2, ancho_parrafo_cm, tam_fuente=7.5)))
         _mr(r, b_wrap[1], r, b_wrap[2] - 1, texto_2, fmt_texto)
         r += 1
@@ -5509,15 +5499,15 @@ class CertificacionService:
         except Exception:
             valor_total_str = "0,00"
 
-        # Col 2: Valor Ejecutado
-        valor_ejecutado_int = contrato_vig.get("valor_total_ejecutado_contrato") or 0
+        # Col 2: Valor por Pagar
+        valor_por_pagar_int = contrato_vig.get("valor_total_por_pagar_contrato") or 0
         try:
-            valor_ejecutado_str = f"{valor_ejecutado_int:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            valor_por_pagar_str = f"{valor_por_pagar_int:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         except Exception:
-            valor_ejecutado_str = "0,00"
+            valor_por_pagar_str = "0,00"
 
-        # Col 3: Saldo Presupuestal a liberar
-        saldo_liberar_int = contrato_vig.get("saldo_presp_lib_contrato") or 0
+        # Col 3: Saldo Presupuestal a liberar (Valor Contratado - Valor por Pagar, en positivo)
+        saldo_liberar_int = abs(valor_total_int - valor_por_pagar_int)
         try:
             saldo_liberar_str = f"{saldo_liberar_int:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         except Exception:
@@ -5551,12 +5541,12 @@ class CertificacionService:
             ("RIGHTPADDING", (0, 0), (-1, -1), 0),
         ]))
 
-        t_val_ejecutado = Table(
-            [[Paragraph("<b>$</b>", s_balance_val_left), Paragraph(valor_ejecutado_str, s_balance_val_right)]],
+        t_val_por_pagar = Table(
+            [[Paragraph("<b>$</b>", s_balance_val_left), Paragraph(valor_por_pagar_str, s_balance_val_right)]],
             colWidths=[0.5 * cm, 2.3 * cm],
             rowHeights=[0.45 * cm]
         )
-        t_val_ejecutado.setStyle(TableStyle([
+        t_val_por_pagar.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
             ("TOPPADDING", (0, 0), (-1, -1), 0),
@@ -5589,13 +5579,13 @@ class CertificacionService:
                 [
                     Paragraph("DESCRIPCIÓN", s_balance_header),
                     Paragraph("VALOR CONTRATADO", s_balance_header),
-                    Paragraph("VALOR EJECUTADO", s_balance_header),
+                    Paragraph("VALOR POR PAGAR", s_balance_header),
                     Paragraph("SALDO NO EJECUTADO", s_balance_header)
                 ],
                 [
                     Paragraph(desc_text, s_desc_style),
                     t_val_contratado,
-                    t_val_ejecutado,
+                    t_val_por_pagar,
                     t_val_saldo
                 ]
             ],
@@ -6086,8 +6076,8 @@ class CertificacionService:
         valor_inicial_int = contrato_vig.get("valor") or 0
         valor_adicion_int = adiciones.get("valor_adicion") or 0 if tiene_adiciones else 0
         valor_total_int = valor_inicial_int + valor_adicion_int
-        valor_ejecutado_int = contrato_vig.get("valor_total_ejecutado_contrato") or 0
-        saldo_liberar_int = contrato_vig.get("saldo_presp_lib_contrato") or 0
+        valor_por_pagar_int = contrato_vig.get("valor_total_por_pagar_contrato") or 0
+        saldo_liberar_int = abs(valor_total_int - valor_por_pagar_int)
 
         mes_fin_lower = mes_fin.lower() if mes_fin else "—"
         text_constancia = (
@@ -6324,13 +6314,13 @@ class CertificacionService:
         b_baltab = _xlsx_subdividir([5.59, 3.0, 3.0, 3.0], b_balwrap[1], b_balwrap[2])
         _mr(r, b_baltab[0], r, b_baltab[1] - 1, "DESCRIPCIÓN", fmt_balance_header)
         _mr(r, b_baltab[1], r, b_baltab[2] - 1, "VALOR CONTRATADO", fmt_balance_header)
-        _mr(r, b_baltab[2], r, b_baltab[3] - 1, "VALOR EJECUTADO", fmt_balance_header)
+        _mr(r, b_baltab[2], r, b_baltab[3] - 1, "VALOR POR PAGAR", fmt_balance_header)
         _mr(r, b_baltab[3], r, b_baltab[4] - 1, "SALDO NO EJECUTADO", fmt_balance_header)
         r += 1
         ws.set_row(r, _xlsx_cm_a_puntos(0.95))
         _mr(r, b_baltab[0], r, b_baltab[1] - 1, desc_text, fmt_balance_desc)
         _dinero(r, b_baltab[1], b_baltab[2] - 1, valor_total_int, fmt_balance_money)
-        _dinero(r, b_baltab[2], b_baltab[3] - 1, valor_ejecutado_int, fmt_balance_money)
+        _dinero(r, b_baltab[2], b_baltab[3] - 1, valor_por_pagar_int, fmt_balance_money)
         _dinero(r, b_baltab[3], b_baltab[4] - 1, saldo_liberar_int, fmt_balance_money)
         r += 2
 

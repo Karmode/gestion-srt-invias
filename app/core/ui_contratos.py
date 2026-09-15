@@ -238,8 +238,7 @@ def render_balance_y_pagos(prefijo: str, c: dict, deshabilitado: bool = False):
         return {
             "tiene_inventario": bool(c.get("tiene_inventario")),
             "desc_inventario": c.get("desc_inventario"),
-            "valor_total_ejecutado_contrato": c.get("valor_total_ejecutado_contrato"),
-            "saldo_presp_lib_contrato": c.get("saldo_presp_lib_contrato"),
+            "valor_total_por_pagar_contrato": c.get("valor_total_por_pagar_contrato"),
             "valor_total_pagado": c.get("valor_total_pagado"),
             "prorrogra_contrato": c.get("prorrogra_contrato") or {"tiene_prorroga": False, "fecha_prorrogra": None, "radicado_prorrogra": None},
             "adiciones_contrato": c.get("adiciones_contrato") or {"tiene_adiciones": False, "valor_adicion": None},
@@ -345,36 +344,20 @@ def render_balance_y_pagos(prefijo: str, c: dict, deshabilitado: bool = False):
             unsafe_allow_html=True
         )
 
-    col1, col2, col3 = st.columns(3)
+    col1, col3 = st.columns(2)
     with col1:
         render_label_con_tooltip(
-            "Valor Total Ejecutado del contrato (COP)",
-            "Valor total ejecutado del contrato",
-            "Es el valor total que se ha ejecutado en los pagos del contrato. Puede ser diferente al valor total del contrato (mayor o menor) según adiciones o reducciones."
+            "Valor Total por Pagar del contrato (COP)",
+            "Valor total por pagar",
+            "Corresponde al valor total ejecutado (planeación) a la fecha de retiro o terminación."
         )
-        val_total_ejec = st.number_input(
-            "label_oculto_total_ejec",
+        val_total_por_pagar = st.number_input(
+            "label_oculto_total_por_pagar",
             min_value=0,
-            value=int(c.get("valor_total_ejecutado_contrato") or 0),
+            value=int(c.get("valor_total_por_pagar_contrato") or 0),
             step=100000,
             format="%d",
-            key=f"{prefijo}_val_total_ejec",
-            disabled=deshabilitado,
-            label_visibility="collapsed"
-        )
-    with col2:
-        render_label_con_tooltip(
-            "Saldo presupuestal a liberar (COP)",
-            "Saldo presupuestal a liberar",
-            "Es el saldo no ejecutado del contrato. Esta información se remitirá al contratista."
-        )
-        saldo_presp = st.number_input(
-            "label_oculto_saldo_presp",
-            min_value=0,
-            value=int(c.get("saldo_presp_lib_contrato") or 0),
-            step=100000,
-            format="%d",
-            key=f"{prefijo}_saldo_presp",
+            key=f"{prefijo}_val_total_por_pagar",
             disabled=deshabilitado,
             label_visibility="collapsed"
         )
@@ -611,73 +594,18 @@ def render_balance_y_pagos(prefijo: str, c: dict, deshabilitado: bool = False):
         # Actualizar el espejo con lo tecleado en este render.
         pagos_datos[pid] = {"num": num_pago, "fec": fecha_pago, "bruto": val_bruto, "deduc": deduc, "neto": val_neto}
 
-        # Guardaremos provisionalmente los acumulados como None o 0 por pago, pues los ingresará globalmente
         pagos_retorno.append({
             "numero_pago": num_pago,
             "fecha_pago": fecha_pago,
             "valor_bruto_pago": val_bruto,
-            "valor_bruto_total": 0,
             "deducciones_pago": deduc,
-            "deducciones_pago_total": 0,
             "valor_neto_pago": val_neto,
-            "valor_neto_pago_total": 0,
         })
         
-    # Fila de Totales Estilizada y MANUAL debajo de la barra divisoria con Tooltip
+    # Barra divisoria antes de la calculadora rápida (los totales ahora se calculan automáticamente)
     st.markdown("<hr style='margin:15px 0; border: 1.5px solid #FF8C00;'>", unsafe_allow_html=True)
-    st.markdown(
-        """
-<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
-<strong style="font-size: 16px; margin: 0; padding: 0;">📊 TOTALES GENERALES DEL CONTRATO</strong>
-<div class="srti-tooltip-container" style="margin: 0;">
-<span class="srti-tooltip-icon" tabindex="0">ⓘ
-<div class="srti-tooltip-content" style="width: 380px;">
-<h4>📊 TOTALES GENERALES DEL CONTRATO</h4>
-<p>El contratista debe sumar todos los valores brutos acumulados, todas las deducciones totales acumuladas y el valor neto acumulado en los pagos e ingresar el valor.</p>
-<p>El proceso no es automático, dada la variabilidad de estos valores según el contratista.</p>
-</div>
-</span>
-</div>
-</div>
-        """,
-        unsafe_allow_html=True
-    )
-    
-    # Inferir o inicializar valores del primer pago o del contrato en general
-    # Para cumplir con el esquema MongoDB, guardaremos los totales generales en las propiedades '..._total' de cada pago de la lista
-    val_bruto_tot_inicial = int(pagos_lista[0].get("valor_bruto_total") or 0) if pagos_lista else 0
-    deduc_tot_inicial = int(pagos_lista[0].get("deducciones_pago_total") or 0) if pagos_lista else 0
-    neto_tot_inicial = int(pagos_lista[0].get("valor_neto_pago_total") or 0) if pagos_lista else 0
-    
-    t1, t2, t3 = st.columns(3)
-    with t1:
-        acum_bruto_total = st.number_input(
-            "Valor Bruto Total (Acumulado)",
-            min_value=0,
-            step=100000,
-            value=val_bruto_tot_inicial,
-            key=f"{prefijo}_val_bruto_tot_global",
-            disabled=deshabilitado
-        )
-    with t2:
-        acum_deduc_total = st.number_input(
-            "Deducciones Total (Acumulado)",
-            min_value=0,
-            step=100000,
-            value=deduc_tot_inicial,
-            key=f"{prefijo}_pago_deduc_tot_global",
-            disabled=deshabilitado
-        )
-    with t3:
-        acum_neto_total = st.number_input(
-            "Valor Neto Total (Acumulado)",
-            min_value=0,
-            step=100000,
-            value=acum_bruto_total - acum_deduc_total if acum_bruto_total > acum_deduc_total else neto_tot_inicial,
-            key=f"{prefijo}_pago_neto_tot_global",
-            disabled=deshabilitado
-        )
-    # Botón de calculadora popover debajo de los inputs de totales
+
+    # Botón de calculadora popover (herramienta genérica de apoyo para sumas manuales)
     c_col1, c_col2 = st.columns([1.2, 4])
     with c_col1:
         with st.popover("🧮 Calculadora", key=f"{prefijo}_btn_calc_popover", use_container_width=True):
@@ -717,17 +645,10 @@ def render_balance_y_pagos(prefijo: str, c: dict, deshabilitado: bool = False):
 
     st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
 
-    # Inyectamos los totales del contrato ingresados por el usuario en cada uno de los elementos de pagos para que la base de datos valide correctamente
-    for p in pagos_retorno:
-        p["valor_bruto_total"] = acum_bruto_total
-        p["deducciones_pago_total"] = acum_deduc_total
-        p["valor_neto_pago_total"] = acum_neto_total
-        
     return {
         "tiene_inventario": tiene_inv,
         "desc_inventario": desc_inv if tiene_inv else None,
-        "valor_total_ejecutado_contrato": val_total_ejec,
-        "saldo_presp_lib_contrato": saldo_presp,
+        "valor_total_por_pagar_contrato": val_total_por_pagar,
         "valor_total_pagado": val_tot_pagado,
         "prorrogra_contrato": {
             "tiene_prorroga": tiene_pror,

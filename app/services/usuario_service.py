@@ -378,7 +378,7 @@ class UsuarioService:
         contrato["desc_inventario"] = (datos.get("desc_inventario") or "").strip() or None
         
         # Valores numéricos
-        for key in ["valor_total_ejecutado_contrato", "saldo_presp_lib_contrato", "valor_total_pagado"]:
+        for key in ["valor_total_por_pagar_contrato", "valor_total_pagado"]:
             val = datos.get(key)
             contrato[key] = int(val) if val is not None else None
 
@@ -421,11 +421,8 @@ class UsuarioService:
                 "numero_pago": num_p,
                 "fecha_pago": UsuarioService._fecha_a_datetime(f_pago),
                 "valor_bruto_pago": int(p.get("valor_bruto_pago") or 0),
-                "valor_bruto_total": int(p.get("valor_bruto_total") or 0),
                 "deducciones_pago": int(p.get("deducciones_pago") or 0),
-                "deducciones_pago_total": int(p.get("deducciones_pago_total") or 0),
                 "valor_neto_pago": int(p.get("valor_neto_pago") or 0),
-                "valor_neto_pago_total": int(p.get("valor_neto_pago_total") or 0),
             })
         contrato["pagos"] = pagos_procesados
 
@@ -665,21 +662,6 @@ class UsuarioService:
         pagos = contrato_activo.get("pagos") or []
         if not pagos:
             faltantes.append("Plan de pagos: al menos un pago registrado")
-        else:
-            # 4. Valores acumulados en los pagos
-            primer_pago = pagos[0]
-            val_bruto_tot = primer_pago.get("valor_bruto_total")
-            deduc_tot = primer_pago.get("deducciones_pago_total")
-            val_neto_tot = primer_pago.get("valor_neto_pago_total")
-
-            if self._vacio(val_bruto_tot):
-                faltantes.append("Valor Bruto Total (Acumulado) (debe ser mayor a cero)")
-
-            if deduc_tot is None or (isinstance(deduc_tot, str) and not deduc_tot.strip()):
-                faltantes.append("Deducciones Total (Acumulado) (debe estar diligenciado)")
-
-            if self._vacio(val_neto_tot):
-                faltantes.append("Valor Neto Total (Acumulado) (debe ser mayor a cero)")
 
         return {"valido": not faltantes, "faltantes": faltantes}
 
