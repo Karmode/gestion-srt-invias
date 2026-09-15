@@ -9,7 +9,11 @@ import streamlit as st
 from app.core.ui_titulos import mostrar_titulo_decorado
 
 from app.core.sesion import obtener_sesion
-from app.core.ui_certificado import obtener_pdf_certificado_cacheado
+from app.core.ui_certificado import (
+    abrir_dialogo_documento,
+    obtener_pdf_certificado_cacheado,
+    render_dialogo_documento_si_activo,
+)
 from app.core.zona_horaria import formato_fecha_bogota
 from app.services.certificacion_service import CertificacionService, MESES_ES, ORDEN_FIRMAS_ACTAS, TIPOS_FIRMA_ACTAS
 
@@ -137,49 +141,6 @@ def _dialog_confirmar_firma_actas(servicio: CertificacionService, sesion: dict) 
         if st.button("Cancelar", use_container_width=True, key="btn_cancelar_actas"):
             st.session_state.pop("_confirmar_firma_actas", None)
             st.rerun()
-
-def _cerrar_dialogo_borrador() -> None:
-    st.session_state.pop("ver_borrador_acta", None)
-
-@st.dialog("Borrador del Formato", width="large", on_dismiss=_cerrar_dialogo_borrador)
-def _dialog_ver_borrador(servicio: CertificacionService) -> None:
-    info = st.session_state.get("ver_borrador_acta")
-    if not info:
-        return
-    
-    cert = info["cert"]
-    nombre = info["nombre"]
-    tipo_formato = info["tipo_formato"]
-    nombre_mes = info["nombre_mes"]
-    año = info["año"]
-    
-    with st.spinner("Generando borrador del PDF…"):
-        try:
-            pdf_bytes = servicio.generar_pdf(cert)
-        except Exception as e:
-            st.error(f"Error al generar el borrador: {str(e)}")
-            return
-            
-    prefijos_archivo = {
-        "acta_compromiso": "Acta_Compromiso",
-        "acta_recibo_entrega_cps": "Balance_General_CPS",
-        "acta_recibo_entrega_cps_real": "Acta_Recibo_Entrega_CPS",
-    }
-    prefijo = prefijos_archivo.get(tipo_formato, "Acta")
-    
-    st.write(f"Previsualización del borrador para **{nombre}** ({nombre_mes} {año})")
-    
-    from streamlit_pdf_viewer import pdf_viewer
-    pdf_viewer(input=pdf_bytes, width=700, height=600)
-    
-    st.download_button(
-        "⬇️ Descargar Borrador",
-        data=pdf_bytes,
-        file_name=f"BORRADOR_{prefijo}_{nombre.replace(' ', '_')}_{nombre_mes}_{año}.pdf",
-        mime="application/pdf",
-        key=f"dl_borrador_{tipo_formato}_{cert['_id']}",
-        use_container_width=True,
-    )
 
 # ── Diálogo de confirmación de firma (aplica a los 3 tipos) ──────
 
@@ -421,40 +382,29 @@ def _render_panel_actas(
 
             with c_accion:
                 ya_aprobado = cert.get("estado") == "aprobado"
+                tiene_excel = tipo_formato in ("acta_recibo_entrega_cps", "acta_recibo_entrega_cps_real")
 
-                # Mostrar botón de descarga si el acta ya está aprobada/firmada
-                if ya_aprobado:
-                    pdf_bytes = obtener_pdf_certificado_cacheado(
-                        servicio,
-                        str(cert["_id"]),
-                        cert.get("hash_verificacion", ""),
-                        cert,
-                        version_key=str(cert.get("firmas", {})),
-                    )
-                    prefijos_archivo = {
-                        "acta_compromiso": "Acta_Compromiso",
-                        "acta_recibo_entrega_cps": "Balance_General_CPS",
-                        "acta_recibo_entrega_cps_real": "Acta_Recibo_Entrega_CPS",
-                    }
-                    prefijo = prefijos_archivo.get(tipo_formato, "Acta")
-                    st.download_button(
-                        "⬇️ Descargar",
-                        data=pdf_bytes,
-                        file_name=f"{prefijo}_{nombre.replace(' ', '_')}_{cert_nombre_mes}_{cert_año}.pdf",
-                        mime="application/pdf",
-                        key=f"dl_{tipo_formato}_{uid}",
+                prefijos_archivo = {
+                    "acta_compromiso": "Acta_Compromiso",
+                    "acta_recibo_entrega_cps": "Balance_General_CPS",
+                    "acta_recibo_entrega_cps_real": "Acta_Recibo_Entrega_CPS",
+                }
+                prefijo = prefijos_archivo.get(tipo_formato, "Acta")
+                periodo = f"{cert_nombre_mes}_{cert_año}"
+
+                # El PDF/Excel se genera solo al abrir el diálogo (clic del botón), no antes.
+                c_pdf, c_xlsx = st.columns(2) if tiene_excel else (st.container(), None)
+                with c_pdf:
+                    if st.button(
+                        "📄 PDF" if tiene_excel else "👁️ Ver / Descargar",
+                        key=f"ver_{tipo_formato}_{uid}",
                         use_container_width=True,
-                    )
-                else:
-                    if st.button("🔍 Borrador", key=f"draft_{tipo_formato}_{uid}", use_container_width=True):
-                        st.session_state["ver_borrador_acta"] = {
-                            "cert": cert,
-                            "nombre": nombre,
-                            "tipo_formato": tipo_formato,
-                            "nombre_mes": cert_nombre_mes,
-                            "año": cert_año,
-                        }
-                        st.rerun()
+                    ):
+                        abrir_dialogo_documento(cert, nombre, "pdf", prefijo, periodo, es_borrador=not ya_aprobado)
+                if tiene_excel:
+                    with c_xlsx:
+                        if st.button("📊 Excel", key=f"ver_xlsx_{tipo_formato}_{uid}", use_container_width=True):
+                            abrir_dialogo_documento(cert, nombre, "xlsx", prefijo, periodo, es_borrador=not ya_aprobado)
 
                 if rol_activo:
                     idx = orden.index(rol_activo)
@@ -826,5 +776,4 @@ def render(sesion=None):
     if st.session_state.get("_confirmar_firma"):
         _dialog_confirmar_firma(servicio, sesion, año, mes, nombre_mes)
 
-    if st.session_state.get("ver_borrador_acta"):
-        _dialog_ver_borrador(servicio)
+    render_dialogo_documento_si_activo(servicio)
