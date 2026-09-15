@@ -43,47 +43,6 @@ def render_balance_y_pagos(prefijo: str, c: dict, deshabilitado: bool = False):
             background-color: #b71c1c !important;
             background: #b71c1c !important;
         }}
-        /* Botón de calculadora con estilo naranja forzado */
-        div[data-testid="stPopover"]:has(button[key*="_btn_calc_popover"]) button {{
-            background-color: #FF8C00 !important;
-            background: #FF8C00 !important;
-            color: white !important;
-            font-weight: bold !important;
-            padding: 6px 12px !important;
-            font-size: 13px !important;
-            border-radius: 8px !important;
-            border: none !important;
-            display: inline-flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            height: auto !important;
-            width: auto !important;
-        }}
-        div[data-testid="stPopover"]:has(button[key*="_btn_calc_popover"]) button:hover {{
-            background-color: #E07B00 !important;
-            background: #E07B00 !important;
-        }}
-        /* Ocultar la flecha de expandir predeterminada de Streamlit en este popover específico */
-        div[data-testid="stPopover"]:has(button[key*="_btn_calc_popover"]) button svg,
-        div[data-testid="stPopover"]:has(button[key*="_btn_calc_popover"]) button span[data-testid="stIcon"],
-        div[data-testid="stPopover"]:has(button[key*="_btn_calc_popover"]) button span:not(:has([data-testid="stMarkdownContainer"])) {{
-            display: none !important;
-            visibility: hidden !important;
-        }}
-        /* Reducir espacio interno de la ventana popover de la calculadora */
-        div[data-testid="stPopoverBody"] {{
-            padding: 10px !important;
-            max-width: 280px !important;
-        }}
-        div[data-testid="stPopoverBody"] div[data-testid="stWidgetLabel"] p {{
-            font-size: 11px !important;
-            margin-bottom: -5px !important;
-        }}
-        div[data-testid="stPopoverBody"] input {{
-            height: 28px !important;
-            font-size: 12px !important;
-        }}
-        
         /* Contenedor del Tooltip */
         .srti-tooltip-container {{
             display: inline-flex;
@@ -602,48 +561,7 @@ def render_balance_y_pagos(prefijo: str, c: dict, deshabilitado: bool = False):
             "valor_neto_pago": val_neto,
         })
         
-    # Barra divisoria antes de la calculadora rápida (los totales ahora se calculan automáticamente)
     st.markdown("<hr style='margin:15px 0; border: 1.5px solid #FF8C00;'>", unsafe_allow_html=True)
-
-    # Botón de calculadora popover (herramienta genérica de apoyo para sumas manuales)
-    c_col1, c_col2 = st.columns([1.2, 4])
-    with c_col1:
-        with st.popover("🧮 Calculadora", key=f"{prefijo}_btn_calc_popover", use_container_width=True):
-            st.markdown("<h4 style='margin:0; padding-bottom:10px; color:#FF8C00;'>🧮 Calculadora Rápida</h4>", unsafe_allow_html=True)
-            calc_v1 = st.number_input("Valor A (COP)", min_value=0, step=10000, key=f"{prefijo}_calc_val_a")
-            calc_op = st.selectbox("Operación", ["+", "-", "*", "/"], key=f"{prefijo}_calc_oper")
-            calc_v2 = st.number_input("Valor B (COP)", min_value=0, step=10000, key=f"{prefijo}_calc_val_b")
-            
-            res_val = 0
-            if calc_op == "+":
-                res_val = calc_v1 + calc_v2
-            elif calc_op == "-":
-                res_val = calc_v1 - calc_v2
-            elif calc_op == "*":
-                res_val = calc_v1 * calc_v2
-            elif calc_op == "/" and calc_v2 != 0:
-                res_val = calc_v1 / calc_v2
-                
-            res_entero = int(res_val)
-            
-            # Autocopiador HTML renderizado usando st.components.v1.html para aislamiento correcto en sandbox de Streamlit
-            import streamlit.components.v1 as components
-            components.html(
-                f"""
-                <div style="font-family:sans-serif; background-color:#E8F5E9; border-radius:8px; padding:8px 12px; border:1px solid #C8E6C9; display:flex; align-items:center; justify-content:between;">
-                    <span style="font-weight:bold; color:#2E7D32; font-size:13px; flex-grow:1;">Resultado: {res_entero}</span>
-                    <button
-                        onclick='navigator.clipboard.writeText("{res_entero}").then(() => {{ this.innerText = "✅"; setTimeout(() => this.innerText = "📋", 1000); }})'
-                        style="border:1px solid #A5D6A7; border-radius:4px; width:26px; height:26px; background:#fff; cursor:pointer; font-size:12px; display:inline-flex; align-items:center; justify-content:center;"
-                        title="Copiar resultado"
-                    >📋</button>
-                </div>
-                """,
-                height=48
-            )
-            st.caption("Usa esta ventana flotante para hacer tus sumas manuales de forma rápida. Haz clic en el botón de la derecha para copiar el resultado.")
-
-    st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
 
     return {
         "tiene_inventario": tiene_inv,

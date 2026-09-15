@@ -4029,11 +4029,11 @@ class CertificacionService:
             s_cuerpo_texto
         )
 
-        # Formato de valor por pagar
-        valor_por_pagar_fmt = f"$ {valor_total_por_pagar:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        valor_por_pagar_letras = numero_a_letras(valor_total_por_pagar)
+        # Formato del valor bruto total
+        valor_bruto_fmt = f"$ {tot_bruto:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        valor_bruto_letras = numero_a_letras(tot_bruto)
         p_texto_2 = Paragraph(
-            f"El valor ejecutado y pagado, ascendió a la suma de {valor_por_pagar_fmt} {valor_por_pagar_letras} PESOS M/CTE",
+            f"El valor ejecutado y pagado, ascendió a la suma de {valor_bruto_fmt} {valor_bruto_letras} PESOS M/CTE",
             s_cuerpo_texto
         )
 
@@ -4487,7 +4487,7 @@ class CertificacionService:
         tot_deduc = sum(p.get("deducciones_pago") or 0 for p in pagos_lista)
         tot_neto = sum(p.get("valor_neto_pago") or 0 for p in pagos_lista)
 
-        valor_por_pagar_letras = _xlsx_numero_a_letras(valor_total_por_pagar)
+        valor_bruto_letras = _xlsx_numero_a_letras(tot_bruto)
 
         dia_fin = fecha_fin_dt.day if fecha_fin_dt else datetime.now().day
         mes_fin_text = MESES_ES[(fecha_fin_dt.month - 1) if fecha_fin_dt else 0].capitalize()
@@ -4764,7 +4764,7 @@ class CertificacionService:
         r += 2
 
         # --- Párrafos de cierre ---
-        valor_por_pagar_fmt = f"$ {valor_total_por_pagar:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        valor_bruto_fmt = f"$ {tot_bruto:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         ancho_parrafo_cm = (b_wrap[2] - b_wrap[1]) * COL_CM
         texto_1 = (
             "Previo al pago de cada una de las cuentas se verificaron los pagos de seguridad social tal "
@@ -4773,7 +4773,7 @@ class CertificacionService:
         ws.set_row(r, _xlsx_cm_a_puntos(_xlsx_altura_para_texto(texto_1, ancho_parrafo_cm, tam_fuente=7.5)))
         _mr(r, b_wrap[1], r, b_wrap[2] - 1, texto_1, fmt_texto)
         r += 1
-        texto_2 = f"El valor ejecutado y pagado, ascendió a la suma de {valor_por_pagar_fmt} {valor_por_pagar_letras} PESOS M/CTE"
+        texto_2 = f"El valor ejecutado y pagado, ascendió a la suma de {valor_bruto_fmt} {valor_bruto_letras} PESOS M/CTE"
         ws.set_row(r, _xlsx_cm_a_puntos(_xlsx_altura_para_texto(texto_2, ancho_parrafo_cm, tam_fuente=7.5)))
         _mr(r, b_wrap[1], r, b_wrap[2] - 1, texto_2, fmt_texto)
         r += 1
