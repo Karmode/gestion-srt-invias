@@ -9,7 +9,12 @@ import streamlit as st
 from app.core.ui_titulos import mostrar_titulo_decorado
 
 from app.core.sesion import obtener_sesion
-from app.core.ui_certificado import obtener_pdf_certificado_cacheado, render_preview_cert
+from app.core.ui_certificado import (
+    abrir_dialogo_documento,
+    obtener_pdf_certificado_cacheado,
+    render_dialogo_documento_si_activo,
+    render_preview_cert,
+)
 from app.core.zona_horaria import formato_fecha_bogota
 from app.services.certificacion_service import CertificacionService, MESES_ES, TIPOS_FIRMA_ACTAS, ORDEN_FIRMAS_ACTAS
 
@@ -380,23 +385,28 @@ def render(sesion=None):
 
                         with c_btn:
                             if estado_cert == "aprobado":
-                                pdf_bytes = obtener_pdf_certificado_cacheado(
-                                    servicio, str(cert["_id"]), cert.get("hash_verificacion", ""), cert,
-                                    version_key=str(cert.get("firmas", {}))
-                                )
                                 prefijo = _PREFIJO_ARCHIVO_ACTAS[tipo_acta_activo]
-                                st.download_button(
-                                    "⬇️ Descargar",
-                                    data=pdf_bytes,
-                                    file_name=f"{prefijo}_{nombre.replace(' ', '_')}_{nombre_mes}_{año}.pdf",
-                                    mime="application/pdf",
-                                    key=f"dl_{tipo_acta_activo}_{uid}",
-                                    type="primary",
-                                    use_container_width=True,
-                                )
+                                tiene_excel = tipo_acta_activo in ("acta_recibo_entrega_cps", "acta_recibo_entrega_cps_real")
+                                periodo = f"{nombre_mes}_{año}"
+                                # El PDF/Excel se genera solo al abrir el diálogo (clic del botón), no antes.
+                                c_btn_pdf, c_btn_xlsx = st.columns(2) if tiene_excel else (st.container(), None)
+                                with c_btn_pdf:
+                                    if st.button(
+                                        "📄 PDF" if tiene_excel else "👁️ Ver / Descargar",
+                                        key=f"ver_{tipo_acta_activo}_{uid}",
+                                        type="primary",
+                                        use_container_width=True,
+                                    ):
+                                        abrir_dialogo_documento(cert, nombre, "pdf", prefijo, periodo)
+                                if tiene_excel:
+                                    with c_btn_xlsx:
+                                        if st.button("📊 Excel", key=f"ver_xlsx_{tipo_acta_activo}_{uid}", type="secondary", use_container_width=True):
+                                            abrir_dialogo_documento(cert, nombre, "xlsx", prefijo, periodo)
 
     if st.session_state.get("_preview_cert"):
         _dialog_preview(servicio)
+
+    render_dialogo_documento_si_activo(servicio)
 
     if st.session_state["ver_formato_control_seg"]:
         # Resumen de firmantes designados
