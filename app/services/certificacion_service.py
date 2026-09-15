@@ -587,11 +587,6 @@ class CertificacionService:
     def firmar_y_generar_acta_recibo_entrega(
         self, usuario_id: str, nombre_usuario: str, año: int = None, mes: int = None
     ) -> bool:
-        from app.services.usuario_service import UsuarioService
-        req_bg = UsuarioService().validar_datos_balance_general_cps(usuario_id)
-        if not req_bg["valido"]:
-            raise ValueError(f"Faltan requisitos para generar el Balance General CPS: {', '.join(req_bg['faltantes'])}")
-
         if año is None or mes is None:
             año, mes = self.periodo_certificable()
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "acta_recibo_entrega_cps")

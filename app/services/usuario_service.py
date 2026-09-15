@@ -85,22 +85,6 @@ class UsuarioService:
             fecha_limite += timedelta(days=dias_gracia)
         return fecha_limite < hoy
 
-    @classmethod
-    def _contrato_para_validacion(cls, contratos: list) -> dict:
-        """Contrato a usar al validar requisitos de un formato: el último activo
-        (dentro de los días de gracia) si existe; si todos los contratos ya
-        finalizaron y no hay uno más reciente, el último por fecha_inicio, para
-        que el formato se siga pudiendo generar con los datos del contrato cerrado."""
-        if not contratos:
-            return {}
-        activos = [
-            c for c in contratos
-            if not cls._contrato_finalizado(c, dias_gracia=DIAS_GRACIA_DESCARGA_FORMATOS)
-        ]
-        if activos:
-            return activos[-1]
-        return max(contratos, key=lambda c: c.get("fecha_inicio") or datetime.min)
-
     @staticmethod
     def _afiliacion(datos) -> dict:
         """Normaliza una afiliación {entidad, paga, valor, radicado}; campos vacíos → None.
@@ -631,39 +615,6 @@ class UsuarioService:
             })
 
         return {"puede_descargar": not secciones, "secciones": secciones}
-
-    def validar_datos_balance_general_cps(self, id_usuario: str) -> dict:
-        """Evalúa si el usuario cumple con los requisitos específicos para el formato
-        Balance General CPS.
-
-        Retorna {"valido": bool, "faltantes": [str]}
-        """
-        usuario = self.repositorio.buscar_por_id(id_usuario) or {}
-        contratos = usuario.get("contratos") or []
-        contrato_activo = self._contrato_para_validacion(contratos)
-
-        faltantes = []
-
-        if not contrato_activo:
-            faltantes.append("No tienes ningún contrato registrado.")
-            return {"valido": False, "faltantes": faltantes}
-
-        # 1. Valor contratado (campo 'valor')
-        valor_contratado = contrato_activo.get("valor")
-        if self._vacio(valor_contratado):
-            faltantes.append("Valor contratado (debe ser mayor a cero)")
-
-        # 2. Valor total Pagado
-        valor_total_pagado = contrato_activo.get("valor_total_pagado")
-        if self._vacio(valor_total_pagado):
-            faltantes.append("Valor total pagado (debe ser mayor a cero)")
-
-        # 3. Pagos: al menos un pago registrado en el último contrato activo
-        pagos = contrato_activo.get("pagos") or []
-        if not pagos:
-            faltantes.append("Plan de pagos: al menos un pago registrado")
-
-        return {"valido": not faltantes, "faltantes": faltantes}
 
     def validar_datos_acta_recibo_entrega_cps(self, id_usuario: str) -> dict:
         """Evalúa si el usuario cumple con los requisitos específicos para el formato
