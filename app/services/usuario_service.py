@@ -329,9 +329,9 @@ class UsuarioService:
         objeto = (datos.get("objeto") or "").strip()
         if objeto:
             contrato["objeto"] = objeto
-        radicado = (datos.get("radicado_del_contrato") or "").strip()
-        if radicado:
-            contrato["radicado_del_contrato"] = radicado
+        fecha_orden_inicio = datos.get("fecha_orden_inicio_contrato")
+        if fecha_orden_inicio:
+            contrato["fecha_orden_inicio_contrato"] = UsuarioService._fecha_a_datetime(fecha_orden_inicio)
         valor = datos.get("valor")
         if valor is not None and valor > 0:
             contrato["valor"] = int(valor)
@@ -347,6 +347,9 @@ class UsuarioService:
         fecha_rp = datos.get("fecha_recurso_presupuestal")
         if fecha_rp:
             contrato["fecha_recurso_presupuestal"] = UsuarioService._fecha_a_datetime(fecha_rp)
+        fecha_firma_secop = datos.get("firma_cps_secop")
+        if fecha_firma_secop:
+            contrato["firma_cps_secop"] = UsuarioService._fecha_a_datetime(fecha_firma_secop)
         valor_mensual = datos.get("valor_mensual")
         if valor_mensual is not None and valor_mensual > 0:
             contrato["valor_mensual"] = int(valor_mensual)
@@ -649,11 +652,7 @@ class UsuarioService:
         if self._vacio(contrato_activo.get("objeto")):
             faltantes.append("Objeto del contrato")
 
-        # 4. Radicado del contrato (del último contrato activo)
-        if self._vacio(contrato_activo.get("radicado_del_contrato")):
-            faltantes.append("Radicado del contrato")
-
-        # 5. RP / compromiso presupuestal
+        # 4. RP / compromiso presupuestal
         if self._vacio(contrato_activo.get("rp_compromiso_presupuestal")):
             faltantes.append("RP / compromiso presupuestal")
 
