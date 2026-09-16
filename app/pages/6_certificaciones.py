@@ -1225,7 +1225,7 @@ def render(sesion=None):
         unsafe_allow_html=True
     )
 
-    faltantes = UsuarioService().faltantes_para_formatos(usuario_id)
+    faltantes = UsuarioService().faltantes_para_formatos(usuario_id, año=año_cert, mes=mes_cert)
     bloqueado = not faltantes["puede_descargar"]
     if bloqueado:
         _render_alerta_faltantes(faltantes)
