@@ -346,24 +346,45 @@ Fórmula: <code>Ingreso Mensual × 40% = IBC</code><br>
             st.caption(f"**{etiqueta}** — No aplica (pensionado/a)")
             resultado_ss[cod] = af  # preservar datos existentes sin modificar
             continue
-        c1, c2, c3 = st.columns([2, 1.3, 1.3])
+        c1, c2, c3, c4, c5 = st.columns([2, 1.3, 1.1, 1.1, 1.1])
         with c1:
             entidad = _select_keyed(etiqueta, mapas[cat], af.get("entidad") or "", f"{prefijo}_{cod}_ent")
         with c2:
             paga = _select_keyed("¿Quién paga?", _MAPA_PAGA, _paga_inicial(af), f"{prefijo}_{cod}_paga")
-        with c3:
-            if paga == "entidad":
+        if paga == "entidad":
+            with c3:
                 _preseed(f"{prefijo}_{cod}_rad", af.get("radicado") or "")
                 radicado = st.text_input("N° de radicado", key=f"{prefijo}_{cod}_rad", placeholder="Radicado del pago")
-                valor = 0
-            elif paga == "contratista":
+            valor_primer_mes, valor, valor_ultimo_mes = 0, 0, 0
+        elif paga == "contratista":
+            with c3:
+                _preseed(f"{prefijo}_{cod}_val_primer", int(af.get("valor_primer_mes") or 0))
+                valor_primer_mes = st.number_input(
+                    "Valor mensual primera cuenta", min_value=0, step=10000, format="%d",
+                    key=f"{prefijo}_{cod}_val_primer",
+                )
+            with c4:
                 _preseed(f"{prefijo}_{cod}_val", int(af.get("valor") or 0))
                 valor = st.number_input("Valor mensual", min_value=0, step=10000, format="%d", key=f"{prefijo}_{cod}_val")
-                radicado = ""
-            else:
+            with c5:
+                _preseed(f"{prefijo}_{cod}_val_ultimo", int(af.get("valor_ultimo_mes") or 0))
+                valor_ultimo_mes = st.number_input(
+                    "Valor mensual última cuenta", min_value=0, step=10000, format="%d",
+                    key=f"{prefijo}_{cod}_val_ultimo",
+                )
+            radicado = ""
+        else:
+            with c3:
                 st.caption("Selecciona quién paga el aporte.")
-                valor, radicado = 0, ""
-        resultado_ss[cod] = {"entidad": entidad, "paga": paga, "valor": valor, "radicado": radicado}
+            valor_primer_mes, valor, valor_ultimo_mes, radicado = 0, 0, 0, ""
+        resultado_ss[cod] = {
+            "entidad": entidad,
+            "paga": paga,
+            "valor": valor,
+            "valor_primer_mes": valor_primer_mes,
+            "valor_ultimo_mes": valor_ultimo_mes,
+            "radicado": radicado,
+        }
 
     st.markdown("##### 🏦 Información bancaria")
     cb1, cb2, cb3 = st.columns(3)
@@ -658,7 +679,10 @@ def laboral_vacia(il):
     if il.get("grupo_trabajo"):
         return False
     ss = il.get("seguridad_social") or {}
-    if any((a.get("entidad") or a.get("valor") or a.get("radicado")) for a in ss.values()):
+    if any(
+        (a.get("entidad") or a.get("valor") or a.get("valor_primer_mes") or a.get("valor_ultimo_mes") or a.get("radicado"))
+        for a in ss.values()
+    ):
         return False
     bancaria = il.get("bancaria") or {}
     if bancaria.get("banco") or bancaria.get("numero_cuenta"):

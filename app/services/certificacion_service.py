@@ -2548,6 +2548,7 @@ class CertificacionService:
         info_laboral = usuario_data.get("informacion_laboral") or {}
         tributaria = info_laboral.get("tributaria") or {}
         declarante_renta = tributaria.get("declarante_renta", False)
+        seguridad_social = info_laboral.get("seguridad_social") or {}
 
         # Contrato vigente
         contratos = usuario_data.get("contratos") or []
@@ -2557,12 +2558,27 @@ class CertificacionService:
         no_contrato = contrato_vig.get("numero", "—")
         valor_contrato = contrato_vig.get("valor", 0)
         valor_mensual = contrato_vig.get("valor_mensual", 0)
-        
+
         fecha_ini_raw = contrato_vig.get("fecha_inicio")
         fecha_fin_raw = contrato_vig.get("fecha_fin")
-        
+
         fecha_ini_str = fecha_ini_raw.strftime("%d/%m/%Y") if fecha_ini_raw else "—"
         fecha_fin_str = fecha_fin_raw.strftime("%d/%m/%Y") if fecha_fin_raw else "—"
+
+        # EPS / AFP / ARL — valor de la primera cuenta del contrato, con respaldo en
+        # 'valor' (meses intermedios) si el usuario aún no diligenció el campo nuevo.
+        eps_info = seguridad_social.get("eps") or {}
+        afp_info = seguridad_social.get("afp") or {}
+        arl_info = seguridad_social.get("arl") or {}
+
+        eps_name = (eps_info.get("entidad") or "EPS").replace("_", " ").upper()
+        eps_val = eps_info.get("valor_primer_mes") or eps_info.get("valor") or 0
+
+        afp_name = (afp_info.get("entidad") or "FONDO DE PENSIONES").replace("_", " ").upper()
+        afp_val = afp_info.get("valor_primer_mes") or afp_info.get("valor") or 0
+
+        arl_name = (arl_info.get("entidad") or "ARL").replace("_", " ").upper()
+        arl_val = arl_info.get("valor_primer_mes") or arl_info.get("valor") or 0
 
         if fecha_ini_raw:
             dia_ini = str(fecha_ini_raw.day)
@@ -2691,6 +2707,16 @@ class CertificacionService:
             fontSize=9.5, alignment=TA_LEFT, leading=12, textColor=NEGRO,
             fontName="Helvetica",
         )
+        s_cell_center = ParagraphStyle(
+            "ret_cell_c_prim", parent=estilos["Normal"],
+            fontSize=9.5, alignment=TA_CENTER, leading=12, textColor=NEGRO,
+            fontName="Helvetica",
+        )
+        s_cell_hdr = ParagraphStyle(
+            "ret_cell_h_prim", parent=estilos["Normal"],
+            fontSize=9.5, fontName="Helvetica-Bold", alignment=TA_CENTER,
+            leading=12, textColor=NEGRO,
+        )
 
         story = []
 
@@ -2698,19 +2724,7 @@ class CertificacionService:
         story.append(Paragraph(f"Bogotá D.C., {fecha_expedicion_completa}", s_cuerpo_left))
         story.append(Spacer(1, 0.7 * cm))
 
-        # Obtener el nombre del responsable de financiera
-        from app.services.parametros_service import ParametrosService
-        try:
-            nombre_responsable = ParametrosService().obtener("nombre_financiera_retefuente")
-        except Exception:
-            nombre_responsable = "sin nombre_financiera_retefuente"
-
-        if not nombre_responsable or not nombre_responsable.strip():
-            nombre_responsable = "sin nombre_financiera_retefuente"
-
         # Destinatario
-        story.append(Paragraph("Doctor", s_cuerpo_left))
-        story.append(Paragraph(nombre_responsable, s_cuerpo_bold))
         story.append(Paragraph("Subdirección Financiera - Grupo Cuentas Por Pagar", s_cuerpo_left))
         story.append(Paragraph("INSTITUTO NACIONAL DE VÍAS", s_cuerpo_bold))
         story.append(Paragraph("Bogotá D.C", s_cuerpo_left))
@@ -2721,7 +2735,7 @@ class CertificacionService:
         story.append(Spacer(1, 0.7 * cm))
 
         # Saludo
-        story.append(Paragraph("Respetado Señor Jairo,", s_cuerpo_left))
+        story.append(Paragraph("Respetado Grupo Cuentas Por Pagar,", s_cuerpo_left))
         story.append(Spacer(1, 0.15 * cm))
 
         # Párrafo legal
@@ -2777,7 +2791,36 @@ class CertificacionService:
             f"el pago de las cotizaciones al Sistema de Seguridad Social integral se efectuará mes vencido, de conformidad con lo establecido en el Artículo 1 del Decreto 1273 de 2018.</i>"
         )
         story.append(Paragraph(p_seg_social_primera, s_cuerpo))
-        story.append(Spacer(1, 0.3 * cm))
+        story.append(Spacer(1, 0.1 * cm))
+
+        # Párrafo Seguridad Social (valores de la primera cuenta del contrato)
+        p_seg_social = (
+            f"También declaró bajo la gravedad de juramento, que el documento soporte de pago de aportes obligatorios "
+            f"al Sistema General de Seguridad Social, realizados a la Entidad Prestadora de <b>{eps_name}</b> y "
+            f"aporte obligatorio realizados al Fondo de Pensiones <b>{afp_name}</b> correspondiente a la primera cuenta del contrato, "
+            f"corresponde a la suma de:"
+        )
+        story.append(Paragraph(p_seg_social, s_cuerpo))
+        story.append(Spacer(1, 0.1 * cm))
+
+        # Tabla 2: Seguridad Social (más angosta, bordes delgados de 0.25pt y centrada)
+        t2_data = [
+            [Paragraph("<b>Concepto</b>", s_cell_hdr), Paragraph("<b>Valor</b>", s_cell_hdr)],
+            [Paragraph(eps_name, s_cell), Paragraph(f"{_formatear_pesos(eps_val)[:-3]}", s_cell_center)],
+            [Paragraph(afp_name, s_cell), Paragraph(f"{_formatear_pesos(afp_val)[:-3]}", s_cell_center)],
+            [Paragraph(arl_name, s_cell), Paragraph(f"{_formatear_pesos(arl_val)[:-3]}", s_cell_center)],
+        ]
+        t2 = Table(t2_data, colWidths=[8.0 * cm, 3.0 * cm], hAlign='CENTER')
+        t2.setStyle(TableStyle([
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("GRID", (0, 0), (-1, -1), 0.25, HexColor("#999999")),
+            ("BACKGROUND", (0, 0), (-1, 0), HexColor("#F9F9F9")),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        story.append(t2)
+        story.append(Spacer(1, 0.2 * cm))
 
         # Honorarios
         valor_base = contrato_vig.get("valor_primer_pago")
@@ -3050,19 +3093,7 @@ class CertificacionService:
         story.append(Paragraph(f"Bogotá D.C., {fecha_expedicion_completa}", s_cuerpo_left))
         story.append(Spacer(1, 0.7 * cm))
 
-        # Obtener el nombre del responsable de financiera
-        from app.services.parametros_service import ParametrosService
-        try:
-            nombre_responsable = ParametrosService().obtener("nombre_financiera_retefuente")
-        except Exception:
-            nombre_responsable = "sin nombre_financiera_retefuente"
-
-        if not nombre_responsable or not nombre_responsable.strip():
-            nombre_responsable = "sin nombre_financiera_retefuente"
-
         # Destinatario
-        story.append(Paragraph("Doctor", s_cuerpo_left))
-        story.append(Paragraph(nombre_responsable, s_cuerpo_bold))
         story.append(Paragraph("Subdirección Financiera - Grupo Cuentas Por Pagar", s_cuerpo_left))
         story.append(Paragraph("INSTITUTO NACIONAL DE VÍAS", s_cuerpo_bold))
         story.append(Paragraph("Bogotá D.C", s_cuerpo_left))
@@ -3073,7 +3104,7 @@ class CertificacionService:
         story.append(Spacer(1, 0.7 * cm))
 
         # Saludo
-        story.append(Paragraph("Respetado Señor Jairo,", s_cuerpo_left))
+        story.append(Paragraph("Respetado Grupo Cuentas Por Pagar,", s_cuerpo_left))
         story.append(Spacer(1, 0.15 * cm))
 
         # Párrafo legal
@@ -3123,19 +3154,37 @@ class CertificacionService:
         )
         story.append(Paragraph(p_regimen, s_cuerpo))
 
+        # Última cuenta del contrato vigente (misma regla que se usa para los honorarios
+        # más abajo): determina si esta certificación toma el "Valor mensual última
+        # cuenta" de seguridad social o el de meses intermedios ("Valor mensual").
+        es_ultimo_mes = False
+        if fecha_fin_raw and mes_num == fecha_fin_raw.month and año_num == fecha_fin_raw.year:
+            es_ultimo_mes = True
+
+        def _valor_ss_periodo(info: dict) -> int:
+            """Valor mensual del aporte según el periodo certificado.
+
+            En el último mes del contrato usa 'valor_ultimo_mes'; si el usuario aún
+            no lo ha diligenciado, cae de vuelta a 'valor' (meses intermedios) para
+            no dejar en $0 los certificados ya generados antes de este campo.
+            """
+            if es_ultimo_mes:
+                return info.get("valor_ultimo_mes") or info.get("valor") or 0
+            return info.get("valor") or 0
+
         # Párrafo Seguridad Social
         eps_info = seguridad_social.get("eps") or {}
         afp_info = seguridad_social.get("afp") or {}
         arl_info = seguridad_social.get("arl") or {}
 
         eps_name = (eps_info.get("entidad") or "EPS").replace("_", " ").upper()
-        eps_val = eps_info.get("valor") or 0
+        eps_val = _valor_ss_periodo(eps_info)
 
         afp_name = (afp_info.get("entidad") or "FONDO DE PENSIONES").replace("_", " ").upper()
-        afp_val = afp_info.get("valor") or 0
+        afp_val = _valor_ss_periodo(afp_info)
 
         arl_name = (arl_info.get("entidad") or "ARL").replace("_", " ").upper()
-        arl_val = arl_info.get("valor") or 0
+        arl_val = _valor_ss_periodo(arl_info)
 
         if planilla_mes_vencido:
             p_seg_social = (
@@ -3174,10 +3223,6 @@ class CertificacionService:
         story.append(Spacer(1, 0.2 * cm))
 
         # Honorarios
-        es_ultimo_mes = False
-        if fecha_fin_raw and mes_num == fecha_fin_raw.month and año_num == fecha_fin_raw.year:
-            es_ultimo_mes = True
-
         if es_ultimo_mes:
             if contrato_vig.get("personalizar_ultimacuenta"):
                 valor_pago = contrato_vig.get("valor_personalizar_ultimacuenta") or 0
@@ -3191,7 +3236,7 @@ class CertificacionService:
                 valor_pago = max(0, valor_pago)
             else:
                 valor_pago = valor_mensual
-            
+
             dia_fin = fecha_fin_raw.day
             mes_fin_lower = MESES_ES[fecha_fin_raw.month - 1].lower()
             periodo_texto = f"DEL 1 DE {mes_fin_lower.upper()} AL {dia_fin} DE {mes_fin_lower.upper()} DEL {año_num}"
