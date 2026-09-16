@@ -690,6 +690,10 @@ class CertificacionService:
                 "tiene_contrato": tiene_contrato,
                 "numero_contrato": contrato.get("numero"),
                 "tipo_contrato": contrato.get("tipo"),
+                # Vigencia del contrato relativa al período (año, mes) seleccionado,
+                # para el reporte visual por mes/formato: 'vigente' (verde),
+                # 'gracia' (temporal, amarillo) o 'sin_contrato'.
+                "estado_contrato": self._estado_vigencia_contrato(contratos, año, mes),
             })
 
         return resultados
@@ -1039,6 +1043,43 @@ class CertificacionService:
             reverse=True,
         )
         return activos[0]
+
+    def _estado_vigencia_contrato(self, contratos: list, año: int = None, mes: int = None) -> str:
+        """Clasifica el contrato relevante para (año, mes) en 'vigente' (fecha_fin
+        futura o sin fecha_fin), 'gracia' (ya finalizó pero dentro de los
+        DIAS_GRACIA_CONTRATO_VIGENTE días posteriores) o 'sin_contrato' (ninguno
+        activo). La fecha de referencia es "hoy" si (año, mes) es el período
+        certificable actual (o si no se especifica período), y el último día de
+        ese mes si es un período pasado elegido manualmente — misma dualidad que
+        _contrato_relevante, para que un período retroactivo no excluya a alguien
+        cuyo contrato ya venció (más allá de la gracia) respecto a HOY pero seguía
+        vigente o en gracia durante el mes que se está revisando."""
+        if año is None or mes is None or (año, mes) == self.periodo_certificable():
+            contrato = self._contrato_vigente(contratos)
+            referencia = datetime.now(ZONA_BOGOTA).date()
+        else:
+            contrato = self._contrato_relevante(contratos, año, mes)
+            import calendar
+            ultimo_dia = calendar.monthrange(año, mes)[1]
+            referencia = datetime(año, mes, ultimo_dia).date()
+
+        if not contrato.get("numero"):
+            return "sin_contrato"
+
+        fecha_fin = contrato.get("fecha_fin")
+        prorroga = contrato.get("prorrogra_contrato") or {}
+        if prorroga.get("tiene_prorroga") and prorroga.get("fecha_prorrogra"):
+            fecha_fin = prorroga.get("fecha_prorrogra")
+        if not fecha_fin:
+            return "vigente"
+
+        if fecha_fin.tzinfo is None:
+            fecha_fin = fecha_fin.replace(tzinfo=timezone.utc)
+        fecha_fin_bog = fecha_fin.astimezone(ZONA_BOGOTA).date()
+        if fecha_fin_bog >= referencia:
+            return "vigente"
+        fecha_limite = fecha_fin_bog + timedelta(days=self.DIAS_GRACIA_CONTRATO_VIGENTE)
+        return "gracia" if fecha_limite >= referencia else "sin_contrato"
 
     @staticmethod
     def _contrato_para_periodo(contratos: list, anio: int, mes: int) -> dict:
@@ -4263,7 +4304,7 @@ class CertificacionService:
         ]))
 
         p_meta_anexo = Paragraph("<b>Anexo:</b> Relación de Pagos Generada por SIIF NACION – Un (1) Folio.", s_metadata_text)
-        p_meta_acta = Paragraph(f"<b>Acta de Entrega y Recibo del Contrato No</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {no_contrato} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Un (1) Folio", s_metadata_text)
+        p_meta_acta = Paragraph(f"<b>Acta de Entrega y Recibo del Contrato No</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {no_contrato}-{anio_fin} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Un (1) Folio", s_metadata_text)
 
         t_wrapper_metadata = Table(
             [
@@ -4825,7 +4866,7 @@ class CertificacionService:
 
         _mr(r, c_meta0, r, c_meta1, "Anexo: Relación de Pagos Generada por SIIF NACION – Un (1) Folio.", fmt_meta)
         r += 1
-        _mr(r, c_meta0, r, c_meta1, f"Acta de Entrega y Recibo del Contrato No {no_contrato}   Un (1) Folio", fmt_meta)
+        _mr(r, c_meta0, r, c_meta1, f"Acta de Entrega y Recibo del Contrato No {no_contrato}-{anio_fin}   Un (1) Folio", fmt_meta)
 
         # --- Marco exterior: cierra visualmente el recuadro que envuelve todo el formato ---
         r += 1
@@ -5077,6 +5118,8 @@ class CertificacionService:
         
         fecha_ini_dt = contrato_vig.get("fecha_inicio") if contrato_vig and contrato_vig.get("fecha_inicio") else None
         fecha_inicio_str = fecha_ini_dt.strftime("%d/%m/%Y") if fecha_ini_dt else "—"
+        firma_secop_dt = contrato_vig.get("firma_cps_secop") if contrato_vig and contrato_vig.get("firma_cps_secop") else None
+        firma_secop_str = firma_secop_dt.strftime("%d/%m/%Y") if firma_secop_dt else "—"
 
         objeto_contrato_upper = (contrato_vig.get("objeto") or "—").upper()
 
@@ -5155,7 +5198,6 @@ class CertificacionService:
                 num_doc_str = str(usuario_data.get("numero_documento"))
 
         lugar_exp_val = usuario_data.get("lugar_expedicion_documento") or "—"
-        radicado_val = contrato_vig.get("radicado_del_contrato") or "—"
         rp_val = contrato_vig.get("rp_compromiso_presupuestal") or "—"
         fecha_rp_dt = contrato_vig.get("fecha_recurso_presupuestal")
 
@@ -5269,7 +5311,7 @@ class CertificacionService:
 
         # Sub-cuadro para Contrato N° y Fecha con lineas punteadas
         contrato_flowables = [Paragraph(no_contrato, s_val_center), Spacer(1, 1), DottedLine(3.0 * cm, 0.6, NEGRO)]
-        fecha_flowables = [Paragraph(fecha_inicio_str, s_val_center), Spacer(1, 1), DottedLine(3.0 * cm, 0.6, NEGRO)]
+        fecha_flowables = [Paragraph(firma_secop_str, s_val_center), Spacer(1, 1), DottedLine(3.0 * cm, 0.6, NEGRO)]
 
         t_row3_val = Table(
             [
@@ -5394,7 +5436,7 @@ class CertificacionService:
 
         text_12 = f"<b>12.</b> En la ciudad de Bogotá, a los <b>{dia_fin}</b> días del mes de <b>{mes_fin}</b> del año <b>{anio_fin}</b>, se reunieron: GLADYS GUTIERREZ BUITRAGO por parte del Instituto Nacional de Vías, como SUPERVISOR del Contrato de prestación de servicios Profesionales y de apoyo a la gestión <b>Nº {no_contrato} de {anio_fin}</b> y <b>{nombre_contratista}</b> como CONTRATISTA, identificada con {tipo_doc_val} No. {num_doc_str} expedida en {lugar_exp_val}, con el fin de recibir a satisfacción las obligaciones objeto del Contrato, conforme a lo establecido en las cláusulas del mismo."
         
-        text_13_1 = f"<b>13.</b> El plazo inicial de ejecución del contrato de prestación de servicios <b>No. {no_contrato} de {anio_fin}</b> se pactó hasta el {fecha_fin_larga_lower}, a partir de la orden de inicio, impartida mediante oficio <b>No. {radicado_val}</b> suscrito por LA SUBDIRECTORA DE REGLAMENTACION TECNICA E INNOVACION."
+        text_13_1 = f"<b>13.</b> El plazo inicial de ejecución del contrato de prestación de servicios <b>No. {no_contrato} de {anio_fin}</b> se pactó hasta el {fecha_fin_larga_lower}, impartido por la orden de inicio suscrita por LA SUBDIRECTORA DE REGLAMENTACION TECNICA E INNOVACION."
         
         text_13_2 = f"<b>13.</b> El valor de los honorarios pactados fue pagado al contratista en mensualidades vencidas y proporcional al periodo en el cual se prestaron sus servicios profesionales, previa certificación de cumplimiento a satisfacción expedida por el SUPERVISOR del contrato, con cargo al registro presupuestal <b>No. {rp_val} del {fecha_rp_str}</b>."
         
@@ -5484,25 +5526,22 @@ class CertificacionService:
             tipo_contrato_str = f"CONTRATO DE {contrato_vig.get('tipo').replace('_', ' ').upper()}"
         desc_text = f"{tipo_contrato_str}<br/>No. {no_contrato} de {anio_fin}"
 
-        # Col 1: Valor Contratado (Valor del contrato + adición si existe)
-        valor_inicial_int = contrato_vig.get("valor") or 0
-        valor_adicion_int = adiciones.get("valor_adicion") or 0 if tiene_adiciones else 0
-        valor_total_int = valor_inicial_int + valor_adicion_int
-        
+        # Col 1: Valor Contratado (mismo valor del ítem 8, VALOR TOTAL DEL CONTRATO)
+        valor_total_int = valor_total_contrato
         try:
             valor_total_str = f"{valor_total_int:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         except Exception:
             valor_total_str = "0,00"
 
-        # Col 2: Valor por Pagar
-        valor_por_pagar_int = contrato_vig.get("valor_total_por_pagar_contrato") or 0
+        # Col 2: Valor Ejecutado (suma de los valores brutos de todos los pagos del contrato)
+        valor_ejecutado_int = sum((p.get("valor_bruto_pago") or 0) for p in (contrato_vig.get("pagos") or []))
         try:
-            valor_por_pagar_str = f"{valor_por_pagar_int:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            valor_ejecutado_str = f"{valor_ejecutado_int:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         except Exception:
-            valor_por_pagar_str = "0,00"
+            valor_ejecutado_str = "0,00"
 
-        # Col 3: Saldo Presupuestal a liberar (Valor Contratado - Valor por Pagar, en positivo)
-        saldo_liberar_int = abs(valor_total_int - valor_por_pagar_int)
+        # Col 3: Saldo No Ejecutado (Valor Contratado - Valor Ejecutado, en positivo)
+        saldo_liberar_int = abs(valor_total_int - valor_ejecutado_int)
         try:
             saldo_liberar_str = f"{saldo_liberar_int:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         except Exception:
@@ -5536,12 +5575,12 @@ class CertificacionService:
             ("RIGHTPADDING", (0, 0), (-1, -1), 0),
         ]))
 
-        t_val_por_pagar = Table(
-            [[Paragraph("<b>$</b>", s_balance_val_left), Paragraph(valor_por_pagar_str, s_balance_val_right)]],
+        t_val_ejecutado = Table(
+            [[Paragraph("<b>$</b>", s_balance_val_left), Paragraph(valor_ejecutado_str, s_balance_val_right)]],
             colWidths=[0.5 * cm, 2.3 * cm],
             rowHeights=[0.45 * cm]
         )
-        t_val_por_pagar.setStyle(TableStyle([
+        t_val_ejecutado.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
             ("TOPPADDING", (0, 0), (-1, -1), 0),
@@ -5574,13 +5613,13 @@ class CertificacionService:
                 [
                     Paragraph("DESCRIPCIÓN", s_balance_header),
                     Paragraph("VALOR CONTRATADO", s_balance_header),
-                    Paragraph("VALOR POR PAGAR", s_balance_header),
+                    Paragraph("VALOR EJECUTADO", s_balance_header),
                     Paragraph("SALDO NO EJECUTADO", s_balance_header)
                 ],
                 [
                     Paragraph(desc_text, s_desc_style),
                     t_val_contratado,
-                    t_val_por_pagar,
+                    t_val_ejecutado,
                     t_val_saldo
                 ]
             ],
@@ -5822,7 +5861,7 @@ class CertificacionService:
             ("RIGHTPADDING", (0, 0), (-1, -1), 0),
         ]))
 
-        p_meta_acta = Paragraph(f"<b>Acta de Entrega y Recibo del Contrato No</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {no_contrato} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Un (1) Folio", s_metadata_text)
+        p_meta_acta = Paragraph(f"<b>Acta de Entrega y Recibo del Contrato No</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {no_contrato}-{anio_fin} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Un (1) Folio", s_metadata_text)
 
         t_wrapper_metadata = Table(
             [
@@ -5959,6 +5998,8 @@ class CertificacionService:
         nombre_contratista = usuario_data.get("nombre_completo", "").upper()
         fecha_ini_dt = contrato_vig.get("fecha_inicio") if contrato_vig and contrato_vig.get("fecha_inicio") else None
         fecha_inicio_str = fecha_ini_dt.strftime("%d/%m/%Y") if fecha_ini_dt else "—"
+        firma_secop_dt = contrato_vig.get("firma_cps_secop") if contrato_vig and contrato_vig.get("firma_cps_secop") else None
+        firma_secop_str = firma_secop_dt.strftime("%d/%m/%Y") if firma_secop_dt else "—"
         objeto_contrato_upper = (contrato_vig.get("objeto") or "—").upper()
 
         plazo_str = "—"
@@ -6015,7 +6056,6 @@ class CertificacionService:
                 num_doc_str = str(usuario_data.get("numero_documento"))
 
         lugar_exp_val = usuario_data.get("lugar_expedicion_documento") or "—"
-        radicado_val = contrato_vig.get("radicado_del_contrato") or "—"
         rp_val = contrato_vig.get("rp_compromiso_presupuestal") or "—"
         fecha_rp_dt = contrato_vig.get("fecha_recurso_presupuestal")
 
@@ -6048,8 +6088,8 @@ class CertificacionService:
         )
         text_13_1 = (
             f"13. El plazo inicial de ejecución del contrato de prestación de servicios No. {no_contrato} de "
-            f"{anio_fin} se pactó hasta el {fecha_fin_larga_lower}, a partir de la orden de inicio, impartida "
-            f"mediante oficio No. {radicado_val} suscrito por LA SUBDIRECTORA DE REGLAMENTACION TECNICA E INNOVACION."
+            f"{anio_fin} se pactó hasta el {fecha_fin_larga_lower}, impartido por la orden de inicio suscrita "
+            f"por LA SUBDIRECTORA DE REGLAMENTACION TECNICA E INNOVACION."
         )
         text_13_2 = (
             "13. El valor de los honorarios pactados fue pagado al contratista en mensualidades vencidas y "
@@ -6068,11 +6108,9 @@ class CertificacionService:
             tipo_contrato_str = f"CONTRATO DE {contrato_vig.get('tipo').replace('_', ' ').upper()}"
         desc_text = f"{tipo_contrato_str} No. {no_contrato} de {anio_fin}"
 
-        valor_inicial_int = contrato_vig.get("valor") or 0
-        valor_adicion_int = adiciones.get("valor_adicion") or 0 if tiene_adiciones else 0
-        valor_total_int = valor_inicial_int + valor_adicion_int
-        valor_por_pagar_int = contrato_vig.get("valor_total_por_pagar_contrato") or 0
-        saldo_liberar_int = abs(valor_total_int - valor_por_pagar_int)
+        valor_total_int = valor_total_contrato
+        valor_ejecutado_int = sum((p.get("valor_bruto_pago") or 0) for p in (contrato_vig.get("pagos") or []))
+        saldo_liberar_int = abs(valor_total_int - valor_ejecutado_int)
 
         mes_fin_lower = mes_fin.lower() if mes_fin else "—"
         text_constancia = (
@@ -6158,6 +6196,7 @@ class CertificacionService:
         fmt_fecha_lbl = workbook.add_format({**fmt_base, "bold": True, "align": "center"})
         fmt_fecha_val = workbook.add_format({**fmt_base, "align": "center"})
         fmt_blank = workbook.add_format({"border": 1})
+        fmt_firma_img_cell = workbook.add_format({})
         fmt_lbl_contrato = workbook.add_format({"font_name": "Helvetica", "bold": True, "font_size": 7.5, "align": "left", "valign": "top", "text_wrap": True})
         fmt_val_center = workbook.add_format({"font_name": "Helvetica", "font_size": 7.5, "align": "center", "valign": "vcenter", "bottom": 4, "text_wrap": True})
         fmt_val_objeto = workbook.add_format({"font_name": "Helvetica", "font_size": 6.5, "align": "center", "valign": "vcenter", "bottom": 4, "text_wrap": True})
@@ -6247,7 +6286,7 @@ class CertificacionService:
         filas_simples = [
             ("1. UNIDAD EJECUTORA", "SUBDIRECCIÓN DE REGLAMENTACIÓN TÉCNICA E INNOVACIÓN", fmt_val_center),
             ("2. DIRECCIÓN TERRITORIAL", "N.A.", fmt_val_center),
-            ("3. CONTRATO Nº", f"No. {no_contrato}          FECHA: {fecha_inicio_str}", fmt_val_center),
+            ("3. CONTRATO Nº", f"No. {no_contrato}          FECHA: {firma_secop_str}", fmt_val_center),
             ("4. CONTRATISTA:", nombre_contratista, fmt_val_center),
             ("5. SUPERVISOR:", "GLADYS GUTIÉRREZ BUITRAGO - SUBDIRECTORA REGLAMENTACIÓN TÉCNICA E INNOVACIÓN", fmt_val_center),
             ("6. OBJETO DEL CONTRATO:", objeto_contrato_upper, fmt_val_objeto),
@@ -6258,7 +6297,7 @@ class CertificacionService:
                 alto_objeto_cm = _xlsx_altura_para_texto(val, ancho_val_cm, tam_fuente=6.5)
                 ws.set_row(r, _xlsx_cm_a_puntos(alto_objeto_cm))
             else:
-                ws.set_row(r, _xlsx_cm_a_puntos(0.6))
+                ws.set_row(r, _xlsx_cm_a_puntos(0.75))
             _mr(r, c_lbl0, r, c_lbl1, lbl, fmt_lbl_contrato)
             _mr(r, c_val0, r, c_val1, val, fmt_v)
             r += 1
@@ -6309,13 +6348,13 @@ class CertificacionService:
         b_baltab = _xlsx_subdividir([5.59, 3.0, 3.0, 3.0], b_balwrap[1], b_balwrap[2])
         _mr(r, b_baltab[0], r, b_baltab[1] - 1, "DESCRIPCIÓN", fmt_balance_header)
         _mr(r, b_baltab[1], r, b_baltab[2] - 1, "VALOR CONTRATADO", fmt_balance_header)
-        _mr(r, b_baltab[2], r, b_baltab[3] - 1, "VALOR POR PAGAR", fmt_balance_header)
+        _mr(r, b_baltab[2], r, b_baltab[3] - 1, "VALOR EJECUTADO", fmt_balance_header)
         _mr(r, b_baltab[3], r, b_baltab[4] - 1, "SALDO NO EJECUTADO", fmt_balance_header)
         r += 1
         ws.set_row(r, _xlsx_cm_a_puntos(0.95))
         _mr(r, b_baltab[0], r, b_baltab[1] - 1, desc_text, fmt_balance_desc)
         _dinero(r, b_baltab[1], b_baltab[2] - 1, valor_total_int, fmt_balance_money)
-        _dinero(r, b_baltab[2], b_baltab[3] - 1, valor_por_pagar_int, fmt_balance_money)
+        _dinero(r, b_baltab[2], b_baltab[3] - 1, valor_ejecutado_int, fmt_balance_money)
         _dinero(r, b_baltab[3], b_baltab[4] - 1, saldo_liberar_int, fmt_balance_money)
         r += 2
 
@@ -6331,13 +6370,13 @@ class CertificacionService:
 
         ws.set_row(r, _xlsx_cm_a_puntos(1.3))
         _mr(r, b_card_c[0], r, b_card_c[1] - 1, "Firma", fmt_firma_side_lbl)
-        _mr(r, b_card_c[1], r, b_card_c[2] - 1, "", fmt_blank)
+        _mr(r, b_card_c[1], r, b_card_c[2] - 1, "", fmt_firma_img_cell)
         ancho_card_c_cm = (b_card_c[2] - b_card_c[1]) * COL_CM
         x_offset_firma_c = max(int((ancho_card_c_cm - 4.0) / 2 * _XLSX_PX_POR_CM), 2)
         if firma_contratista_bytes:
             _xlsx_insertar_imagen_proporcional(ws, r, b_card_c[1], firma_contratista_bytes, 4.0, 1.2, x_offset=x_offset_firma_c)
         _mr(r, b_card_s[0], r, b_card_s[1] - 1, "Firma", fmt_firma_side_lbl)
-        _mr(r, b_card_s[1], r, b_card_s[2] - 1, "", fmt_blank)
+        _mr(r, b_card_s[1], r, b_card_s[2] - 1, "", fmt_firma_img_cell)
         ancho_card_s_cm = (b_card_s[2] - b_card_s[1]) * COL_CM
         x_offset_firma_s = max(int((ancho_card_s_cm - 4.0) / 2 * _XLSX_PX_POR_CM), 2)
         if jefe_firma_bytes_o_ruta:
@@ -6373,7 +6412,7 @@ class CertificacionService:
         if firma_abog_img:
             _xlsx_insertar_imagen_proporcional(ws, r, min(c_meta0 + 20, c_meta1), firma_abog_img, 1.4, 0.4)
         r += 1
-        _mr(r, c_meta0, r, c_meta1, f"Acta de Entrega y Recibo del Contrato No {no_contrato}   Un (1) Folio", fmt_meta)
+        _mr(r, c_meta0, r, c_meta1, f"Acta de Entrega y Recibo del Contrato No {no_contrato}-{anio_fin}   Un (1) Folio", fmt_meta)
 
         # --- Marco exterior: cierra visualmente el recuadro que envuelve todo el formato ---
         r += 1
