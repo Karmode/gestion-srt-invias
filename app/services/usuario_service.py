@@ -87,25 +87,41 @@ class UsuarioService:
 
     @staticmethod
     def _afiliacion(datos) -> dict:
-        """Normaliza una afiliación {entidad, paga, valor, radicado}; campos vacíos → None.
+        """Normaliza una afiliación {entidad, paga, valor, valor_primer_mes,
+        valor_ultimo_mes, radicado}; campos vacíos → None.
 
-        'paga' indica quién cubre el aporte: si lo paga el contratista se conserva el
-        'valor'; si lo paga la entidad se conserva el 'radicado'. Se descarta el dato
-        que no corresponde a la opción elegida para evitar inconsistencias.
+        'paga' indica quién cubre el aporte: si lo paga el contratista se conservan
+        los tres valores mensuales ('valor_primer_mes' para el primer mes del
+        contrato, 'valor' para los meses intermedios y 'valor_ultimo_mes' para el
+        último mes); si lo paga la entidad se conserva el 'radicado'. Se descarta el
+        dato que no corresponde a la opción elegida para evitar inconsistencias.
         """
         datos = datos or {}
         entidad = (datos.get("entidad") or "").strip() or None
         paga = (datos.get("paga") or "").strip() or None
         if paga not in ("contratista", "entidad"):
             paga = None
-        valor = datos.get("valor")
-        valor = int(valor) if valor not in (None, "", 0) and int(valor) > 0 else None
+
+        def _valor(clave):
+            valor = datos.get(clave)
+            return int(valor) if valor not in (None, "", 0) and int(valor) > 0 else None
+
+        valor = _valor("valor")
+        valor_primer_mes = _valor("valor_primer_mes")
+        valor_ultimo_mes = _valor("valor_ultimo_mes")
         radicado = (datos.get("radicado") or "").strip() or None
         if paga == "entidad":
-            valor = None
+            valor = valor_primer_mes = valor_ultimo_mes = None
         elif paga == "contratista":
             radicado = None
-        return {"entidad": entidad, "paga": paga, "valor": valor, "radicado": radicado}
+        return {
+            "entidad": entidad,
+            "paga": paga,
+            "valor": valor,
+            "valor_primer_mes": valor_primer_mes,
+            "valor_ultimo_mes": valor_ultimo_mes,
+            "radicado": radicado,
+        }
 
     @staticmethod
     def _construir_informacion_laboral(datos) -> dict:
@@ -512,9 +528,43 @@ class UsuarioService:
 
         return faltantes
 
-    def faltantes_para_formatos(self, id_usuario: str) -> dict:
+    @staticmethod
+    def _campos_seguridad_social_periodo(usuario: dict, año, mes) -> list:
+        """Campos adicionales de seguridad social exigidos para el período (año, mes).
+
+        Si (año, mes) coincide con el primer mes del contrato vigente en ese
+        período (según su fecha de inicio), exige también 'valor_primer_mes'
+        (usado por el formato de Retención en la Fuente - Primera Cuenta). Si
+        coincide con el último mes (según su fecha de fin), exige
+        'valor_ultimo_mes' (Retención en la Fuente - Segunda Cuenta ++, cuando
+        corresponde a la cuenta final). Un contrato de un solo mes puede exigir
+        ambos a la vez. Los meses intermedios no agregan nada aquí: ya se
+        validan con 'valor' más abajo.
+        """
+        if año is None or mes is None:
+            return []
+        from app.services.certificacion_service import CertificacionService
+        contrato = CertificacionService._contrato_para_periodo(usuario.get("contratos") or [], año, mes)
+        if not contrato:
+            return []
+        fecha_inicio = contrato.get("fecha_inicio")
+        fecha_fin = contrato.get("fecha_fin")
+        campos = []
+        if fecha_inicio and mes == fecha_inicio.month and año == fecha_inicio.year:
+            campos.append(("valor_primer_mes", "primera cuenta"))
+        if fecha_fin and mes == fecha_fin.month and año == fecha_fin.year:
+            campos.append(("valor_ultimo_mes", "última cuenta"))
+        return campos
+
+    def faltantes_para_formatos(self, id_usuario: str, año: int = None, mes: int = None) -> dict:
         """Evalúa si el usuario tiene todos los datos necesarios para descargar
         formatos de contrato.
+
+        Si se indican ``año``/``mes`` (el período seleccionado en "Formatos de
+        contrato"), además exige el valor de seguridad social específico de ese
+        período cuando coincide con el primer o el último mes del contrato
+        vigente (ver ``_campos_seguridad_social_periodo``); sin período, se
+        omite esa validación adicional (comportamiento previo).
 
         Devuelve ``{"puede_descargar": bool, "secciones": [...]}`` donde cada
         sección es ``{"titulo", "destino", "faltantes": [etiquetas]}`` y solo se
@@ -575,6 +625,7 @@ class UsuarioService:
         bancaria = il.get("bancaria") or {}
         tributaria = il.get("tributaria") or {}
         faltan_laboral = []
+        campos_periodo = self._campos_seguridad_social_periodo(usuario, año, mes)
         for cod, etiqueta in _AFILIACIONES_REQUERIDAS:
             if es_pensionado and cod in ("afp", "ccf"):
                 continue
@@ -590,8 +641,12 @@ class UsuarioService:
                     paga = "entidad"
             if not paga:
                 faltan_laboral.append(f"{etiqueta} (indicar quién paga el aporte)")
-            elif paga == "contratista" and self._vacio(af.get("valor")):
-                faltan_laboral.append(f"{etiqueta} (valor mensual)")
+            elif paga == "contratista":
+                if self._vacio(af.get("valor")):
+                    faltan_laboral.append(f"{etiqueta} (valor mensual)")
+                for campo, etiqueta_periodo in campos_periodo:
+                    if self._vacio(af.get(campo)):
+                        faltan_laboral.append(f"{etiqueta} (valor mensual {etiqueta_periodo})")
             elif paga == "entidad" and self._vacio(af.get("radicado")):
                 faltan_laboral.append(f"{etiqueta} (número de radicado)")
         if self._vacio(bancaria.get("banco")):

@@ -50,10 +50,12 @@ PARAMETROS: Dict[str, dict] = {
             "Financiera encargado de recibir el formato de retención en la fuente."
         ),
         "impacto": (
-            "Este nombre aparece como destinatario (\"Doctor <nombre>\") en el encabezado "
-            "de todo formato de retención en la fuente que se genere a partir de ahora. "
-            "El cambio aplica de inmediato a las nuevas descargas."
+            "Este nombre aparecía como destinatario (\"Doctor <nombre>\") en el encabezado "
+            "de los formatos de retención en la fuente. Actualmente deshabilitado: esos "
+            "formatos ya no muestran un destinatario con nombre propio (el saludo se "
+            "dirige al Grupo Cuentas Por Pagar), por lo que este parámetro no tiene efecto."
         ),
+        "habilitado": False,
     },
 }
 
@@ -110,6 +112,8 @@ class ParametrosService:
         meta = PARAMETROS.get(clave)
         if not meta:
             raise ValueError(f"Parámetro desconocido: {clave}")
+        if not meta.get("habilitado", True):
+            raise ValueError(f"'{meta['etiqueta']}' está deshabilitado y no admite cambios.")
         valor = self._validar(clave, valor)
         anterior = self.obtener(clave)
         self.repo.upsert(CATEGORIA, {f"valores.{clave}": valor})
