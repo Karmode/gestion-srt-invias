@@ -95,6 +95,79 @@ def _badge_firma_actas(rol: str, firma: dict | None) -> str:
     )
 
 
+def _barra_resumen_semaforo(aprobados: int, sin_aprobar: int, sin_generar: int) -> None:
+    """Resumen visual tipo semáforo del período/formato: verde = aprobados,
+    amarillo = generado pero sin aprobar, rojo = sin generar todavía. Solo
+    cuenta contratistas con contrato vigente o temporal (regla de gracia);
+    los que no tienen contrato activo no entran en este reporte."""
+    total = aprobados + sin_aprobar + sin_generar
+
+    def _pct(n: int) -> float:
+        return (n / total * 100) if total else 0.0
+
+    if total == 0:
+        st.caption("📋 Ningún contratista con contrato vigente o temporal este período.")
+        return
+
+    st.markdown(
+        f"""
+        <div style="margin:2px 0 12px;">
+            <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;
+                        font-size:.85em;margin-bottom:6px;">
+                <span>📋 <b>{total}</b> con contrato activo</span>
+                <span style="color:#75db8b;">✅ <b>{aprobados}</b> aprobados</span>
+                <span style="color:#ffcf6e;">⏳ <b>{sin_aprobar}</b> sin aprobar</span>
+                <span style="color:#ff9ca2;">❌ <b>{sin_generar}</b> sin generar</span>
+            </div>
+            <div style="width:100%;height:16px;border-radius:8px;overflow:hidden;
+                        background:#2c2c2c;border:1px solid #444;display:flex;">
+                <div style="width:{_pct(aprobados):.1f}%;background:linear-gradient(90deg,#1e7e34,#28a745);"></div>
+                <div style="width:{_pct(sin_aprobar):.1f}%;background:linear-gradient(90deg,#c9971f,#e6ac1f);"></div>
+                <div style="width:{_pct(sin_generar):.1f}%;background:linear-gradient(90deg,#8a2d32,#c0392b);"></div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _lista_movil_estado(aprobados: list, sin_aprobar: list, sin_generar: list) -> None:
+    """Lista compacta (estilo móvil) de contratistas con contrato vigente o
+    temporal, coloreada según su estado en el formato del período: verde =
+    aprobados, amarillo = generado y sin aprobar, rojo = con contrato pero sin
+    generar/firmar. No hace consultas nuevas: reutiliza los empleados ya
+    cargados."""
+    total = len(aprobados) + len(sin_aprobar) + len(sin_generar)
+    if total == 0:
+        return
+
+    def _fila(nombre: str, dot: str, color: str) -> str:
+        return (
+            f'<div style="font-size:.85em;padding:3px 6px;border-left:3px solid {color};'
+            f'margin-bottom:3px;">{dot} {nombre}</div>'
+        )
+
+    with st.expander(f"📱 Contratistas del período ({total})", expanded=False):
+        if aprobados:
+            st.markdown("**🟢 Aprobados**")
+            st.markdown(
+                "".join(_fila(e["nombre"], "🟢", "#28a745") for e in aprobados),
+                unsafe_allow_html=True,
+            )
+        if sin_aprobar:
+            st.markdown("**🟡 Sin aprobar**")
+            st.markdown(
+                "".join(_fila(e["nombre"], "🟡", "#e6ac1f") for e in sin_aprobar),
+                unsafe_allow_html=True,
+            )
+        if sin_generar:
+            st.markdown("**🔴 Sin generar/firmar**")
+            st.markdown(
+                "".join(_fila(e["nombre"], "🔴", "#c0392b") for e in sin_generar),
+                unsafe_allow_html=True,
+            )
+
+
 def _cerrar_dialogo_confirmar_firma_actas() -> None:
     st.session_state.pop("_confirmar_firma_actas", None)
 
@@ -249,39 +322,30 @@ def _render_panel_actas(
     st.divider()
 
     with st.spinner("Consultando colaboradores…"):
-        empleados = servicio.obtener_empleados_para_certificar(tipo_formato=tipo_formato, año=año, mes=mes)
-    empleados = [e for e in empleados if e.get("certificacion")]
+        todos_empleados = servicio.obtener_empleados_para_certificar(tipo_formato=tipo_formato, año=año, mes=mes)
+    empleados = [e for e in todos_empleados if e.get("certificacion")]
+
+    # Resumen visual (semáforo) del período/formato: solo contratistas con
+    # contrato vigente o temporal (regla de gracia) cuentan en el reporte; los
+    # que no tienen contrato activo se excluyen por completo de esta línea.
+    con_contrato = [e for e in todos_empleados if e.get("estado_contrato") in ("vigente", "gracia")]
+    aprobados = [e for e in con_contrato if (e.get("certificacion") or {}).get("estado") == "aprobado"]
+    pendientes_firma_movil = [
+        e for e in con_contrato
+        if e.get("certificacion") and (e.get("certificacion") or {}).get("estado") != "aprobado"
+    ]
+    faltan_generar = [e for e in con_contrato if not e.get("certificacion")]
+
+    _barra_resumen_semaforo(len(aprobados), len(pendientes_firma_movil), len(faltan_generar))
+    _lista_movil_estado(aprobados, pendientes_firma_movil, faltan_generar)
+
+    st.divider()
 
     if not empleados:
         st.info("Ningún colaborador ha generado este formato todavía.")
         return
 
-    # Métricas
     total = len(empleados)
-    if rol_activo:
-        mis_pendientes = sum(
-            1 for e in empleados
-            if not e.get("firmas", {}).get(rol_activo)
-        )
-        mis_aprobados = sum(
-            1 for e in empleados
-            if e.get("firmas", {}).get(rol_activo)
-        )
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Total contratistas", total)
-        m2.metric("Pendientes mi aprobación", mis_pendientes)
-        m3.metric("Aprobados", mis_aprobados)
-    else:
-        aprobadas = sum(
-            1 for e in empleados
-            if (e.get("certificacion") or {}).get("estado") == "aprobado"
-        )
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Total contratistas", total)
-        m2.metric("Aprobadas", aprobadas)
-        m3.metric("Pendientes de firmas", total - aprobadas)
-
-    st.divider()
 
     # Filtros
     fc1, fc2, fc3 = st.columns([3, 3, 2])
@@ -578,31 +642,19 @@ def render(sesion=None):
         if not empleados:
             st.info("No hay colaboradores con correspondencia registrada.")
         else:
-            # Métricas
+            # Resumen visual (semáforo) del período: solo contratistas con
+            # contrato vigente o temporal (regla de gracia) cuentan aquí.
             total = len(empleados)
-            con_3_firmas = sum(
-                1 for e in empleados
-                if all(e.get("firmas", {}).get(t) for t in TIPOS_FIRMA)
-            )
+            con_contrato = [e for e in empleados if e.get("estado_contrato") in ("vigente", "gracia")]
+            aprobados = [e for e in con_contrato if (e.get("certificacion") or {}).get("estado") == "aprobado"]
+            pendientes_firma_movil = [
+                e for e in con_contrato
+                if e.get("certificacion") and (e.get("certificacion") or {}).get("estado") != "aprobado"
+            ]
+            faltan_generar = [e for e in con_contrato if not e.get("certificacion")]
 
-            if tipo_mi_firma:
-                mis_pendientes = sum(
-                    1 for e in empleados
-                    if not e.get("firmas", {}).get(tipo_mi_firma)
-                )
-                mis_aprobados = sum(
-                    1 for e in empleados
-                    if e.get("firmas", {}).get(tipo_mi_firma)
-                )
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Total contratistas", total)
-                m2.metric("Pendientes mi aprobación", mis_pendientes)
-                m3.metric("Aprobados", mis_aprobados)
-            else:
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Total contratistas", total)
-                m2.metric("Con las 3 firmas", con_3_firmas)
-                m3.metric("Pendientes de firmas", total - con_3_firmas)
+            _barra_resumen_semaforo(len(aprobados), len(pendientes_firma_movil), len(faltan_generar))
+            _lista_movil_estado(aprobados, pendientes_firma_movil, faltan_generar)
 
             st.divider()
 
