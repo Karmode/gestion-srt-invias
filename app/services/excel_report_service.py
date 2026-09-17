@@ -15,27 +15,27 @@ class ExcelReportService:
             "grupo": {"$regex": "^permisos$", "$options": "i"}
         }
         
-        docs = self.repo.listar(query, limit=10000)
-        
+        docs = self.repo.listar(query, limit=10000, projection={"trazabilidad": 0})
+
         datos_filtrados = []
         for doc in docs:
             if "PQRD" not in str(doc.get("tipo", "")).upper():
                 continue
-                
+
             f_rad = doc.get("fecha_radicacion")
             f_resp = doc.get("respuesta", {}).get("fecha_salida") if isinstance(doc.get("respuesta"), dict) else None
-            
+
             # Usar fecha de respuesta si está disponible, o fecha de radicación en su defecto
             fecha_ref = f_resp or f_rad
             if not fecha_ref:
                 continue
-                
+
             ref_year = fecha_ref.year
             ref_trimestre = (fecha_ref.month - 1) // 3 + 1
-            
+
             if ref_year == anio and ref_trimestre == trimestre:
                 datos_filtrados.append(doc)
-            
+
         return datos_filtrados
 
     def _construir_dataframe(self, datos: list) -> pd.DataFrame:
@@ -259,27 +259,27 @@ class ExcelReportService:
             "estado_actual": "respondido"
         }
         
-        docs = self.repo.listar(query, limit=10000)
-        
+        docs = self.repo.listar(query, limit=10000, projection={"trazabilidad": 0})
+
         datos_filtrados = []
         for doc in docs:
             if "PQRD" not in str(doc.get("tipo", "")).upper():
                 continue
-                
+
             f_rad = doc.get("fecha_radicacion")
             f_resp = doc.get("respuesta", {}).get("fecha_salida") if isinstance(doc.get("respuesta"), dict) else None
-            
+
             # Usar fecha de respuesta si está disponible, o fecha de radicación en su defecto
             fecha_ref = f_resp or f_rad
             if not fecha_ref:
                 continue
-                
+
             ref_year = fecha_ref.year
             ref_trimestre = (fecha_ref.month - 1) // 3 + 1
-            
+
             if ref_year == anio and ref_trimestre == trimestre:
                 datos_filtrados.append(doc)
-            
+
         return datos_filtrados
 
     def generar_excel_kawak_general(self, anio: int, trimestre: int) -> tuple[io.BytesIO, str]:
@@ -300,7 +300,7 @@ class ExcelReportService:
                 "$lt": end_date
             }
         }
-        return self.repo.listar(query, limit=10000)
+        return self.repo.listar(query, limit=10000, projection={"trazabilidad": 0})
 
     def generar_excel_consolidado_anual(self, anio: int) -> tuple[io.BytesIO, str]:
         hoy = datetime.now()

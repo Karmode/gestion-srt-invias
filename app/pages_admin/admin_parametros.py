@@ -107,6 +107,13 @@ def render(sesion=None):
                         key=f"inp_{clave}",
                         disabled=deshabilitado,
                     )
+                elif meta["tipo"] == "bool":
+                    nuevo = st.checkbox(
+                        meta.get("unidad", "Activo"),
+                        value=bool(actual),
+                        key=f"inp_{clave}",
+                        disabled=deshabilitado,
+                    )
                 else:
                     nuevo = st.text_input(
                         meta.get("unidad", "Valor"),
