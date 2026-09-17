@@ -337,16 +337,19 @@ class CorrespondenciaService:
             "recientes": self.repo.contar(query_recientes)
         }
 
-    def obtener_estado_formatos(self) -> List[Dict]:
-        """Obtiene el estado de correspondencia pendiente de todos los responsables activos."""
-        from app.services.usuario_service import UsuarioService
+    def obtener_estado_formatos(self, usuarios_activos: Optional[List[Dict]] = None) -> List[Dict]:
+        """Obtiene el estado de correspondencia pendiente de todos los responsables activos.
+
+        `usuarios_activos` permite reutilizar un listado ya cargado por el caller
+        (evita repetir el full-scan de la colección `usuarios`)."""
         from app.core.zona_horaria import utc_a_bogota, ZONA_BOGOTA
 
-        usuario_service = UsuarioService()
-
         # 1. Usuarios activos
-        usuarios = usuario_service.listar_usuarios()
-        usuarios_activos = [u for u in usuarios if u.get("activo", True)]
+        if usuarios_activos is None:
+            from app.services.usuario_service import UsuarioService
+
+            usuarios = UsuarioService().listar_usuarios()
+            usuarios_activos = [u for u in usuarios if u.get("activo", True)]
 
         # 2. Solo los campos necesarios de las correspondencias activas
         #    (proyección en servidor: NO viaja trazabilidad ni el documento completo)

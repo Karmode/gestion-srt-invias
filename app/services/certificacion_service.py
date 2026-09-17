@@ -270,8 +270,8 @@ class CertificacionService:
         """Día del mes en que se abre la ventana normal de certificación.
         Configurable por el admin; cae a DIA_INICIO_PERIODO si no está definido."""
         try:
-            from app.services.parametros_service import ParametrosService
-            return ParametrosService().obtener("dia_inicio_periodo_certificacion")
+            from app.core.cache_datos import dia_inicio_periodo_certificacion
+            return dia_inicio_periodo_certificacion()
         except Exception:
             return DIA_INICIO_PERIODO
 
@@ -675,8 +675,11 @@ class CertificacionService:
         if año is None or mes is None:
             año, mes = self.periodo_certificable()
 
-        estado_formatos = corr_service.obtener_estado_formatos()
-        todos_usuarios = {str(u["_id"]): u for u in usuario_repo.listar()}
+        lista_usuarios = usuario_repo.listar()
+        todos_usuarios = {str(u["_id"]): u for u in lista_usuarios}
+        usuarios_activos = [u for u in lista_usuarios if u.get("activo", True)]
+
+        estado_formatos = corr_service.obtener_estado_formatos(usuarios_activos=usuarios_activos)
         certs_mes = {
             str(c["usuario_id"]): c
             for c in self.repo.listar_por_periodo(año, mes, tipo_formato)

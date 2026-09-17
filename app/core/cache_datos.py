@@ -45,6 +45,18 @@ def opciones_activas(categoria: str) -> list:
     return OpcionesService().obtener_opciones(categoria)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def dia_inicio_periodo_certificacion() -> int:
+    """Parámetro de admin (día del mes que abre la ventana de certificación).
+
+    `CertificacionService.periodo_certificable()` lo consulta muy seguido
+    (incluso varias veces por colaborador al listar empleados certificables);
+    sin este caché cada llamada era un find_one a Mongo."""
+    from app.services.parametros_service import ParametrosService
+
+    return ParametrosService().obtener("dia_inicio_periodo_certificacion")
+
+
 @st.cache_data(ttl=60, show_spinner=False)
 def metricas_inicio(id_usuario: Optional[str]) -> dict:
     """Métricas del panel de inicio (pendientes/urgentes/recientes)."""
@@ -112,6 +124,7 @@ def limpiar_cache_lecturas() -> None:
     empleados_para_certificar.clear()
     periodos_disponibles_global.clear()
     periodos_disponibles_usuario.clear()
+    dia_inicio_periodo_certificacion.clear()
 
     from app.repositories.opciones_repo import limpiar_cache_opciones
 
