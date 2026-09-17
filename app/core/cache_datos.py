@@ -84,6 +84,9 @@ def datos_dashboard_admin(
         "tendencia_d": svc.tendencia_diaria(dias=30, usuario_id=usuario_id, tipo=tipo_id, estado=estado_id),
         "tiempos_resp": svc.analisis_tiempos_respuesta(usuario_id=usuario_id, tipo=tipo_id, estado=estado_id),
         "conteo_tipo": svc.conteo_por_tipo(usuario_id=usuario_id, tipo=tipo_id, estado=estado_id),
+        "tendencia_m": svc.tendencia_mensual(meses=6, usuario_id=usuario_id, tipo=tipo_id, estado=estado_id),
+        "por_dia_semana": svc.radicacion_por_dia_semana(usuario_id=usuario_id, tipo=tipo_id, estado=estado_id),
+        "vencidos_resp": svc.vencidos_por_responsable(usuario_id=usuario_id, tipo=tipo_id, estado=estado_id),
     }
 
 
