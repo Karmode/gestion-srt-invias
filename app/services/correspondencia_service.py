@@ -435,16 +435,16 @@ class CorrespondenciaService:
             "estado_actual": {"$in": ["pendiente", "en_tramite", "en_revision"]},
             "fecha_vencimiento": {"$gte": inicio, "$lte": fin},
         }
-        items = self.repo.listar(query, limit=10000)
 
         ahora = datetime.now(timezone.utc)
         referencia = fin if ahora > fin else ahora
-        # PyMongo devuelve datetimes sin tzinfo; comparar en UTC naive
-        referencia_naive = referencia.replace(tzinfo=None)
-        vencidas = sum(
-            1 for i in items
-            if i.get("fecha_vencimiento")
-            and i["fecha_vencimiento"].replace(tzinfo=None) < referencia_naive
-        )
-        return {"pendientes": len(items), "vencidas": vencidas}
+
+        # Solo se necesitan conteos: usar count_documents (aprovecha el índice
+        # compuesto responsable_actual.usuario_id+estado_actual+fecha_vencimiento)
+        # en vez de traer hasta 10000 documentos completos (con trazabilidad).
+        pendientes = self.repo.contar(query)
+        query_vencidas = dict(query)
+        query_vencidas["fecha_vencimiento"] = {"$gte": inicio, "$lt": referencia}
+        vencidas = self.repo.contar(query_vencidas)
+        return {"pendientes": pendientes, "vencidas": vencidas}
 

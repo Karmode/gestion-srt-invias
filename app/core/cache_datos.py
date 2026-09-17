@@ -46,15 +46,16 @@ def opciones_activas(categoria: str) -> list:
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def dia_inicio_periodo_certificacion() -> int:
-    """Parámetro de admin (día del mes que abre la ventana de certificación).
+def parametro_admin(clave: str):
+    """Valor de un parámetro configurable de admin (ParametrosService).
 
-    `CertificacionService.periodo_certificable()` lo consulta muy seguido
-    (incluso varias veces por colaborador al listar empleados certificables);
-    sin este caché cada llamada era un find_one a Mongo."""
+    Se consulta muy seguido desde puntos que antes hacían un find_one a Mongo
+    por llamada (ej. `periodo_certificable()`, invocado varias veces por
+    colaborador al listar empleados certificables, o `firma_extra_activa()`,
+    invocado varias veces por render de página)."""
     from app.services.parametros_service import ParametrosService
 
-    return ParametrosService().obtener("dia_inicio_periodo_certificacion")
+    return ParametrosService().obtener(clave)
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -124,7 +125,7 @@ def limpiar_cache_lecturas() -> None:
     empleados_para_certificar.clear()
     periodos_disponibles_global.clear()
     periodos_disponibles_usuario.clear()
-    dia_inicio_periodo_certificacion.clear()
+    parametro_admin.clear()
 
     from app.repositories.opciones_repo import limpiar_cache_opciones
 

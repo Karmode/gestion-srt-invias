@@ -270,8 +270,8 @@ class CertificacionService:
         """Día del mes en que se abre la ventana normal de certificación.
         Configurable por el admin; cae a DIA_INICIO_PERIODO si no está definido."""
         try:
-            from app.core.cache_datos import dia_inicio_periodo_certificacion
-            return dia_inicio_periodo_certificacion()
+            from app.core.cache_datos import parametro_admin
+            return parametro_admin("dia_inicio_periodo_certificacion")
         except Exception:
             return DIA_INICIO_PERIODO
 
@@ -776,10 +776,10 @@ class CertificacionService:
     def firma_extra_activa(self, tipo_formato: str | None) -> bool:
         """Indica si la Firma Extra está activada (parámetro de admin) para el
         formato dado. Formato de control se identifica como "gestion_correspondencia"."""
-        from app.services.parametros_service import ParametrosService
+        from app.core.cache_datos import parametro_admin
 
         meta = FIRMA_EXTRA_CONFIG.get(tipo_formato or "gestion_correspondencia")
-        return bool(meta) and bool(ParametrosService().obtener(meta["parametro"]))
+        return bool(meta) and bool(parametro_admin(meta["parametro"]))
 
     # ──────────────────────────────────────────────────────────────
     # Registro de firmas por período
