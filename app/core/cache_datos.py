@@ -74,6 +74,34 @@ def datos_dashboard_admin(
     }
 
 
+@st.cache_data(ttl=60, show_spinner=False)
+def empleados_para_certificar(tipo_formato: Optional[str], año: int, mes: int) -> list:
+    """Colaboradores con estado de firmas/contrato para 'Sup. Formatos' (panel de
+    control y panel de actas). Internamente ya combina el estado de correspondencia,
+    el listado completo de usuarios y las certificaciones del período."""
+    from app.services.certificacion_service import CertificacionService
+
+    return CertificacionService().obtener_empleados_para_certificar(
+        tipo_formato=tipo_formato, año=año, mes=mes
+    )
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def periodos_disponibles_global() -> list:
+    """Períodos (año, mes) seleccionables en 'Sup. Formatos'."""
+    from app.services.certificacion_service import CertificacionService
+
+    return CertificacionService().periodos_disponibles_global()
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def periodos_disponibles_usuario(usuario_id: str) -> list:
+    """Períodos (año, mes) seleccionables por un contratista en 'Formatos de contrato'."""
+    from app.services.certificacion_service import CertificacionService
+
+    return CertificacionService().periodos_disponibles_usuario(usuario_id)
+
+
 def limpiar_cache_lecturas() -> None:
     """Limpia todo el caché de lecturas. Llamar tras escrituras y en botones Actualizar."""
     usuarios_activos_para_seleccion.clear()
@@ -81,6 +109,9 @@ def limpiar_cache_lecturas() -> None:
     opciones_activas.clear()
     metricas_inicio.clear()
     datos_dashboard_admin.clear()
+    empleados_para_certificar.clear()
+    periodos_disponibles_global.clear()
+    periodos_disponibles_usuario.clear()
 
     from app.repositories.opciones_repo import limpiar_cache_opciones
 

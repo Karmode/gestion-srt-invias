@@ -8,6 +8,7 @@ y el contratista cumple: sin vencidas + contrato activo.
 import streamlit as st
 from app.core.ui_titulos import mostrar_titulo_decorado
 
+from app.core.cache_datos import limpiar_cache_lecturas
 from app.core.sesion import obtener_sesion
 from app.services.certificacion_service import (
     CertificacionService, MESES_ES, TIPOS_FIRMA_ACTAS, ORDEN_FIRMAS_ACTAS, FIRMA_EXTRA_CONFIG,
@@ -82,6 +83,7 @@ def _seccion_config_firmantes(servicio: CertificacionService, sesion: dict) -> N
                         if uid:
                             servicio.guardar_firmante(tipo, uid, seleccionado)
                             st.success(f"Firmante de {label_largo}: **{seleccionado}**")
+                    limpiar_cache_lecturas()
                     st.rerun()
 
         if servicio.firma_extra_activa("gestion_correspondencia"):
@@ -112,6 +114,7 @@ def _seccion_config_firmantes(servicio: CertificacionService, sesion: dict) -> N
                         if uid:
                             servicio.guardar_firmante(tipo_extra, uid, seleccionado, categoria="firmantes_firma_extra")
                             st.success(f"Firmante de Firma Extra: **{seleccionado}**")
+                    limpiar_cache_lecturas()
                     st.rerun()
 
 
@@ -165,6 +168,7 @@ def _seccion_config_firmantes_actas(servicio: CertificacionService, sesion: dict
                         if uid:
                             servicio.guardar_firmante(tipo, uid, seleccionado, categoria="firmantes_formatos_actas")
                             st.success(f"Firmante de {label_largo}: **{seleccionado}**")
+                    limpiar_cache_lecturas()
                     st.rerun()
 
         if servicio.firma_extra_activa(tipo_acta_activo):
@@ -195,6 +199,7 @@ def _seccion_config_firmantes_actas(servicio: CertificacionService, sesion: dict
                         if uid:
                             servicio.guardar_firmante(tipo_extra, uid, seleccionado, categoria="firmantes_firma_extra")
                             st.success(f"Firmante de Firma Extra: **{seleccionado}**")
+                    limpiar_cache_lecturas()
                     st.rerun()
 
 

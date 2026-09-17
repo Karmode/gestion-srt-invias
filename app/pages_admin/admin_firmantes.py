@@ -8,10 +8,14 @@ Accesible para los 3 firmantes designados y para el administrador.
 import streamlit as st
 from app.core.ui_titulos import mostrar_titulo_decorado
 
+from app.core.cache_datos import (
+    empleados_para_certificar,
+    limpiar_cache_lecturas,
+    periodos_disponibles_global,
+)
 from app.core.sesion import obtener_sesion
 from app.core.ui_certificado import (
     abrir_dialogo_documento,
-    obtener_pdf_certificado_cacheado,
     render_dialogo_documento_si_activo,
 )
 from app.core.zona_horaria import formato_fecha_bogota
@@ -218,6 +222,7 @@ def _dialog_confirmar_firma_actas(servicio: CertificacionService, sesion: dict) 
             except ValueError as e:
                 st.error(str(e))
             else:
+                limpiar_cache_lecturas()
                 st.session_state.pop("_confirmar_firma_actas", None)
                 st.rerun()
     with c2:
@@ -285,6 +290,7 @@ def _dialog_confirmar_firma(
         if st.button("Confirmar aprobación", type="primary", use_container_width=True):
             firmante_nombre = sesion.get("nombre_completo") or sesion["usuario"]
             servicio.registrar_firma(uid, nombre, tipo, sesion["id"], firmante_nombre, comentario, año=año, mes=mes)
+            limpiar_cache_lecturas()
             st.session_state.pop("_confirmar_firma", None)
             st.rerun()
     with c2:
@@ -339,7 +345,7 @@ def _render_panel_actas(
     st.divider()
 
     with st.spinner("Consultando colaboradores…"):
-        todos_empleados = servicio.obtener_empleados_para_certificar(tipo_formato=tipo_formato, año=año, mes=mes)
+        todos_empleados = empleados_para_certificar(tipo_formato, año, mes)
     empleados = [e for e in todos_empleados if e.get("certificacion")]
 
     # Resumen visual (semáforo) del período/formato: solo contratistas con
@@ -506,6 +512,7 @@ def _render_panel_actas(
                                 servicio.revocar_firma_extra_actas(str(cert["_id"]))
                             else:
                                 servicio.revocar_firma_actas(str(cert["_id"]), rol_activo)
+                            limpiar_cache_lecturas()
                             st.rerun()
                     elif not ya_aprobado:
                         if not puede_firmar:
@@ -591,7 +598,7 @@ def render(sesion=None):
 
     mostrar_titulo_decorado("Sup. Formatos")
 
-    periodos_globales = servicio.periodos_disponibles_global()
+    periodos_globales = periodos_disponibles_global()
     año, mes = st.selectbox(
         "📅 Período a firmar",
         options=periodos_globales,
@@ -675,7 +682,7 @@ def render(sesion=None):
         st.divider()
 
         with st.spinner("Consultando estado de correspondencia…"):
-            empleados = servicio.obtener_empleados_para_certificar(año=año, mes=mes)
+            empleados = empleados_para_certificar(None, año, mes)
 
         if not empleados:
             st.info("No hay colaboradores con correspondencia registrada.")
@@ -816,21 +823,17 @@ def render(sesion=None):
                             ya_certificado = cert_emp.get("estado") == "aprobado"
 
                             if ya_certificado:
-                                pdf_bytes = obtener_pdf_certificado_cacheado(
-                                    servicio,
-                                    str(cert_emp["_id"]),
-                                    cert_emp.get("hash_verificacion", ""),
-                                    cert_emp,
-                                    version_key=str(cert_emp.get("firmas", {})),
-                                )
-                                st.download_button(
-                                    "⬇️ Certificado",
-                                    data=pdf_bytes,
-                                    file_name=f"Certificado_{nombre.replace(' ', '_')}_{nombre_mes}_{año}.pdf",
-                                    mime="application/pdf",
-                                    key=f"dl_{uid}",
+                                # El PDF se genera solo al abrir el diálogo (clic del
+                                # botón), no antes — igual que en el panel de Actas.
+                                if st.button(
+                                    "👁️ Ver / Descargar",
+                                    key=f"ver_cert_{uid}",
                                     use_container_width=True,
-                                )
+                                ):
+                                    abrir_dialogo_documento(
+                                        cert_emp, nombre, "pdf", "Certificado",
+                                        f"{nombre_mes}_{año}", es_borrador=False,
+                                    )
                             elif not tipo_mi_firma:
                                 # Admin sin designación solo visualiza
                                 pass
@@ -842,6 +845,7 @@ def render(sesion=None):
                                     help="Revocar mi aprobación.",
                                 ):
                                     servicio.revocar_firma(uid, tipo_mi_firma, año=año, mes=mes)
+                                    limpiar_cache_lecturas()
                                     st.rerun()
                             else:
                                 if st.button(
