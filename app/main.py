@@ -1785,6 +1785,8 @@ else:
     _perms_firma = {
         "certificacion.firmar_corr", "certificacion.firmar_gd", "certificacion.firmar_secop",
         "certificacion.firmar_financiera", "certificacion.firmar_abogado", "certificacion.firmar_jefe",
+        "certificacion.firmar_extra_control", "certificacion.firmar_extra_acta_compromiso",
+        "certificacion.firmar_extra_balance_general", "certificacion.firmar_extra_acta_recibo_entrega",
     }
     es_admin_main = any(r in {"admin", "administrador"} for r in sesion.get("roles", []))
     es_firmante_o_supervisor = bool(_perms_firma & set(permisos_sesion)) or es_admin_main or "certificacion.aprobar" in permisos_sesion
@@ -1798,7 +1800,7 @@ else:
     if es_firmante_o_supervisor:
         supervision_pages.append(st.Page("pages/9_firmantes_certif.py", title="Sup. Formatos", icon="✍️"))
     if "certificacion.aprobar" in permisos_sesion:
-        supervision_pages.append(st.Page("pages/7_admin_certif.py", title="Seguimiento - Formatos", icon="📊"))
+        supervision_pages.append(st.Page("pages/7_admin_certif.py", title="Config Formatos", icon="⚙️"))
 
     # Cada grupo de trabajo es su propia categoría de primer nivel. Es visible si el
     # usuario es admin, si su grupo_trabajo coincide, o si tiene el permiso grupo.X.ver

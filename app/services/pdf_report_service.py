@@ -62,7 +62,11 @@ class PDFReportService:
             elementos.append(Spacer(1, 15))
 
     def _obtener_datos_activos(self) -> list:
-        return self.repo.listar({"estado_actual": {"$in": ["pendiente", "en_tramite", "en_revision"]}}, limit=10000)
+        return self.repo.listar(
+            {"estado_actual": {"$in": ["pendiente", "en_tramite", "en_revision"]}},
+            limit=10000,
+            projection={"trazabilidad": 0},
+        )
 
     def _construir_tabla_resumen(self, df_reporte, col_usuario, col_valor_nombre="Atrasados"):
         if df_reporte.empty:
@@ -104,7 +108,7 @@ class PDFReportService:
             "responsable_actual.nombre": {"$ne": "Gladys Gutierrez Buitrago", "$exists": True}
         }
         
-        datos = self.repo.listar(query, limit=10000)
+        datos = self.repo.listar(query, limit=10000, projection={"trazabilidad": 0})
         filas = []
         
         for doc in datos:
@@ -197,7 +201,7 @@ class PDFReportService:
             "responsable_actual.nombre": {"$ne": "Gladys Gutierrez Buitrago", "$exists": True}
         }
         
-        datos = self.repo.listar(query, limit=10000)
+        datos = self.repo.listar(query, limit=10000, projection={"trazabilidad": 0})
         filas = []
         
         for doc in datos:
@@ -301,7 +305,7 @@ class PDFReportService:
             "responsable_actual.nombre": {"$ne": "Gladys Gutierrez Buitrago", "$exists": True}
         }
         
-        datos = self.repo.listar(query, limit=10000)
+        datos = self.repo.listar(query, limit=10000, projection={"trazabilidad": 0})
         filas = []
         
         for doc in datos:

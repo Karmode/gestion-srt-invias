@@ -106,6 +106,10 @@ PERMISOS_BASE = [
     {"clave": "certificacion.firmar_financiera", "descripcion": "Firmar aprobación Financiera (actas)", "modulo": "certificaciones"},
     {"clave": "certificacion.firmar_abogado", "descripcion": "Firmar aprobación Jurídica (actas)", "modulo": "certificaciones"},
     {"clave": "certificacion.firmar_jefe", "descripcion": "Firmar aprobación del Jefe (actas)", "modulo": "certificaciones"},
+    {"clave": "certificacion.firmar_extra_control", "descripcion": "Firmar Firma Extra del Formato de control Corr-GD-SECOP", "modulo": "certificaciones"},
+    {"clave": "certificacion.firmar_extra_acta_compromiso", "descripcion": "Firmar Firma Extra del Acta de compromiso", "modulo": "certificaciones"},
+    {"clave": "certificacion.firmar_extra_balance_general", "descripcion": "Firmar Firma Extra del Balance General CPS", "modulo": "certificaciones"},
+    {"clave": "certificacion.firmar_extra_acta_recibo_entrega", "descripcion": "Firmar Firma Extra del Acta de recibo y entrega CPS", "modulo": "certificaciones"},
     {"clave": "certificacion.gestionar_firmantes", "descripcion": "Configurar firmantes designados de certificaciones", "modulo": "certificaciones"},
     {"clave": "grupo.despacho.ver", "descripcion": "Ver sección de Despacho", "modulo": "grupos"},
     {"clave": "grupo.permisos.ver", "descripcion": "Ver sección de Permisos (SUIT)", "modulo": "grupos"},
@@ -123,6 +127,10 @@ _PERMISOS_SOLO_FIRMANTES = {
     "certificacion.firmar_financiera",
     "certificacion.firmar_abogado",
     "certificacion.firmar_jefe",
+    "certificacion.firmar_extra_control",
+    "certificacion.firmar_extra_acta_compromiso",
+    "certificacion.firmar_extra_balance_general",
+    "certificacion.firmar_extra_acta_recibo_entrega",
 }
 
 ROLES_BASE = [

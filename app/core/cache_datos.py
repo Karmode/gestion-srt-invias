@@ -45,6 +45,19 @@ def opciones_activas(categoria: str) -> list:
     return OpcionesService().obtener_opciones(categoria)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def parametro_admin(clave: str):
+    """Valor de un parámetro configurable de admin (ParametrosService).
+
+    Se consulta muy seguido desde puntos que antes hacían un find_one a Mongo
+    por llamada (ej. `periodo_certificable()`, invocado varias veces por
+    colaborador al listar empleados certificables, o `firma_extra_activa()`,
+    invocado varias veces por render de página)."""
+    from app.services.parametros_service import ParametrosService
+
+    return ParametrosService().obtener(clave)
+
+
 @st.cache_data(ttl=60, show_spinner=False)
 def metricas_inicio(id_usuario: Optional[str]) -> dict:
     """Métricas del panel de inicio (pendientes/urgentes/recientes)."""
@@ -74,6 +87,34 @@ def datos_dashboard_admin(
     }
 
 
+@st.cache_data(ttl=60, show_spinner=False)
+def empleados_para_certificar(tipo_formato: Optional[str], año: int, mes: int) -> list:
+    """Colaboradores con estado de firmas/contrato para 'Sup. Formatos' (panel de
+    control y panel de actas). Internamente ya combina el estado de correspondencia,
+    el listado completo de usuarios y las certificaciones del período."""
+    from app.services.certificacion_service import CertificacionService
+
+    return CertificacionService().obtener_empleados_para_certificar(
+        tipo_formato=tipo_formato, año=año, mes=mes
+    )
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def periodos_disponibles_global() -> list:
+    """Períodos (año, mes) seleccionables en 'Sup. Formatos'."""
+    from app.services.certificacion_service import CertificacionService
+
+    return CertificacionService().periodos_disponibles_global()
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def periodos_disponibles_usuario(usuario_id: str) -> list:
+    """Períodos (año, mes) seleccionables por un contratista en 'Formatos de contrato'."""
+    from app.services.certificacion_service import CertificacionService
+
+    return CertificacionService().periodos_disponibles_usuario(usuario_id)
+
+
 def limpiar_cache_lecturas() -> None:
     """Limpia todo el caché de lecturas. Llamar tras escrituras y en botones Actualizar."""
     usuarios_activos_para_seleccion.clear()
@@ -81,6 +122,10 @@ def limpiar_cache_lecturas() -> None:
     opciones_activas.clear()
     metricas_inicio.clear()
     datos_dashboard_admin.clear()
+    empleados_para_certificar.clear()
+    periodos_disponibles_global.clear()
+    periodos_disponibles_usuario.clear()
+    parametro_admin.clear()
 
     from app.repositories.opciones_repo import limpiar_cache_opciones
 

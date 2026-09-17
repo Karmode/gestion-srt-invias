@@ -14,6 +14,7 @@ import streamlit as st
 from app.config import configuracion
 from app.core.ui_titulos import mostrar_titulo_decorado
 
+from app.core.cache_datos import limpiar_cache_lecturas, periodos_disponibles_usuario
 from app.core.sesion import obtener_sesion
 from app.core.ui_certificado import render_preview_cert
 from app.core.zona_horaria import formato_fecha_bogota
@@ -555,6 +556,7 @@ def _render_opcion_1_cuenta_cobro(servicio, sesion, año_cert, mes_cert, nombre_
         if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
             if servicio.firmar_y_generar_cuenta_cobro(usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert):
                 st.success("¡Formato generado y firmado digitalmente con éxito!")
+                limpiar_cache_lecturas()
                 st.rerun()
 
 
@@ -648,6 +650,7 @@ def _render_opcion_2_retencion_primera(servicio, sesion, año_cert, mes_cert, no
         if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
             if servicio.firmar_y_generar_retencion_primera(usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert):
                 st.success("¡Formato generado y firmado digitalmente con éxito!")
+                limpiar_cache_lecturas()
                 st.rerun()
 
 
@@ -741,6 +744,7 @@ def _render_opcion_3_retencion_segunda(servicio, sesion, año_cert, mes_cert, no
         if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
             if servicio.firmar_y_generar_retencion_segunda(usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert):
                 st.success("¡Formato generado y firmado digitalmente con éxito!")
+                limpiar_cache_lecturas()
                 st.rerun()
 
 
@@ -833,6 +837,7 @@ def _render_opcion_4_declarante_dependencia(servicio, sesion, año_cert, mes_cer
         if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
             if servicio.firmar_y_generar_dependencia(usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert):
                 st.success("¡Formato generado y firmado digitalmente con éxito!")
+                limpiar_cache_lecturas()
                 st.rerun()
 
 
@@ -930,6 +935,7 @@ def _render_opcion_5_acta_compromiso(servicio, sesion, año_cert, mes_cert, nomb
         if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
             if servicio.firmar_y_generar_acta_compromiso(usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert):
                 st.success("¡Formato generado y firmado digitalmente con éxito!")
+                limpiar_cache_lecturas()
                 st.rerun()
 
 
@@ -1011,6 +1017,7 @@ def _render_opcion_9_acta_recibo_entrega_real(servicio, sesion, año_cert, mes_c
         if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
             if servicio.firmar_y_generar_acta_recibo_entrega_cps_real(usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert):
                 st.success("¡Formato generado y firmado digitalmente con éxito!")
+                limpiar_cache_lecturas()
                 st.rerun()
 
 
@@ -1079,6 +1086,7 @@ def _render_opcion_8_acta_recibo_entrega(servicio, sesion, año_cert, mes_cert, 
         if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
             if servicio.firmar_y_generar_acta_recibo_entrega(usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert):
                 st.success("¡Formato generado y firmado digitalmente con éxito!")
+                limpiar_cache_lecturas()
                 st.rerun()
 
 
@@ -1141,6 +1149,7 @@ def _render_opcion_10_informe_actividades_final(servicio, sesion, año_cert, mes
         if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
             if servicio.firmar_y_generar_informe_actividades_final(usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert):
                 st.success("¡Formato generado y firmado digitalmente con éxito!")
+                limpiar_cache_lecturas()
                 st.rerun()
 
 
@@ -1179,7 +1188,7 @@ def render(sesion=None):
     servicio = CertificacionService()
     usuario_id = sesion["id"]
 
-    periodos_usuario = servicio.periodos_disponibles_usuario(usuario_id)
+    periodos_usuario = periodos_disponibles_usuario(usuario_id)
     año_cert, mes_cert = st.selectbox(
         "📅 Período de trabajo",
         options=periodos_usuario,
