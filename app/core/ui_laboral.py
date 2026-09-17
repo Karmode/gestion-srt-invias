@@ -294,7 +294,7 @@ def inputs_informacion_laboral(prefijo, il, mapas):
 
 
     st.markdown("##### 🏥 Seguridad social y aportes")
-    st.caption("Indica si el aporte lo pagas tú (registra el valor mensual) o se paga por otro medio (registra el número de radicado).")
+    st.caption("Indica si el aporte lo pagas tú (registra el valor mensual) o se paga por otro medio (registra el número de radicado). Para generar los formatos de primera y última cuenta, es indispensable diligenciar los datos de la planilla junto con sus respectivos valores.")
     
     st.checkbox(
         "Planilla a mes vencido",

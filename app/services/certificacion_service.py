@@ -45,6 +45,20 @@ ORDEN_FIRMAS_ACTAS = {
     "acta_recibo_entrega_cps_real": ("financiera", "abogado", "jefe"),   # Acta recibo y entrega CPS
 }
 
+# ── Firma Extra: firma independiente y opcional por formato ───────────────────
+# No participa del flujo/orden de firmas normal: solo bloquea que el documento
+# llegue a estado "aprobado" mientras esté activa (parámetro) y no se haya dado.
+# El "tipo_firmante" cumple triple función: es la clave firmas.<x> en el
+# documento, el "tipo" pasado a guardar_firmante/obtener_firmantes_config, y por
+# tanto define el permiso autogenerado "certificacion.firmar_<tipo_firmante>".
+FIRMA_EXTRA_CONFIG = {
+    "gestion_correspondencia":      {"tipo_firmante": "extra_control",            "parametro": "firma_extra_control_activa"},
+    "acta_compromiso":              {"tipo_firmante": "extra_acta_compromiso",     "parametro": "firma_extra_acta_compromiso_activa"},
+    "acta_recibo_entrega_cps":      {"tipo_firmante": "extra_balance_general",     "parametro": "firma_extra_balance_general_activa"},
+    "acta_recibo_entrega_cps_real": {"tipo_firmante": "extra_acta_recibo_entrega", "parametro": "firma_extra_acta_recibo_entrega_activa"},
+}
+CATEGORIA_FIRMANTES_EXTRA = "firmantes_firma_extra"
+
 
 # ── Helpers compartidos para las versiones Excel (.xlsx) de las Actas ─────────
 # Duplican, a propósito, la lógica ya usada dentro de generar_pdf_acta_recibo_entrega
@@ -756,6 +770,14 @@ class CertificacionService:
         )
         return True
 
+    def firma_extra_activa(self, tipo_formato: str | None) -> bool:
+        """Indica si la Firma Extra está activada (parámetro de admin) para el
+        formato dado. Formato de control se identifica como "gestion_correspondencia"."""
+        from app.services.parametros_service import ParametrosService
+
+        meta = FIRMA_EXTRA_CONFIG.get(tipo_formato or "gestion_correspondencia")
+        return bool(meta) and bool(ParametrosService().obtener(meta["parametro"]))
+
     # ──────────────────────────────────────────────────────────────
     # Registro de firmas por período
     # ──────────────────────────────────────────────────────────────
@@ -803,6 +825,8 @@ class CertificacionService:
 
         firmas = cert.get("firmas", {})
         if not all(firmas.get(t) for t in ("corr", "gd", "secop")):
+            return
+        if self.firma_extra_activa("gestion_correspondencia") and not firmas.get("extra_control"):
             return
 
         usuario = UsuarioRepositorio().buscar_por_id(empleado_id)
@@ -854,20 +878,84 @@ class CertificacionService:
             cert_id, rol, firmante_id, firmante_nombre, comentario
         )
 
-        cert_actualizado = self.repo.buscar_por_id(cert_id)
-        firmas = cert_actualizado.get("firmas") or {}
-        if all(firmas.get(r) for r in orden):
-            ahora_utc = datetime.now(timezone.utc)
-            usuario_id = str(cert_actualizado.get("usuario_id"))
-            año = cert_actualizado.get("año")
-            mes = cert_actualizado.get("mes")
-            hash_code = cert_actualizado.get("hash_verificacion") or self._generar_hash(
-                usuario_id, año, mes, firmante_id, ahora_utc.isoformat()
-            )
-            self.repo.actualizar(str(cert_actualizado["_id"]), {
-                "estado": "aprobado",
-                "hash_verificacion": hash_code,
-            })
+        self._evaluar_aprobacion_actas(cert_id, firmante_id)
+        return True
+
+    def _evaluar_aprobacion_actas(self, cert_id: str, firmante_id: str) -> None:
+        """Aprueba el documento de actas si el orden secuencial requerido está
+        completo y, si la Firma Extra está activa para este formato, también está
+        firmada. No hace nada si ya estaba aprobado o si aún falta algo."""
+        cert = self.repo.buscar_por_id(cert_id)
+        if not cert:
+            return
+
+        tipo_formato = cert.get("tipo_formato")
+        orden = ORDEN_FIRMAS_ACTAS.get(tipo_formato)
+        if not orden:
+            return
+
+        firmas = cert.get("firmas") or {}
+        if not all(firmas.get(r) for r in orden):
+            return
+
+        extra_meta = FIRMA_EXTRA_CONFIG.get(tipo_formato)
+        if extra_meta and self.firma_extra_activa(tipo_formato) and not firmas.get(extra_meta["tipo_firmante"]):
+            return
+
+        ahora_utc = datetime.now(timezone.utc)
+        usuario_id = str(cert.get("usuario_id"))
+        año = cert.get("año")
+        mes = cert.get("mes")
+        hash_code = cert.get("hash_verificacion") or self._generar_hash(
+            usuario_id, año, mes, firmante_id, ahora_utc.isoformat()
+        )
+        self.repo.actualizar(cert_id, {
+            "estado": "aprobado",
+            "hash_verificacion": hash_code,
+        })
+
+    def registrar_firma_extra_actas(
+        self,
+        cert_id: str,
+        firmante_id: str,
+        firmante_nombre: str,
+        comentario: str | None = None,
+    ) -> bool:
+        """Registra la Firma Extra de un formato de actas. Es independiente del
+        orden secuencial (financiera/abogado/jefe): no exige ni depende de las
+        demás firmas, solo aporta la condición adicional que evalúa
+        _evaluar_aprobacion_actas."""
+        cert = self.repo.buscar_por_id(cert_id)
+        if not cert:
+            raise ValueError("No existe el formato especificado.")
+
+        extra_meta = FIRMA_EXTRA_CONFIG.get(cert.get("tipo_formato"))
+        if not extra_meta:
+            raise ValueError(f"Firma Extra no aplica para el formato '{cert.get('tipo_formato')}'.")
+
+        self.repo.registrar_firma_actas_por_id(
+            cert_id, extra_meta["tipo_firmante"], firmante_id, firmante_nombre, comentario
+        )
+        self._evaluar_aprobacion_actas(cert_id, firmante_id)
+        return True
+
+    def revocar_firma_extra_actas(self, cert_id: str) -> bool:
+        """Revoca la Firma Extra de un formato de actas. No dispara cascada (no
+        tiene roles dependientes) y vuelve el documento a 'pendiente' si estaba
+        aprobado gracias a ella."""
+        cert = self.repo.buscar_por_id(cert_id)
+        if not cert:
+            return False
+
+        extra_meta = FIRMA_EXTRA_CONFIG.get(cert.get("tipo_formato"))
+        if not extra_meta:
+            raise ValueError(f"Firma Extra no aplica para el formato '{cert.get('tipo_formato')}'.")
+
+        self.repo.revocar_firmas_actas_por_id(cert_id, [extra_meta["tipo_firmante"]])
+
+        if cert.get("estado") == "aprobado":
+            self.repo.actualizar(cert_id, {"estado": "pendiente"})
+
         return True
 
     def revocar_firma_actas(self, cert_id: str, rol: str) -> bool:
@@ -916,6 +1004,8 @@ class CertificacionService:
 
         firmas = cert.get("firmas", {})
         if not all(firmas.get(t) for t in ("corr", "gd", "secop")):
+            return False
+        if self.firma_extra_activa("gestion_correspondencia") and not firmas.get("extra_control"):
             return False
 
         año_cert = cert.get("año")

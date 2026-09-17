@@ -369,6 +369,46 @@ ESQUEMA_CERTIFICACIONES = {
                         "comentario":      {"bsonType": ["string", "null"]},
                     },
                 },
+                "extra_control": {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
+                    },
+                },
+                "extra_acta_compromiso": {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
+                    },
+                },
+                "extra_balance_general": {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
+                    },
+                },
+                "extra_acta_recibo_entrega": {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
+                    },
+                },
             },
         },
         "eventos": {

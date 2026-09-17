@@ -1,4 +1,4 @@
-"""Vista del supervisor para monitorear y descargar certificaciones mensuales.
+"""Vista del supervisor para configurar los firmantes designados de cada formato.
 
 Requiere el permiso certificacion.aprobar.
 La certificación ocurre automáticamente cuando se registran las 3 firmas
@@ -9,14 +9,9 @@ import streamlit as st
 from app.core.ui_titulos import mostrar_titulo_decorado
 
 from app.core.sesion import obtener_sesion
-from app.core.ui_certificado import (
-    abrir_dialogo_documento,
-    obtener_pdf_certificado_cacheado,
-    render_dialogo_documento_si_activo,
-    render_preview_cert,
+from app.services.certificacion_service import (
+    CertificacionService, MESES_ES, TIPOS_FIRMA_ACTAS, ORDEN_FIRMAS_ACTAS, FIRMA_EXTRA_CONFIG,
 )
-from app.core.zona_horaria import formato_fecha_bogota
-from app.services.certificacion_service import CertificacionService, MESES_ES, TIPOS_FIRMA_ACTAS, ORDEN_FIRMAS_ACTAS
 
 TIPOS_FIRMA = ("corr", "gd", "secop")
 
@@ -30,12 +25,6 @@ _META_FIRMA_ACTAS = {
     "financiera": ("F. Financiera", "Financiera"),
     "abogado":    ("F. Jurídica",   "Jurídico"),
     "jefe":       ("F. Jefe",       "Jefe inmediato"),
-}
-
-_PREFIJO_ARCHIVO_ACTAS = {
-    "acta_compromiso": "Acta_Compromiso",
-    "acta_recibo_entrega_cps": "Balance_General_CPS",
-    "acta_recibo_entrega_cps_real": "Acta_Recibo_Entrega_CPS",
 }
 
 _TITULO_ACTAS = {
@@ -95,6 +84,36 @@ def _seccion_config_firmantes(servicio: CertificacionService, sesion: dict) -> N
                             st.success(f"Firmante de {label_largo}: **{seleccionado}**")
                     st.rerun()
 
+        if servicio.firma_extra_activa("gestion_correspondencia"):
+            tipo_extra = FIRMA_EXTRA_CONFIG["gestion_correspondencia"]["tipo_firmante"]
+            config_extra = servicio.obtener_firmantes_config("firmantes_firma_extra", (tipo_extra,))
+            actual = config_extra.get(tipo_extra) or {}
+            actual_nombre = actual.get("nombre") if actual else None
+            idx_actual = 0
+            if actual_nombre and actual_nombre in opciones_lista:
+                idx_actual = opciones_lista.index(actual_nombre)
+
+            c1, c2 = st.columns([5, 1])
+            with c1:
+                seleccionado = st.selectbox(
+                    "Firmante · Firma Extra",
+                    options=opciones_lista,
+                    index=idx_actual,
+                    key=f"sel_firmante_{tipo_extra}",
+                )
+            with c2:
+                st.write("")
+                if st.button("Guardar", key=f"btn_firmante_{tipo_extra}", use_container_width=True):
+                    if seleccionado == "(ninguno)":
+                        servicio.guardar_firmante(tipo_extra, None, None, categoria="firmantes_firma_extra")
+                        st.success("Firmante de Firma Extra eliminado.")
+                    else:
+                        uid = nombre_a_id.get(seleccionado)
+                        if uid:
+                            servicio.guardar_firmante(tipo_extra, uid, seleccionado, categoria="firmantes_firma_extra")
+                            st.success(f"Firmante de Firma Extra: **{seleccionado}**")
+                    st.rerun()
+
 
 def _seccion_config_firmantes_actas(servicio: CertificacionService, sesion: dict, tipo_acta_activo: str) -> None:
     if "certificacion.gestionar_firmantes" not in sesion.get("permisos", []):
@@ -148,87 +167,35 @@ def _seccion_config_firmantes_actas(servicio: CertificacionService, sesion: dict
                             st.success(f"Firmante de {label_largo}: **{seleccionado}**")
                     st.rerun()
 
-# ── Badges ───────────────────────────────────────────────────────
+        if servicio.firma_extra_activa(tipo_acta_activo):
+            tipo_extra = FIRMA_EXTRA_CONFIG[tipo_acta_activo]["tipo_firmante"]
+            config_extra = servicio.obtener_firmantes_config("firmantes_firma_extra", (tipo_extra,))
+            actual = config_extra.get(tipo_extra) or {}
+            actual_nombre = actual.get("nombre") if actual else None
+            idx_actual = 0
+            if actual_nombre and actual_nombre in opciones_lista:
+                idx_actual = opciones_lista.index(actual_nombre)
 
-def _badge_corr(pendientes: int, vencidas: int) -> str:
-    if pendientes == 0:
-        bg, fg, bd = "#1b4721", "#75db8b", "#2d7a3e"
-        txt = "✅ Al Día"
-    elif vencidas > 0:
-        bg, fg, bd = "#511c1e", "#ff9ca2", "#8a2d32"
-        txt = f"❌ {pendientes} pend. ({vencidas} venc.)"
-    else:
-        bg, fg, bd = "#4d3d0f", "#ffe69c", "#7a6010"
-        txt = f"⚠️ {pendientes} pend."
-    return (
-        f'<span style="background:{bg};color:{fg};border:1px solid {bd};'
-        f'border-radius:4px;padding:2px 8px;font-size:.78em;font-weight:700;">'
-        f"{txt}</span>"
-    )
-
-
-def _badge_cert(estado: str | None) -> str:
-    if estado == "aprobado":
-        return (
-            '<span style="background:#1b4721;color:#75db8b;border:1px solid #2d7a3e;'
-            'border-radius:4px;padding:2px 8px;font-size:.78em;font-weight:700;">✅ Certificado</span>'
-        )
-    return (
-        '<span style="background:#2c2c2c;color:#aaaaaa;border:1px solid #444;'
-        'border-radius:4px;padding:2px 8px;font-size:.78em;font-weight:700;">⏳ Pendiente</span>'
-    )
-
-
-def _badge_firma(tipo: str, firma: dict | None) -> str:
-    label = _META_FIRMA[tipo][0]
-    if firma:
-        bg, fg, bd = "#1b4721", "#75db8b", "#2d7a3e"
-        icono = "✅"
-    else:
-        bg, fg, bd = "#2c2c2c", "#aaaaaa", "#444"
-        icono = "⏳"
-    return (
-        f'<span style="background:{bg};color:{fg};border:1px solid {bd};'
-        f'border-radius:4px;padding:1px 7px;font-size:.75em;font-weight:700;">'
-        f"{icono} {label}</span>"
-    )
-
-
-def _badge_contrato(tiene: bool) -> str:
-    if tiene:
-        return (
-            '<span style="background:#1b2e4b;color:#74b9ff;border:1px solid #2d4a6e;'
-            'border-radius:4px;padding:1px 7px;font-size:.75em;font-weight:700;">📄 Con contrato</span>'
-        )
-    return (
-        '<span style="background:#511c1e;color:#ff9ca2;border:1px solid #8a2d32;'
-        'border-radius:4px;padding:1px 7px;font-size:.75em;font-weight:700;">❌ Sin contrato</span>'
-    )
-
-
-# ── Diálogo de previsualización ──────────────────────────────────
-
-@st.dialog("Vista previa del certificado", width="large")
-def _dialog_preview(servicio: CertificacionService) -> None:
-    data = st.session_state.pop("_preview_cert", None)
-    if not data:
-        return
-
-    cert = data["cert"]
-    nombre = data["nombre"]
-    año = data["año"]
-    nombre_mes = data["nombre_mes"]
-
-    pdf_bytes = obtener_pdf_certificado_cacheado(
-        servicio, str(cert["_id"]), cert.get("hash_verificacion", ""), cert,
-        version_key=str(cert.get("firmas", {}))
-    )
-    render_preview_cert(
-        pdf_bytes=pdf_bytes,
-        caption=f"{nombre} — {nombre_mes} {año}",
-        file_name=f"Certificado_{nombre.replace(' ', '_')}_{nombre_mes}_{año}.pdf",
-        dl_key="_dl_preview_cert",
-    )
+            c1, c2 = st.columns([5, 1])
+            with c1:
+                seleccionado = st.selectbox(
+                    "Firmante · Firma Extra",
+                    options=opciones_lista,
+                    index=idx_actual,
+                    key=f"sel_firmante_actas_{tipo_acta_activo}_{tipo_extra}",
+                )
+            with c2:
+                st.write("")
+                if st.button("Guardar", key=f"btn_firmante_actas_{tipo_acta_activo}_{tipo_extra}", use_container_width=True):
+                    if seleccionado == "(ninguno)":
+                        servicio.guardar_firmante(tipo_extra, None, None, categoria="firmantes_firma_extra")
+                        st.success("Firmante de Firma Extra eliminado.")
+                    else:
+                        uid = nombre_a_id.get(seleccionado)
+                        if uid:
+                            servicio.guardar_firmante(tipo_extra, uid, seleccionado, categoria="firmantes_firma_extra")
+                            st.success(f"Firmante de Firma Extra: **{seleccionado}**")
+                    st.rerun()
 
 
 # ── Render principal ─────────────────────────────────────────────
@@ -249,11 +216,8 @@ def render(sesion=None):
     nombre_mes = MESES_ES[mes - 1]
     es_anterior = servicio.es_mes_anterior()
 
-    mostrar_titulo_decorado("Seguimiento - Formatos")
-    st.caption(
-        "Revisa el estado de correspondencia, firmas y contrato de cada colaborador "
-        "y emite las certificaciones del período."
-    )
+    mostrar_titulo_decorado("Config Formatos")
+    st.caption("Configura los firmantes designados para cada uno de los formatos.")
 
     if es_anterior:
         st.warning(
@@ -299,114 +263,6 @@ def render(sesion=None):
     tipo_acta_activo = st.session_state.get("tipo_acta_seg_activo")
     if tipo_acta_activo:
         _seccion_config_firmantes_actas(servicio, sesion, tipo_acta_activo)
-        st.divider()
-
-        orden = ORDEN_FIRMAS_ACTAS[tipo_acta_activo]
-        titulo = _TITULO_ACTAS[tipo_acta_activo]
-
-        with st.spinner(f"Consultando estado de {titulo.lower()}…"):
-            empleados = servicio.obtener_empleados_para_certificar(tipo_formato=tipo_acta_activo)
-        empleados = [e for e in empleados if e.get("certificacion")]
-
-        if not empleados:
-            st.info("Ningún colaborador ha generado este formato todavía.")
-        else:
-            total = len(empleados)
-            aprobados = sum(1 for e in empleados if (e.get("certificacion") or {}).get("estado") == "aprobado")
-            pendientes = total - aprobados
-
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Total colaboradores", total)
-            m2.metric(f"{titulo} aprobadas", aprobados)
-            m3.metric("Pendientes", pendientes)
-
-            st.divider()
-
-            fc1, fc2 = st.columns(2)
-            with fc1:
-                contratistas_unicos = sorted(list(set(e["nombre"] for e in empleados)))
-                buscar = st.selectbox(
-                    "Filtro por Gestor",
-                    options=["Todos"] + contratistas_unicos,
-                    index=0,
-                    key=f"filtro_gestor_{tipo_acta_activo}",
-                )
-            with fc2:
-                filtro_aprobados = st.selectbox(
-                    "Filtro por Estado",
-                    options=["Todos", "Aprobadas", "Pendientes"],
-                    index=0,
-                    key=f"filtro_estado_{tipo_acta_activo}",
-                )
-
-            lista = empleados
-            if buscar != "Todos":
-                lista = [e for e in lista if e["nombre"] == buscar]
-            if filtro_aprobados == "Aprobadas":
-                lista = [e for e in lista if (e.get("certificacion") or {}).get("estado") == "aprobado"]
-            elif filtro_aprobados == "Pendientes":
-                lista = [e for e in lista if (e.get("certificacion") or {}).get("estado") != "aprobado"]
-
-            lista = sorted(lista, key=lambda e: e["nombre"].lower())
-            st.caption(f"Mostrando {len(lista)} de {total} colaboradores")
-
-            if not lista:
-                st.info("Ningún colaborador coincide con los filtros aplicados.")
-            else:
-                for emp in lista:
-                    uid = emp["usuario_id"]
-                    nombre = emp["nombre"]
-                    cert = emp.get("certificacion") or {}
-                    estado_cert = cert.get("estado")
-                    firmas = emp.get("firmas", {})
-
-                    with st.container(border=True):
-                        c_nom, c_badges, c_btn = st.columns([3, 5, 2])
-
-                        with c_nom:
-                            st.markdown(f"**{nombre}**")
-                            st.caption("Aprobado" if estado_cert == "aprobado" else "Pendiente de firmas")
-
-                        with c_badges:
-                            badge_estado = (
-                                '<span style="background-color: #2E7D32; color: white; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">APROBADO</span>'
-                                if estado_cert == "aprobado"
-                                else '<span style="background-color: #E65100; color: white; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">PENDIENTE</span>'
-                            )
-                            badges_firmas = "&nbsp;".join(
-                                (
-                                    f'<span style="background:#1b4721;color:#75db8b;border:1px solid #2d7a3e;border-radius:4px;padding:1px 8px;font-size:.76em;font-weight:700;">✅ {_META_FIRMA_ACTAS[r][0]}</span>'
-                                    if firmas.get(r)
-                                    else f'<span style="background:#2c2c2c;color:#aaaaaa;border:1px solid #444;border-radius:4px;padding:1px 8px;font-size:.76em;font-weight:700;">⏳ {_META_FIRMA_ACTAS[r][0]}</span>'
-                                )
-                                for r in orden
-                            )
-                            st.markdown(f"{badge_estado} &nbsp;&nbsp; {badges_firmas}", unsafe_allow_html=True)
-
-                        with c_btn:
-                            if estado_cert == "aprobado":
-                                prefijo = _PREFIJO_ARCHIVO_ACTAS[tipo_acta_activo]
-                                tiene_excel = tipo_acta_activo in ("acta_recibo_entrega_cps", "acta_recibo_entrega_cps_real")
-                                periodo = f"{nombre_mes}_{año}"
-                                # El PDF/Excel se genera solo al abrir el diálogo (clic del botón), no antes.
-                                c_btn_pdf, c_btn_xlsx = st.columns(2) if tiene_excel else (st.container(), None)
-                                with c_btn_pdf:
-                                    if st.button(
-                                        "📄 PDF" if tiene_excel else "👁️ Ver / Descargar",
-                                        key=f"ver_{tipo_acta_activo}_{uid}",
-                                        type="primary",
-                                        use_container_width=True,
-                                    ):
-                                        abrir_dialogo_documento(cert, nombre, "pdf", prefijo, periodo)
-                                if tiene_excel:
-                                    with c_btn_xlsx:
-                                        if st.button("📊 Excel", key=f"ver_xlsx_{tipo_acta_activo}_{uid}", type="secondary", use_container_width=True):
-                                            abrir_dialogo_documento(cert, nombre, "xlsx", prefijo, periodo)
-
-    if st.session_state.get("_preview_cert"):
-        _dialog_preview(servicio)
-
-    render_dialogo_documento_si_activo(servicio)
 
     if st.session_state["ver_formato_control_seg"]:
         # Resumen de firmantes designados
@@ -428,185 +284,14 @@ def render(sesion=None):
                 else:
                     st.markdown(f"- ❌ **{label_largo}:** *(sin designar)*")
 
+            if servicio.firma_extra_activa("gestion_correspondencia"):
+                tipo_extra = FIRMA_EXTRA_CONFIG["gestion_correspondencia"]["tipo_firmante"]
+                dato_extra = servicio.obtener_firmantes_config(
+                    "firmantes_firma_extra", (tipo_extra,)
+                ).get(tipo_extra)
+                if dato_extra and dato_extra.get("nombre"):
+                    st.markdown(f"- ✅ **Firma Extra:** {dato_extra['nombre']}")
+                else:
+                    st.markdown("- ❌ **Firma Extra:** *(sin designar)*")
+
         _seccion_config_firmantes(servicio, sesion)
-
-        st.divider()
-
-        with st.spinner("Consultando estado de correspondencia…"):
-            empleados = servicio.obtener_empleados_para_certificar()
-
-        if not empleados:
-            st.info("No hay colaboradores con correspondencia registrada.")
-            return
-
-        # Recuperación: certificar empleados con 3 firmas + contrato que quedaron en pendiente
-        recobrados = sum(
-            1 for emp in empleados
-            if (
-                emp.get("certificacion")
-                and emp["certificacion"].get("estado") != "aprobado"
-                and all(emp.get("firmas", {}).get(t) for t in TIPOS_FIRMA)
-                and emp.get("tiene_contrato")
-                and servicio.recuperar_auto_cert(emp["usuario_id"], emp["certificacion"])
-            )
-        )
-        if recobrados:
-            empleados = servicio.obtener_empleados_para_certificar()
-
-        # Resumen rápido
-        total = len(empleados)
-        certificados = sum(
-            1 for e in empleados
-            if e.get("certificacion") and e["certificacion"].get("estado") == "aprobado"
-        )
-        listos_para_cert = sum(
-            1 for e in empleados
-            if (
-                e["al_dia"]
-                and all(e.get("firmas", {}).get(t) for t in TIPOS_FIRMA)
-                and e.get("tiene_contrato")
-                and not (e.get("certificacion") and e["certificacion"].get("estado") == "aprobado")
-            )
-        )
-        pendientes_cert = total - certificados
-
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Total colaboradores", total)
-        m2.metric("Certificados", certificados)
-        m3.metric("Listos para certificar", listos_para_cert)
-        m4.metric("Pendientes", pendientes_cert)
-
-        st.divider()
-
-        MAPA_TIPOS_CONTRATO = {
-            "termino_indefinido": "Término indefinido",
-            "termino_fijo": "Término fijo",
-            "obra_labor": "Obra o labor",
-            "prestacion_servicios": "Prestación de servicios",
-            "aprendizaje": "Aprendizaje",
-        }
-
-        # Filtros y ordenamiento
-        fc1, fc2, fc3 = st.columns([3, 3, 2])
-        with fc1:
-            contratistas_unicos = sorted(list(set(e["nombre"] for e in empleados)))
-            opciones_contratista = ["Todos"] + contratistas_unicos
-            buscar = st.selectbox(
-                "Filtro por Gestor",
-                options=opciones_contratista,
-                index=0,
-                key="filtro_gestor_cert",
-            )
-        with fc2:
-            opciones_tipo = ["Todos"] + list(MAPA_TIPOS_CONTRATO.values()) + ["Sin contrato"]
-            filtro_tipo = st.selectbox(
-                "Filtro por Contrato",
-                options=opciones_tipo,
-                index=0,
-                key="filtro_tipo_contrato_cert",
-            )
-        with fc3:
-            filtro_aprobados = st.selectbox(
-                "Filtro por Aprobados",
-                options=["Todos", "Aprobados", "Pendientes"],
-                index=0,
-                key="filtro_estado_aprobados_cert",
-            )
-
-        lista = empleados
-        if buscar != "Todos":
-            lista = [e for e in lista if e["nombre"] == buscar]
-
-        if filtro_tipo != "Todos":
-            if filtro_tipo == "Sin contrato":
-                lista = [e for e in lista if not e.get("tiene_contrato")]
-            else:
-                inv_map = {v: k for k, v in MAPA_TIPOS_CONTRATO.items()}
-                clave_tecnica = inv_map.get(filtro_tipo)
-                lista = [e for e in lista if e.get("tipo_contrato") == clave_tecnica]
-
-        if filtro_aprobados == "Aprobados":
-            lista = [
-                e for e in lista
-                if e.get("certificacion") and e["certificacion"].get("estado") == "aprobado"
-            ]
-        elif filtro_aprobados == "Pendientes":
-            lista = [
-                e for e in lista
-                if not (e.get("certificacion") and e["certificacion"].get("estado") == "aprobado")
-            ]
-
-        # Ordenar por defecto alfabéticamente A-Z
-        lista = sorted(lista, key=lambda e: e["nombre"].lower())
-
-        st.caption(f"Mostrando {len(lista)} de {total} colaboradores")
-
-        if not lista:
-            st.info("Ningún colaborador coincide con los filtros aplicados.")
-        else:
-            for emp in lista:
-                uid = emp["usuario_id"]
-                nombre = emp["nombre"]
-                pendientes = emp["cantidad_pendientes"]
-                vencidas = emp["cantidad_vencidas"]
-                cert = emp.get("certificacion")
-                estado_cert = cert.get("estado") if cert else None
-                firmas = emp.get("firmas", {})
-                tiene_contrato = emp.get("tiene_contrato", False)
-                numero_contrato = emp.get("numero_contrato")
-
-                with st.container(border=True):
-                    c_nom, c_badges, c_btn = st.columns([3, 5, 2])
-
-                    with c_nom:
-                        st.markdown(f"**{nombre}**")
-                        if estado_cert == "aprobado":
-                            aprobado_por = cert.get("aprobado_por", {})
-                            fecha_ap = aprobado_por.get("fecha")
-                            fecha_str = formato_fecha_bogota(fecha_ap, "%d/%m/%Y %H:%M")
-                            st.caption(
-                                f"Certificado por {aprobado_por.get('nombre', '')} · {fecha_str}"
-                            )
-                        elif numero_contrato:
-                            st.caption(f"Contrato: {numero_contrato}")
-
-                    with c_badges:
-                        row1 = (
-                            _badge_corr(pendientes, vencidas)
-                            + "&nbsp;&nbsp;"
-                            + _badge_cert(estado_cert)
-                        )
-                        row2 = (
-                            "&nbsp;".join(_badge_firma(t, firmas.get(t)) for t in TIPOS_FIRMA)
-                            + "&nbsp;&nbsp;"
-                            + _badge_contrato(tiene_contrato)
-                        )
-                        st.markdown(row1, unsafe_allow_html=True)
-                        st.markdown(row2, unsafe_allow_html=True)
-
-                    with c_btn:
-                        if estado_cert == "aprobado":
-                            pdf_bytes = obtener_pdf_certificado_cacheado(
-                                servicio, str(cert["_id"]), cert.get("hash_verificacion", ""), cert,
-                                version_key=str(cert.get("firmas", {}))
-                            )
-                            st.download_button(
-                                "⬇️ Descargar",
-                                data=pdf_bytes,
-                                file_name=f"Certificado_{nombre.replace(' ', '_')}_{nombre_mes}_{año}.pdf",
-                                mime="application/pdf",
-                                key=f"dl_{uid}",
-                                type="primary",
-                                use_container_width=True,
-                            )
-                            if st.button("👁️ Ver", key=f"prev_{uid}", use_container_width=True):
-                                st.session_state["_preview_cert"] = {
-                                    "cert": cert,
-                                    "nombre": nombre,
-                                    "año": año,
-                                    "nombre_mes": nombre_mes,
-                                }
-                                st.rerun()
-
-        if st.session_state.get("_preview_cert"):
-            _dialog_preview(servicio)

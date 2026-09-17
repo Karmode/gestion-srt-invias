@@ -57,6 +57,69 @@ PARAMETROS: Dict[str, dict] = {
         ),
         "habilitado": False,
     },
+    "firma_extra_control_activa": {
+        "etiqueta": "Firma Extra activa — Formato de control Corr-GD-SECOP",
+        "tipo": "bool",
+        "default": False,
+        "unidad": "Activa",
+        "descripcion": (
+            "Si está activa, además de las firmas de Correspondencia, Gestión "
+            "Documental y SECOP II se exige una Firma Extra designada para poder "
+            "certificar este formato."
+        ),
+        "impacto": (
+            "Mientras esté activa, ningún colaborador de este formato podrá "
+            "certificarse sin la Firma Extra, sin importar que ya tenga las demás "
+            "firmas completas. No afecta certificaciones ya aprobadas."
+        ),
+    },
+    "firma_extra_acta_compromiso_activa": {
+        "etiqueta": "Firma Extra activa — Acta de compromiso",
+        "tipo": "bool",
+        "default": False,
+        "unidad": "Activa",
+        "descripcion": (
+            "Si está activa, además de la firma del Jefe se exige una Firma Extra "
+            "designada para poder aprobar el Acta de compromiso."
+        ),
+        "impacto": (
+            "Mientras esté activa, ningún Acta de compromiso podrá quedar "
+            "aprobada sin la Firma Extra, sin importar que ya tenga las demás "
+            "firmas completas. No afecta certificaciones ya aprobadas."
+        ),
+    },
+    "firma_extra_balance_general_activa": {
+        "etiqueta": "Firma Extra activa — Balance General CPS",
+        "tipo": "bool",
+        "default": False,
+        "unidad": "Activa",
+        "descripcion": (
+            "Si está activa, además de las firmas Financiera, Jurídica y del Jefe "
+            "se exige una Firma Extra designada para poder aprobar el Balance "
+            "General CPS."
+        ),
+        "impacto": (
+            "Mientras esté activa, ningún Balance General CPS podrá quedar "
+            "aprobado sin la Firma Extra, sin importar que ya tenga las demás "
+            "firmas completas. No afecta certificaciones ya aprobadas."
+        ),
+    },
+    "firma_extra_acta_recibo_entrega_activa": {
+        "etiqueta": "Firma Extra activa — Acta de recibo y entrega CPS",
+        "tipo": "bool",
+        "default": False,
+        "unidad": "Activa",
+        "descripcion": (
+            "Si está activa, además de las firmas Financiera, Jurídica y del Jefe "
+            "se exige una Firma Extra designada para poder aprobar el Acta de "
+            "recibo y entrega CPS."
+        ),
+        "impacto": (
+            "Mientras esté activa, ningún Acta de recibo y entrega CPS podrá "
+            "quedar aprobada sin la Firma Extra, sin importar que ya tenga las "
+            "demás firmas completas. No afecta certificaciones ya aprobadas."
+        ),
+    },
 }
 
 CATEGORIA = "parametros_sistema"
@@ -85,6 +148,12 @@ class ParametrosService:
             if not valor or not str(valor).strip():
                 return meta["default"]
             return str(valor).strip()
+        if meta["tipo"] == "bool":
+            if isinstance(valor, bool):
+                return valor
+            if isinstance(valor, str):
+                return valor.strip().lower() in ("true", "1", "si", "sí", "yes", "on")
+            return bool(valor)
         return valor
 
     def obtener(self, clave: str) -> Any:

@@ -15,7 +15,9 @@ from app.core.ui_certificado import (
     render_dialogo_documento_si_activo,
 )
 from app.core.zona_horaria import formato_fecha_bogota
-from app.services.certificacion_service import CertificacionService, MESES_ES, ORDEN_FIRMAS_ACTAS, TIPOS_FIRMA_ACTAS
+from app.services.certificacion_service import (
+    CertificacionService, MESES_ES, ORDEN_FIRMAS_ACTAS, TIPOS_FIRMA_ACTAS, FIRMA_EXTRA_CONFIG,
+)
 
 TIPOS_FIRMA = ("corr", "gd", "secop")
 
@@ -23,6 +25,7 @@ _META_FIRMA = {
     "corr":   ("F. Corr",  "Correspondencia",        "certificacion.firmar_corr"),
     "gd":     ("F. GD",    "Gestión Documental",      "certificacion.firmar_gd"),
     "secop":  ("F. SECOP", "SECOP II",                "certificacion.firmar_secop"),
+    "extra_control": ("F. Extra", "Firma Extra", "certificacion.firmar_extra_control"),
 }
 
 MAPA_TIPOS_CONTRATO = {
@@ -43,6 +46,9 @@ _META_FIRMA_ACTAS = {
     "financiera": ("F. Financiera", "Financiera",    "certificacion.firmar_financiera"),
     "abogado":    ("F. Jurídica",   "Jurídico",       "certificacion.firmar_abogado"),
     "jefe":       ("F. Jefe",       "Jefe inmediato", "certificacion.firmar_jefe"),
+    "extra_acta_compromiso":     ("F. Extra", "Firma Extra", "certificacion.firmar_extra_acta_compromiso"),
+    "extra_balance_general":     ("F. Extra", "Firma Extra", "certificacion.firmar_extra_balance_general"),
+    "extra_acta_recibo_entrega": ("F. Extra", "Firma Extra", "certificacion.firmar_extra_acta_recibo_entrega"),
 }
 
 
@@ -204,7 +210,11 @@ def _dialog_confirmar_firma_actas(servicio: CertificacionService, sesion: dict) 
                 cert_id = pend.get("cert_id")
                 if not cert_id:
                     raise ValueError("No se encontró el ID del documento en la sesión.")
-                servicio.registrar_firma_actas(cert_id, rol, sesion["id"], firmante_nombre, comentario)
+                extra_meta = FIRMA_EXTRA_CONFIG.get(tipo_formato)
+                if extra_meta and extra_meta["tipo_firmante"] == rol:
+                    servicio.registrar_firma_extra_actas(cert_id, sesion["id"], firmante_nombre, comentario)
+                else:
+                    servicio.registrar_firma_actas(cert_id, rol, sesion["id"], firmante_nombre, comentario)
             except ValueError as e:
                 st.error(str(e))
             else:
@@ -292,6 +302,13 @@ def _render_panel_actas(
 
     orden = ORDEN_FIRMAS_ACTAS[tipo_formato]
     mis_roles = [r for r in orden if _META_FIRMA_ACTAS[r][2] in permisos]
+
+    extra_meta = FIRMA_EXTRA_CONFIG.get(tipo_formato)
+    extra_activa = bool(extra_meta) and servicio.firma_extra_activa(tipo_formato)
+    # Firma Extra se suma a las opciones de "actuando como" (no participa del
+    # orden secuencial financiera→abogado→jefe, es independiente).
+    if extra_activa and f"certificacion.firmar_{extra_meta['tipo_firmante']}" in permisos:
+        mis_roles = mis_roles + [extra_meta["tipo_firmante"]]
 
     if not es_admin and not mis_roles:
         st.warning("No tienes permiso de firma para este formato.")
@@ -433,7 +450,8 @@ def _render_panel_actas(
                 st.caption("✅ Formato aprobado" if cert.get("estado") == "aprobado" else "⏳ Pendiente de firmas")
 
             with c_badges:
-                badges = "&nbsp;".join(_badge_firma_actas(r, firmas.get(r)) for r in orden)
+                roles_badges = list(orden) + ([extra_meta["tipo_firmante"]] if extra_activa else [])
+                badges = "&nbsp;".join(_badge_firma_actas(r, firmas.get(r)) for r in roles_badges)
                 st.markdown(badges, unsafe_allow_html=True)
 
                 eventos_rol_activo = [
@@ -471,14 +489,23 @@ def _render_panel_actas(
                             abrir_dialogo_documento(cert, nombre, "xlsx", prefijo, periodo, es_borrador=not ya_aprobado)
 
                 if rol_activo:
-                    idx = orden.index(rol_activo)
-                    rol_anterior = orden[idx - 1] if idx > 0 else None
-                    puede_firmar = rol_anterior is None or bool(firmas.get(rol_anterior))
+                    es_extra = bool(extra_meta) and rol_activo == extra_meta["tipo_firmante"]
+                    if es_extra:
+                        # Firma Extra es independiente: no depende del orden secuencial.
+                        rol_anterior = None
+                        puede_firmar = True
+                    else:
+                        idx = orden.index(rol_activo)
+                        rol_anterior = orden[idx - 1] if idx > 0 else None
+                        puede_firmar = rol_anterior is None or bool(firmas.get(rol_anterior))
                     ya_firmado = bool(firmas.get(rol_activo))
 
                     if ya_firmado:
                         if st.button("↩ Revocar", key=f"revocar_actas_{tipo_formato}_{uid}", use_container_width=True):
-                            servicio.revocar_firma_actas(str(cert["_id"]), rol_activo)
+                            if es_extra:
+                                servicio.revocar_firma_extra_actas(str(cert["_id"]))
+                            else:
+                                servicio.revocar_firma_actas(str(cert["_id"]), rol_activo)
                             st.rerun()
                     elif not ya_aprobado:
                         if not puede_firmar:
@@ -523,12 +550,23 @@ def render(sesion=None):
     # Recopilar todos los tipos de firma que tiene este usuario.
     # Un mismo usuario puede tener más de un permiso de firma (ej. corr + gd).
     mis_tipos_firma = [t for t in TIPOS_FIRMA if _META_FIRMA[t][2] in permisos]
+    # Firma Extra del formato de control: se suma a las opciones de "actuando
+    # como" solo si el parámetro está activo y el usuario tiene el permiso.
+    extra_control_activa = servicio.firma_extra_activa("gestion_correspondencia")
+    if extra_control_activa and "certificacion.firmar_extra_control" in permisos:
+        mis_tipos_firma = mis_tipos_firma + ["extra_control"]
     # Idem para los roles de firma de actas (financiera/abogado/jefe) — un usuario
     # puede tener solo permisos de actas y ningún permiso corr/gd/secop.
     mis_roles_actas = [r for r in TIPOS_FIRMA_ACTAS if _META_FIRMA_ACTAS[r][2] in permisos]
+    # Un usuario puede tener SOLO un permiso de Firma Extra de actas y ningún
+    # otro permiso de firma — hay que contarlo para el guard de acceso general.
+    tengo_algun_permiso_extra_actas = any(
+        servicio.firma_extra_activa(tf) and f"certificacion.firmar_{m['tipo_firmante']}" in permisos
+        for tf, m in FIRMA_EXTRA_CONFIG.items() if tf != "gestion_correspondencia"
+    )
     puede_ver_control = bool(mis_tipos_firma) or es_admin or "certificacion.aprobar" in permisos
 
-    if not es_admin and not mis_tipos_firma and not mis_roles_actas:
+    if not es_admin and not mis_tipos_firma and not mis_roles_actas and not tengo_algun_permiso_extra_actas:
         st.error("No tienes permiso para acceder a esta sección.")
         st.stop()
 
@@ -750,17 +788,18 @@ def render(sesion=None):
                                 st.caption("⚠️ Sin contrato activo")
 
                         with c_badges:
+                            tipos_badges = TIPOS_FIRMA + (("extra_control",) if extra_control_activa else ())
                             badges = (
                                 _badge_corr(pendientes, vencidas)
                                 + "&nbsp;&nbsp;"
-                                + "&nbsp;".join(_badge_firma(t, firmas.get(t)) for t in TIPOS_FIRMA)
+                                + "&nbsp;".join(_badge_firma(t, firmas.get(t)) for t in tipos_badges)
                             )
                             st.markdown(badges, unsafe_allow_html=True)
 
                             # Detalle de cada firma existente
                             detalles = []
                             comentarios_firma = []
-                            for t in TIPOS_FIRMA:
+                            for t in tipos_badges:
                                 f = firmas.get(t)
                                 if f:
                                     fecha_f = formato_fecha_bogota(f.get("fecha"), "%d/%m %H:%M")
