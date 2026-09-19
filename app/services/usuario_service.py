@@ -46,6 +46,8 @@ _AFILIACIONES_REQUERIDAS = [
 # cuales el contratista sigue pudiendo descargar/generar formatos.
 DIAS_GRACIA_DESCARGA_FORMATOS = 60
 
+MSG_NUMERO_CONTRATO_INVALIDO = "Número de contrato (debe ser estrictamente numérico, ej: 3123123)"
+
 
 class UsuarioService:
     def __init__(self) -> None:
@@ -443,6 +445,8 @@ class UsuarioService:
         numero = (datos_contrato.get("numero") or "").strip()
         if not numero:
             raise ValueError("El número de contrato es obligatorio.")
+        if not self.numero_contrato_valido(numero):
+            raise ValueError(MSG_NUMERO_CONTRATO_INVALIDO)
         existente = self.repositorio.buscar_por_numero_contrato(numero)
         if existente:
             raise ValueError("Ya existe un empleado registrado con ese número de contrato.")
@@ -467,6 +471,8 @@ class UsuarioService:
         nuevo_numero = (datos_contrato.get("numero") or "").strip()
         if not nuevo_numero:
             raise ValueError("El número de contrato es obligatorio.")
+        if not self.numero_contrato_valido(nuevo_numero):
+            raise ValueError(MSG_NUMERO_CONTRATO_INVALIDO)
         if nuevo_numero != numero_contrato:
             existente = self.repositorio.buscar_por_numero_contrato(nuevo_numero)
             if existente:
@@ -491,18 +497,50 @@ class UsuarioService:
             return valor == 0
         return False
 
+    @staticmethod
+    def numero_contrato_valido(numero) -> bool:
+        """El número de contrato debe ser únicamente dígitos (sin espacios internos,
+        letras, años, guiones ni otros símbolos). Rechaza registros históricos como
+        '0192 2026'."""
+        return bool(re.fullmatch(r"[0-9]+", str(numero if numero is not None else "").strip()))
+
+    @classmethod
+    def _faltantes_numero_contrato_periodo(cls, usuario: dict, año, mes) -> list:
+        """Faltantes de formato en el número del contrato relevante para (año, mes),
+        sin importar si otros contratos del usuario están completos. Vacío si el número
+        es válido o si no hay contrato relevante (eso lo reportan otras validaciones)."""
+        if año is None or mes is None:
+            return []
+        from app.services.certificacion_service import CertificacionService
+        contrato = CertificacionService()._contrato_relevante(usuario.get("contratos") or [], año, mes)
+        numero = (contrato or {}).get("numero")
+        if cls._vacio(numero) or cls.numero_contrato_valido(numero):
+            return []
+        return [
+            f"El número registrado «{str(numero).strip()}» no es válido: debe contener solo "
+            "dígitos, sin espacios, letras, años ni guiones (ej: 3123123)"
+        ]
+
+    def validar_numero_contrato_periodo(self, id_usuario: str, año: int, mes: int) -> dict:
+        """Valida el número del contrato relevante del período (año, mes).
+
+        Retorna {"valido": bool, "faltantes": [str]}
+        """
+        usuario = self.repositorio.buscar_por_id(id_usuario) or {}
+        faltantes = self._faltantes_numero_contrato_periodo(usuario, año, mes)
+        return {"valido": not faltantes, "faltantes": faltantes}
+
     @classmethod
     def _contrato_campos_faltantes(cls, contrato: dict) -> list:
         """Etiquetas de los campos del contrato que faltan por diligenciar o no son válidos."""
-        import re
         faltantes = []
         for clave, etiqueta in _CAMPOS_CONTRATO:
             val = contrato.get(clave)
             if cls._vacio(val):
                 faltantes.append(etiqueta)
             elif clave == "numero":
-                if not re.fullmatch(r"[0-9]+", str(val).strip()):
-                    faltantes.append("Número de contrato (debe ser estrictamente numérico, ej: 3123123)")
+                if not cls.numero_contrato_valido(val):
+                    faltantes.append(MSG_NUMERO_CONTRATO_INVALIDO)
         # Validar Valor primer pago
         es_requerido = True
         fecha_inicio = contrato.get("fecha_inicio")
@@ -609,6 +647,21 @@ class UsuarioService:
                     "faltantes": faltan,
                 })
 
+        # 2b) Número del contrato del período: debe ser numérico aunque otro contrato
+        # del usuario esté completo (registros históricos tipo "0192 2026").
+        faltan_numero = self._faltantes_numero_contrato_periodo(usuario, año, mes)
+        if faltan_numero:
+            # Evitar reportar dos veces el mismo error desde la sección del paso 2.
+            for sec in secciones:
+                if sec["titulo"].startswith("Contrato activo"):
+                    sec["faltantes"] = [f for f in sec["faltantes"] if f != MSG_NUMERO_CONTRATO_INVALIDO]
+            secciones = [s for s in secciones if s["faltantes"]]
+            secciones.append({
+                "titulo": "Número de contrato incorrecto",
+                "destino": "Mi perfil › 📄 Contratos",
+                "faltantes": faltan_numero,
+            })
+
         # 3) Firma cargada
         from app.services.firma_service import FirmaService
         if not FirmaService().tiene_firma(id_usuario):
@@ -673,6 +726,28 @@ class UsuarioService:
             })
 
         return {"puede_descargar": not secciones, "secciones": secciones}
+
+    def validar_firma_secop_contrato(self, id_usuario: str, año: int, mes: int) -> dict:
+        """Evalúa si el contrato relevante del período (año, mes) tiene diligenciada
+        la fecha de firma del contrato en SECOP. Es requisito para generar los
+        últimos formatos de contrato (acta de compromiso, balance general CPS y
+        acta de recibo y entrega CPS).
+
+        Retorna {"valido": bool, "faltantes": [str]}
+        """
+        from app.services.certificacion_service import CertificacionService
+        usuario = self.repositorio.buscar_por_id(id_usuario) or {}
+        contrato = CertificacionService()._contrato_relevante(usuario.get("contratos") or [], año, mes)
+
+        if not contrato or self._vacio(contrato.get("numero")):
+            return {"valido": False, "faltantes": ["No se detectó un contrato vigente para este período."]}
+        if not contrato.get("firma_cps_secop"):
+            numero = contrato.get("numero")
+            return {
+                "valido": False,
+                "faltantes": [f"Fecha de firma del contrato SECOP (contrato {numero})"],
+            }
+        return {"valido": True, "faltantes": []}
 
     def validar_datos_acta_recibo_entrega_cps(self, id_usuario: str) -> dict:
         """Evalúa si el usuario cumple con los requisitos específicos para el formato

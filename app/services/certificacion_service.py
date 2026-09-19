@@ -401,6 +401,7 @@ class CertificacionService:
     ) -> bool:
         if año is None or mes is None:
             año, mes = self.periodo_certificable()
+        self._exigir_numero_contrato_valido(usuario_id, año, mes)
         ahora_utc = datetime.now(timezone.utc)
         
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "dependencia_economica")
@@ -430,11 +431,14 @@ class CertificacionService:
                 "mes": mes,
             })
             self.repo.crear(campos)
+        return True
+
     def firmar_y_generar_cuenta_cobro(
         self, usuario_id: str, nombre_usuario: str, año: int = None, mes: int = None
     ) -> bool:
         if año is None or mes is None:
             año, mes = self.periodo_certificable()
+        self._exigir_numero_contrato_valido(usuario_id, año, mes)
         ahora_utc = datetime.now(timezone.utc)
         
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "cuenta_cobro")
@@ -471,6 +475,7 @@ class CertificacionService:
     ) -> bool:
         if año is None or mes is None:
             año, mes = self.periodo_certificable()
+        self._exigir_numero_contrato_valido(usuario_id, año, mes)
         ahora_utc = datetime.now(timezone.utc)
 
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "informe_actividades_final_cps")
@@ -507,6 +512,7 @@ class CertificacionService:
     ) -> bool:
         if año is None or mes is None:
             año, mes = self.periodo_certificable()
+        self._exigir_numero_contrato_valido(usuario_id, año, mes)
         ahora_utc = datetime.now(timezone.utc)
         
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "retencion_fuente_primera")
@@ -543,6 +549,7 @@ class CertificacionService:
     ) -> bool:
         if año is None or mes is None:
             año, mes = self.periodo_certificable()
+        self._exigir_numero_contrato_valido(usuario_id, año, mes)
         ahora_utc = datetime.now(timezone.utc)
         
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "retencion_fuente_segunda")
@@ -574,6 +581,24 @@ class CertificacionService:
             self.repo.crear(campos)
         return True
 
+    @staticmethod
+    def _exigir_numero_contrato_valido(usuario_id: str, año: int, mes: int) -> None:
+        """Bloquea la generación de cualquier formato si el número del contrato del
+        período no es estrictamente numérico (datos históricos como '0192 2026')."""
+        from app.services.usuario_service import UsuarioService
+        req = UsuarioService().validar_numero_contrato_periodo(usuario_id, año, mes)
+        if not req["valido"]:
+            raise ValueError(f"No se puede generar el formato. {' '.join(req['faltantes'])}")
+
+    @staticmethod
+    def _exigir_firma_secop(usuario_id: str, año: int, mes: int) -> None:
+        """Bloquea la generación de los últimos formatos de contrato si el contrato
+        del período no tiene diligenciada la fecha de firma SECOP."""
+        from app.services.usuario_service import UsuarioService
+        req = UsuarioService().validar_firma_secop_contrato(usuario_id, año, mes)
+        if not req["valido"]:
+            raise ValueError(f"Faltan requisitos para generar el formato: {', '.join(req['faltantes'])}")
+
     def firmar_y_generar_acta_compromiso(
         self, usuario_id: str, nombre_usuario: str, año: int = None, mes: int = None
     ) -> bool:
@@ -582,6 +607,8 @@ class CertificacionService:
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "acta_compromiso")
         if cert_existente:
             return True
+        self._exigir_numero_contrato_valido(usuario_id, año, mes)
+        self._exigir_firma_secop(usuario_id, año, mes)
 
         ahora_utc = datetime.now(timezone.utc)
         campos = {
@@ -606,6 +633,8 @@ class CertificacionService:
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "acta_recibo_entrega_cps")
         if cert_existente:
             return True
+        self._exigir_numero_contrato_valido(usuario_id, año, mes)
+        self._exigir_firma_secop(usuario_id, año, mes)
 
         ahora_utc = datetime.now(timezone.utc)
         campos = {
@@ -635,6 +664,8 @@ class CertificacionService:
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "acta_recibo_entrega_cps_real")
         if cert_existente:
             return True
+        self._exigir_numero_contrato_valido(usuario_id, año, mes)
+        self._exigir_firma_secop(usuario_id, año, mes)
 
         ahora_utc = datetime.now(timezone.utc)
         campos = {
