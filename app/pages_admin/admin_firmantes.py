@@ -8,10 +8,20 @@ Accesible para los 3 firmantes designados y para el administrador.
 import streamlit as st
 from app.core.ui_titulos import mostrar_titulo_decorado
 
+from app.core.cache_datos import (
+    empleados_para_certificar,
+    limpiar_cache_lecturas,
+    periodos_disponibles_global,
+)
 from app.core.sesion import obtener_sesion
-from app.core.ui_certificado import obtener_pdf_certificado_cacheado
+from app.core.ui_certificado import (
+    abrir_dialogo_documento,
+    render_dialogo_documento_si_activo,
+)
 from app.core.zona_horaria import formato_fecha_bogota
-from app.services.certificacion_service import CertificacionService, MESES_ES, ORDEN_FIRMAS_ACTAS, TIPOS_FIRMA_ACTAS
+from app.services.certificacion_service import (
+    CertificacionService, MESES_ES, ORDEN_FIRMAS_ACTAS, TIPOS_FIRMA_ACTAS, FIRMA_EXTRA_CONFIG,
+)
 
 TIPOS_FIRMA = ("corr", "gd", "secop")
 
@@ -19,6 +29,7 @@ _META_FIRMA = {
     "corr":   ("F. Corr",  "Correspondencia",        "certificacion.firmar_corr"),
     "gd":     ("F. GD",    "Gestión Documental",      "certificacion.firmar_gd"),
     "secop":  ("F. SECOP", "SECOP II",                "certificacion.firmar_secop"),
+    "extra_control": ("F. Extra", "Firma Extra", "certificacion.firmar_extra_control"),
 }
 
 MAPA_TIPOS_CONTRATO = {
@@ -39,6 +50,9 @@ _META_FIRMA_ACTAS = {
     "financiera": ("F. Financiera", "Financiera",    "certificacion.firmar_financiera"),
     "abogado":    ("F. Jurídica",   "Jurídico",       "certificacion.firmar_abogado"),
     "jefe":       ("F. Jefe",       "Jefe inmediato", "certificacion.firmar_jefe"),
+    "extra_acta_compromiso":     ("F. Extra", "Firma Extra", "certificacion.firmar_extra_acta_compromiso"),
+    "extra_balance_general":     ("F. Extra", "Firma Extra", "certificacion.firmar_extra_balance_general"),
+    "extra_acta_recibo_entrega": ("F. Extra", "Firma Extra", "certificacion.firmar_extra_acta_recibo_entrega"),
 }
 
 
@@ -91,6 +105,79 @@ def _badge_firma_actas(rol: str, firma: dict | None) -> str:
     )
 
 
+def _barra_resumen_semaforo(aprobados: int, sin_aprobar: int, sin_generar: int) -> None:
+    """Resumen visual tipo semáforo del período/formato: verde = aprobados,
+    amarillo = generado pero sin aprobar, rojo = sin generar todavía. Solo
+    cuenta contratistas con contrato vigente o temporal (regla de gracia);
+    los que no tienen contrato activo no entran en este reporte."""
+    total = aprobados + sin_aprobar + sin_generar
+
+    def _pct(n: int) -> float:
+        return (n / total * 100) if total else 0.0
+
+    if total == 0:
+        st.caption("📋 Ningún contratista con contrato vigente o temporal este período.")
+        return
+
+    st.markdown(
+        f"""
+        <div style="margin:2px 0 12px;">
+            <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;
+                        font-size:.85em;margin-bottom:6px;">
+                <span>📋 <b>{total}</b> con contrato activo</span>
+                <span style="color:#75db8b;">✅ <b>{aprobados}</b> aprobados</span>
+                <span style="color:#ffcf6e;">⏳ <b>{sin_aprobar}</b> sin aprobar</span>
+                <span style="color:#ff9ca2;">❌ <b>{sin_generar}</b> sin generar</span>
+            </div>
+            <div style="width:100%;height:16px;border-radius:8px;overflow:hidden;
+                        background:#2c2c2c;border:1px solid #444;display:flex;">
+                <div style="width:{_pct(aprobados):.1f}%;background:linear-gradient(90deg,#1e7e34,#28a745);"></div>
+                <div style="width:{_pct(sin_aprobar):.1f}%;background:linear-gradient(90deg,#c9971f,#e6ac1f);"></div>
+                <div style="width:{_pct(sin_generar):.1f}%;background:linear-gradient(90deg,#8a2d32,#c0392b);"></div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _lista_movil_estado(aprobados: list, sin_aprobar: list, sin_generar: list) -> None:
+    """Lista compacta (estilo móvil) de contratistas con contrato vigente o
+    temporal, coloreada según su estado en el formato del período: verde =
+    aprobados, amarillo = generado y sin aprobar, rojo = con contrato pero sin
+    generar/firmar. No hace consultas nuevas: reutiliza los empleados ya
+    cargados."""
+    total = len(aprobados) + len(sin_aprobar) + len(sin_generar)
+    if total == 0:
+        return
+
+    def _fila(nombre: str, dot: str, color: str) -> str:
+        return (
+            f'<div style="font-size:.85em;padding:3px 6px;border-left:3px solid {color};'
+            f'margin-bottom:3px;">{dot} {nombre}</div>'
+        )
+
+    with st.expander(f"📱 Contratistas del período ({total})", expanded=False):
+        if aprobados:
+            st.markdown("**🟢 Aprobados**")
+            st.markdown(
+                "".join(_fila(e["nombre"], "🟢", "#28a745") for e in aprobados),
+                unsafe_allow_html=True,
+            )
+        if sin_aprobar:
+            st.markdown("**🟡 Sin aprobar**")
+            st.markdown(
+                "".join(_fila(e["nombre"], "🟡", "#e6ac1f") for e in sin_aprobar),
+                unsafe_allow_html=True,
+            )
+        if sin_generar:
+            st.markdown("**🔴 Sin generar/firmar**")
+            st.markdown(
+                "".join(_fila(e["nombre"], "🔴", "#c0392b") for e in sin_generar),
+                unsafe_allow_html=True,
+            )
+
+
 def _cerrar_dialogo_confirmar_firma_actas() -> None:
     st.session_state.pop("_confirmar_firma_actas", None)
 
@@ -127,59 +214,21 @@ def _dialog_confirmar_firma_actas(servicio: CertificacionService, sesion: dict) 
                 cert_id = pend.get("cert_id")
                 if not cert_id:
                     raise ValueError("No se encontró el ID del documento en la sesión.")
-                servicio.registrar_firma_actas(cert_id, rol, sesion["id"], firmante_nombre, comentario)
+                extra_meta = FIRMA_EXTRA_CONFIG.get(tipo_formato)
+                if extra_meta and extra_meta["tipo_firmante"] == rol:
+                    servicio.registrar_firma_extra_actas(cert_id, sesion["id"], firmante_nombre, comentario)
+                else:
+                    servicio.registrar_firma_actas(cert_id, rol, sesion["id"], firmante_nombre, comentario)
             except ValueError as e:
                 st.error(str(e))
             else:
+                limpiar_cache_lecturas()
                 st.session_state.pop("_confirmar_firma_actas", None)
                 st.rerun()
     with c2:
         if st.button("Cancelar", use_container_width=True, key="btn_cancelar_actas"):
             st.session_state.pop("_confirmar_firma_actas", None)
             st.rerun()
-
-def _cerrar_dialogo_borrador() -> None:
-    st.session_state.pop("ver_borrador_acta", None)
-
-@st.dialog("Borrador del Formato", width="large", on_dismiss=_cerrar_dialogo_borrador)
-def _dialog_ver_borrador(servicio: CertificacionService) -> None:
-    info = st.session_state.get("ver_borrador_acta")
-    if not info:
-        return
-    
-    cert = info["cert"]
-    nombre = info["nombre"]
-    tipo_formato = info["tipo_formato"]
-    nombre_mes = info["nombre_mes"]
-    año = info["año"]
-    
-    with st.spinner("Generando borrador del PDF…"):
-        try:
-            pdf_bytes = servicio.generar_pdf(cert)
-        except Exception as e:
-            st.error(f"Error al generar el borrador: {str(e)}")
-            return
-            
-    prefijos_archivo = {
-        "acta_compromiso": "Acta_Compromiso",
-        "acta_recibo_entrega_cps": "Balance_General_CPS",
-        "acta_recibo_entrega_cps_real": "Acta_Recibo_Entrega_CPS",
-    }
-    prefijo = prefijos_archivo.get(tipo_formato, "Acta")
-    
-    st.write(f"Previsualización del borrador para **{nombre}** ({nombre_mes} {año})")
-    
-    from streamlit_pdf_viewer import pdf_viewer
-    pdf_viewer(input=pdf_bytes, width=700, height=600)
-    
-    st.download_button(
-        "⬇️ Descargar Borrador",
-        data=pdf_bytes,
-        file_name=f"BORRADOR_{prefijo}_{nombre.replace(' ', '_')}_{nombre_mes}_{año}.pdf",
-        mime="application/pdf",
-        key=f"dl_borrador_{tipo_formato}_{cert['_id']}",
-        use_container_width=True,
-    )
 
 # ── Diálogo de confirmación de firma (aplica a los 3 tipos) ──────
 
@@ -240,7 +289,8 @@ def _dialog_confirmar_firma(
     with c1:
         if st.button("Confirmar aprobación", type="primary", use_container_width=True):
             firmante_nombre = sesion.get("nombre_completo") or sesion["usuario"]
-            servicio.registrar_firma(uid, nombre, tipo, sesion["id"], firmante_nombre, comentario)
+            servicio.registrar_firma(uid, nombre, tipo, sesion["id"], firmante_nombre, comentario, año=año, mes=mes)
+            limpiar_cache_lecturas()
             st.session_state.pop("_confirmar_firma", None)
             st.rerun()
     with c2:
@@ -249,13 +299,22 @@ def _dialog_confirmar_firma(
             st.rerun()
 
 
-def _render_panel_actas(servicio: CertificacionService, sesion: dict, tipo_formato: str) -> None:
+def _render_panel_actas(
+    servicio: CertificacionService, sesion: dict, tipo_formato: str, año: int, mes: int
+) -> None:
     permisos = sesion.get("permisos", [])
     roles_sesion = sesion.get("roles", [])
     es_admin = any(r in {"admin", "administrador"} for r in roles_sesion)
 
     orden = ORDEN_FIRMAS_ACTAS[tipo_formato]
     mis_roles = [r for r in orden if _META_FIRMA_ACTAS[r][2] in permisos]
+
+    extra_meta = FIRMA_EXTRA_CONFIG.get(tipo_formato)
+    extra_activa = bool(extra_meta) and servicio.firma_extra_activa(tipo_formato)
+    # Firma Extra se suma a las opciones de "actuando como" (no participa del
+    # orden secuencial financiera→abogado→jefe, es independiente).
+    if extra_activa and f"certificacion.firmar_{extra_meta['tipo_firmante']}" in permisos:
+        mis_roles = mis_roles + [extra_meta["tipo_firmante"]]
 
     if not es_admin and not mis_roles:
         st.warning("No tienes permiso de firma para este formato.")
@@ -286,39 +345,30 @@ def _render_panel_actas(servicio: CertificacionService, sesion: dict, tipo_forma
     st.divider()
 
     with st.spinner("Consultando colaboradores…"):
-        empleados = servicio.obtener_empleados_para_certificar(tipo_formato=tipo_formato)
-    empleados = [e for e in empleados if e.get("certificacion")]
+        todos_empleados = empleados_para_certificar(tipo_formato, año, mes)
+    empleados = [e for e in todos_empleados if e.get("certificacion")]
+
+    # Resumen visual (semáforo) del período/formato: solo contratistas con
+    # contrato vigente o temporal (regla de gracia) cuentan en el reporte; los
+    # que no tienen contrato activo se excluyen por completo de esta línea.
+    con_contrato = [e for e in todos_empleados if e.get("estado_contrato") in ("vigente", "gracia")]
+    aprobados = [e for e in con_contrato if (e.get("certificacion") or {}).get("estado") == "aprobado"]
+    pendientes_firma_movil = [
+        e for e in con_contrato
+        if e.get("certificacion") and (e.get("certificacion") or {}).get("estado") != "aprobado"
+    ]
+    faltan_generar = [e for e in con_contrato if not e.get("certificacion")]
+
+    _barra_resumen_semaforo(len(aprobados), len(pendientes_firma_movil), len(faltan_generar))
+    _lista_movil_estado(aprobados, pendientes_firma_movil, faltan_generar)
+
+    st.divider()
 
     if not empleados:
         st.info("Ningún colaborador ha generado este formato todavía.")
         return
 
-    # Métricas
     total = len(empleados)
-    if rol_activo:
-        mis_pendientes = sum(
-            1 for e in empleados
-            if not e.get("firmas", {}).get(rol_activo)
-        )
-        mis_aprobados = sum(
-            1 for e in empleados
-            if e.get("firmas", {}).get(rol_activo)
-        )
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Total contratistas", total)
-        m2.metric("Pendientes mi aprobación", mis_pendientes)
-        m3.metric("Aprobados", mis_aprobados)
-    else:
-        aprobadas = sum(
-            1 for e in empleados
-            if (e.get("certificacion") or {}).get("estado") == "aprobado"
-        )
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Total contratistas", total)
-        m2.metric("Aprobadas", aprobadas)
-        m3.metric("Pendientes de firmas", total - aprobadas)
-
-    st.divider()
 
     # Filtros
     fc1, fc2, fc3 = st.columns([3, 3, 2])
@@ -406,7 +456,8 @@ def _render_panel_actas(servicio: CertificacionService, sesion: dict, tipo_forma
                 st.caption("✅ Formato aprobado" if cert.get("estado") == "aprobado" else "⏳ Pendiente de firmas")
 
             with c_badges:
-                badges = "&nbsp;".join(_badge_firma_actas(r, firmas.get(r)) for r in orden)
+                roles_badges = list(orden) + ([extra_meta["tipo_firmante"]] if extra_activa else [])
+                badges = "&nbsp;".join(_badge_firma_actas(r, firmas.get(r)) for r in roles_badges)
                 st.markdown(badges, unsafe_allow_html=True)
 
                 eventos_rol_activo = [
@@ -419,50 +470,49 @@ def _render_panel_actas(servicio: CertificacionService, sesion: dict, tipo_forma
 
             with c_accion:
                 ya_aprobado = cert.get("estado") == "aprobado"
+                tiene_excel = tipo_formato in ("acta_recibo_entrega_cps", "acta_recibo_entrega_cps_real")
 
-                # Mostrar botón de descarga si el acta ya está aprobada/firmada
-                if ya_aprobado:
-                    pdf_bytes = obtener_pdf_certificado_cacheado(
-                        servicio,
-                        str(cert["_id"]),
-                        cert.get("hash_verificacion", ""),
-                        cert,
-                        version_key=str(cert.get("firmas", {})),
-                    )
-                    prefijos_archivo = {
-                        "acta_compromiso": "Acta_Compromiso",
-                        "acta_recibo_entrega_cps": "Balance_General_CPS",
-                        "acta_recibo_entrega_cps_real": "Acta_Recibo_Entrega_CPS",
-                    }
-                    prefijo = prefijos_archivo.get(tipo_formato, "Acta")
-                    st.download_button(
-                        "⬇️ Descargar",
-                        data=pdf_bytes,
-                        file_name=f"{prefijo}_{nombre.replace(' ', '_')}_{cert_nombre_mes}_{cert_año}.pdf",
-                        mime="application/pdf",
-                        key=f"dl_{tipo_formato}_{uid}",
+                prefijos_archivo = {
+                    "acta_compromiso": "Acta_Compromiso",
+                    "acta_recibo_entrega_cps": "Balance_General_CPS",
+                    "acta_recibo_entrega_cps_real": "Acta_Recibo_Entrega_CPS",
+                }
+                prefijo = prefijos_archivo.get(tipo_formato, "Acta")
+                periodo = f"{cert_nombre_mes}_{cert_año}"
+
+                # El PDF/Excel se genera solo al abrir el diálogo (clic del botón), no antes.
+                c_pdf, c_xlsx = st.columns(2) if tiene_excel else (st.container(), None)
+                with c_pdf:
+                    if st.button(
+                        "📄 PDF" if tiene_excel else "👁️ Ver / Descargar",
+                        key=f"ver_{tipo_formato}_{uid}",
                         use_container_width=True,
-                    )
-                else:
-                    if st.button("🔍 Borrador", key=f"draft_{tipo_formato}_{uid}", use_container_width=True):
-                        st.session_state["ver_borrador_acta"] = {
-                            "cert": cert,
-                            "nombre": nombre,
-                            "tipo_formato": tipo_formato,
-                            "nombre_mes": cert_nombre_mes,
-                            "año": cert_año,
-                        }
-                        st.rerun()
+                    ):
+                        abrir_dialogo_documento(cert, nombre, "pdf", prefijo, periodo, es_borrador=not ya_aprobado)
+                if tiene_excel:
+                    with c_xlsx:
+                        if st.button("📊 Excel", key=f"ver_xlsx_{tipo_formato}_{uid}", use_container_width=True):
+                            abrir_dialogo_documento(cert, nombre, "xlsx", prefijo, periodo, es_borrador=not ya_aprobado)
 
                 if rol_activo:
-                    idx = orden.index(rol_activo)
-                    rol_anterior = orden[idx - 1] if idx > 0 else None
-                    puede_firmar = rol_anterior is None or bool(firmas.get(rol_anterior))
+                    es_extra = bool(extra_meta) and rol_activo == extra_meta["tipo_firmante"]
+                    if es_extra:
+                        # Firma Extra es independiente: no depende del orden secuencial.
+                        rol_anterior = None
+                        puede_firmar = True
+                    else:
+                        idx = orden.index(rol_activo)
+                        rol_anterior = orden[idx - 1] if idx > 0 else None
+                        puede_firmar = rol_anterior is None or bool(firmas.get(rol_anterior))
                     ya_firmado = bool(firmas.get(rol_activo))
 
                     if ya_firmado:
                         if st.button("↩ Revocar", key=f"revocar_actas_{tipo_formato}_{uid}", use_container_width=True):
-                            servicio.revocar_firma_actas(str(cert["_id"]), rol_activo)
+                            if es_extra:
+                                servicio.revocar_firma_extra_actas(str(cert["_id"]))
+                            else:
+                                servicio.revocar_firma_actas(str(cert["_id"]), rol_activo)
+                            limpiar_cache_lecturas()
                             st.rerun()
                     elif not ya_aprobado:
                         if not puede_firmar:
@@ -507,18 +557,25 @@ def render(sesion=None):
     # Recopilar todos los tipos de firma que tiene este usuario.
     # Un mismo usuario puede tener más de un permiso de firma (ej. corr + gd).
     mis_tipos_firma = [t for t in TIPOS_FIRMA if _META_FIRMA[t][2] in permisos]
+    # Firma Extra del formato de control: se suma a las opciones de "actuando
+    # como" solo si el parámetro está activo y el usuario tiene el permiso.
+    extra_control_activa = servicio.firma_extra_activa("gestion_correspondencia")
+    if extra_control_activa and "certificacion.firmar_extra_control" in permisos:
+        mis_tipos_firma = mis_tipos_firma + ["extra_control"]
     # Idem para los roles de firma de actas (financiera/abogado/jefe) — un usuario
     # puede tener solo permisos de actas y ningún permiso corr/gd/secop.
     mis_roles_actas = [r for r in TIPOS_FIRMA_ACTAS if _META_FIRMA_ACTAS[r][2] in permisos]
+    # Un usuario puede tener SOLO un permiso de Firma Extra de actas y ningún
+    # otro permiso de firma — hay que contarlo para el guard de acceso general.
+    tengo_algun_permiso_extra_actas = any(
+        servicio.firma_extra_activa(tf) and f"certificacion.firmar_{m['tipo_firmante']}" in permisos
+        for tf, m in FIRMA_EXTRA_CONFIG.items() if tf != "gestion_correspondencia"
+    )
     puede_ver_control = bool(mis_tipos_firma) or es_admin or "certificacion.aprobar" in permisos
 
-    if not es_admin and not mis_tipos_firma and not mis_roles_actas:
+    if not es_admin and not mis_tipos_firma and not mis_roles_actas and not tengo_algun_permiso_extra_actas:
         st.error("No tienes permiso para acceder a esta sección.")
         st.stop()
-
-    año, mes = servicio.periodo_certificable()
-    nombre_mes = MESES_ES[mes - 1]
-    es_anterior = servicio.es_mes_anterior()
 
     # Inyectar CSS para dar fondo verde al botón de certificado
     st.markdown(
@@ -540,14 +597,17 @@ def render(sesion=None):
     )
 
     mostrar_titulo_decorado("Sup. Formatos")
-    st.caption(f"Período certificable: **{nombre_mes} {año}**")
 
-    if es_anterior:
-        _dia_cierre = servicio._dia_inicio_periodo() - 1
-        st.warning(
-            f"Estás aprobando el **mes anterior: {nombre_mes} {año}** "
-            f"(ventana disponible hasta el día {_dia_cierre} del mes en curso)."
-        )
+    periodos_globales = periodos_disponibles_global()
+    año, mes = st.selectbox(
+        "📅 Período a firmar",
+        options=periodos_globales,
+        format_func=lambda p: f"{MESES_ES[p[1] - 1]} {p[0]}",
+        index=periodos_globales.index(servicio.periodo_certificable()),
+        key="sup_periodo_seleccionado",
+    )
+    nombre_mes = MESES_ES[mes - 1]
+    st.caption(servicio.leyenda_periodo(año, mes))
 
     # Inicializar estado para mostrar/ocultar el formato de control
     if "ver_formato_control" not in st.session_state:
@@ -622,36 +682,24 @@ def render(sesion=None):
         st.divider()
 
         with st.spinner("Consultando estado de correspondencia…"):
-            empleados = servicio.obtener_empleados_para_certificar()
+            empleados = empleados_para_certificar(None, año, mes)
 
         if not empleados:
             st.info("No hay colaboradores con correspondencia registrada.")
         else:
-            # Métricas
+            # Resumen visual (semáforo) del período: solo contratistas con
+            # contrato vigente o temporal (regla de gracia) cuentan aquí.
             total = len(empleados)
-            con_3_firmas = sum(
-                1 for e in empleados
-                if all(e.get("firmas", {}).get(t) for t in TIPOS_FIRMA)
-            )
+            con_contrato = [e for e in empleados if e.get("estado_contrato") in ("vigente", "gracia")]
+            aprobados = [e for e in con_contrato if (e.get("certificacion") or {}).get("estado") == "aprobado"]
+            pendientes_firma_movil = [
+                e for e in con_contrato
+                if e.get("certificacion") and (e.get("certificacion") or {}).get("estado") != "aprobado"
+            ]
+            faltan_generar = [e for e in con_contrato if not e.get("certificacion")]
 
-            if tipo_mi_firma:
-                mis_pendientes = sum(
-                    1 for e in empleados
-                    if not e.get("firmas", {}).get(tipo_mi_firma)
-                )
-                mis_aprobados = sum(
-                    1 for e in empleados
-                    if e.get("firmas", {}).get(tipo_mi_firma)
-                )
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Total contratistas", total)
-                m2.metric("Pendientes mi aprobación", mis_pendientes)
-                m3.metric("Aprobados", mis_aprobados)
-            else:
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Total contratistas", total)
-                m2.metric("Con las 3 firmas", con_3_firmas)
-                m3.metric("Pendientes de firmas", total - con_3_firmas)
+            _barra_resumen_semaforo(len(aprobados), len(pendientes_firma_movil), len(faltan_generar))
+            _lista_movil_estado(aprobados, pendientes_firma_movil, faltan_generar)
 
             st.divider()
 
@@ -747,17 +795,18 @@ def render(sesion=None):
                                 st.caption("⚠️ Sin contrato activo")
 
                         with c_badges:
+                            tipos_badges = TIPOS_FIRMA + (("extra_control",) if extra_control_activa else ())
                             badges = (
                                 _badge_corr(pendientes, vencidas)
                                 + "&nbsp;&nbsp;"
-                                + "&nbsp;".join(_badge_firma(t, firmas.get(t)) for t in TIPOS_FIRMA)
+                                + "&nbsp;".join(_badge_firma(t, firmas.get(t)) for t in tipos_badges)
                             )
                             st.markdown(badges, unsafe_allow_html=True)
 
                             # Detalle de cada firma existente
                             detalles = []
                             comentarios_firma = []
-                            for t in TIPOS_FIRMA:
+                            for t in tipos_badges:
                                 f = firmas.get(t)
                                 if f:
                                     fecha_f = formato_fecha_bogota(f.get("fecha"), "%d/%m %H:%M")
@@ -774,21 +823,17 @@ def render(sesion=None):
                             ya_certificado = cert_emp.get("estado") == "aprobado"
 
                             if ya_certificado:
-                                pdf_bytes = obtener_pdf_certificado_cacheado(
-                                    servicio,
-                                    str(cert_emp["_id"]),
-                                    cert_emp.get("hash_verificacion", ""),
-                                    cert_emp,
-                                    version_key=str(cert_emp.get("firmas", {})),
-                                )
-                                st.download_button(
-                                    "⬇️ Certificado",
-                                    data=pdf_bytes,
-                                    file_name=f"Certificado_{nombre.replace(' ', '_')}_{nombre_mes}_{año}.pdf",
-                                    mime="application/pdf",
-                                    key=f"dl_{uid}",
+                                # El PDF se genera solo al abrir el diálogo (clic del
+                                # botón), no antes — igual que en el panel de Actas.
+                                if st.button(
+                                    "👁️ Ver / Descargar",
+                                    key=f"ver_cert_{uid}",
                                     use_container_width=True,
-                                )
+                                ):
+                                    abrir_dialogo_documento(
+                                        cert_emp, nombre, "pdf", "Certificado",
+                                        f"{nombre_mes}_{año}", es_borrador=False,
+                                    )
                             elif not tipo_mi_firma:
                                 # Admin sin designación solo visualiza
                                 pass
@@ -799,7 +844,8 @@ def render(sesion=None):
                                     use_container_width=True,
                                     help="Revocar mi aprobación.",
                                 ):
-                                    servicio.revocar_firma(uid, tipo_mi_firma)
+                                    servicio.revocar_firma(uid, tipo_mi_firma, año=año, mes=mes)
+                                    limpiar_cache_lecturas()
                                     st.rerun()
                             else:
                                 if st.button(
@@ -817,7 +863,7 @@ def render(sesion=None):
 
     tab_actas = st.session_state.get("tab_actas_activo")
     if tab_actas:
-        _render_panel_actas(servicio, sesion, tab_actas)
+        _render_panel_actas(servicio, sesion, tab_actas, año, mes)
 
     if st.session_state.get("_confirmar_firma_actas"):
         _dialog_confirmar_firma_actas(servicio, sesion)
@@ -825,5 +871,4 @@ def render(sesion=None):
     if st.session_state.get("_confirmar_firma"):
         _dialog_confirmar_firma(servicio, sesion, año, mes, nombre_mes)
 
-    if st.session_state.get("ver_borrador_acta"):
-        _dialog_ver_borrador(servicio)
+    render_dialogo_documento_si_activo(servicio)

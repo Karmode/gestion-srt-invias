@@ -1,6 +1,7 @@
 # Sub-esquema reutilizable: afiliación a una entidad de seguridad social
-# (EPS / ARL / AFP / CCF). El aporte lo paga el contratista (registra 'valor')
-# o la entidad (registra 'radicado'); 'paga' indica cuál de los dos casos aplica.
+# (EPS / ARL / AFP / CCF). El aporte lo paga el contratista (registra 'valor',
+# 'valor_primer_mes' y 'valor_ultimo_mes') o la entidad (registra 'radicado');
+# 'paga' indica cuál de los dos casos aplica.
 _ESQUEMA_AFILIACION = {
     "bsonType": ["object", "null"],
     "properties": {
@@ -10,7 +11,9 @@ _ESQUEMA_AFILIACION = {
             "enum": ["contratista", "entidad", None],
             "description": "Quién paga el aporte: 'contratista' (registra valor) o 'entidad' (registra radicado)",
         },
-        "valor": {"bsonType": ["int", "long", "double", "null"], "description": "Valor mensual del aporte (COP), cuando lo paga el contratista"},
+        "valor": {"bsonType": ["int", "long", "double", "null"], "description": "Valor mensual del aporte (COP) para los meses intermedios del contrato (segundo mes en adelante), cuando lo paga el contratista"},
+        "valor_primer_mes": {"bsonType": ["int", "long", "double", "null"], "description": "Valor del aporte (COP) correspondiente al primer mes del contrato, cuando lo paga el contratista"},
+        "valor_ultimo_mes": {"bsonType": ["int", "long", "double", "null"], "description": "Valor del aporte (COP) correspondiente al último mes del contrato, cuando lo paga el contratista"},
         "radicado": {"bsonType": ["string", "null"], "description": "Número de radicado del pago, cuando lo paga la entidad"},
     },
 }
@@ -53,7 +56,7 @@ ESQUEMA_USUARIOS = {
                         "enum": ["termino_indefinido", "termino_fijo", "obra_labor", "prestacion_servicios", "aprendizaje", None],
                     },
                     "objeto": {"bsonType": ["string", "null"]},
-                    "radicado_del_contrato": {"bsonType": ["string", "null"]},
+                    "fecha_orden_inicio_contrato": {"bsonType": ["date", "null"]},
                     "valor": {"bsonType": ["int", "long", "double", "null"]},
                     "valor_mensual": {"bsonType": ["int", "long", "double", "null"]},
                     "valor_primer_pago": {"bsonType": ["int", "long", "double", "null"]},
@@ -62,12 +65,12 @@ ESQUEMA_USUARIOS = {
                         "description": "Código de Registro Presupuestal / compromiso presupuestal (alfanumérico)",
                     },
                     "fecha_recurso_presupuestal": {"bsonType": ["date", "null"]},
+                    "firma_cps_secop": {"bsonType": ["date", "null"]},
                     "fecha_inicio": {"bsonType": ["date", "null"]},
                     "fecha_fin": {"bsonType": ["date", "null"]},
                     "tiene_inventario": {"bsonType": ["bool", "null"]},
                     "desc_inventario": {"bsonType": ["string", "null"]},
-                    "valor_total_ejecutado_contrato": {"bsonType": ["int", "long", "double", "null"]},
-                    "saldo_presp_lib_contrato": {"bsonType": ["int", "long", "double", "null"]},
+                    "valor_total_por_pagar_contrato": {"bsonType": ["int", "long", "double", "null"]},
                     "valor_total_pagado": {"bsonType": ["int", "long", "double", "null"]},
                     "prorrogra_contrato": {
                         "bsonType": ["object", "null"],
@@ -95,21 +98,15 @@ ESQUEMA_USUARIOS = {
                                 "numero_pago",
                                 "fecha_pago",
                                 "valor_bruto_pago",
-                                "valor_bruto_total",
                                 "deducciones_pago",
-                                "deducciones_pago_total",
                                 "valor_neto_pago",
-                                "valor_neto_pago_total",
                             ],
                             "properties": {
                                 "numero_pago": {"bsonType": "string"},
                                 "fecha_pago": {"bsonType": "date"},
                                 "valor_bruto_pago": {"bsonType": ["int", "long", "double"]},
-                                "valor_bruto_total": {"bsonType": ["int", "long", "double"]},
                                 "deducciones_pago": {"bsonType": ["int", "long", "double"]},
-                                "deducciones_pago_total": {"bsonType": ["int", "long", "double"]},
                                 "valor_neto_pago": {"bsonType": ["int", "long", "double"]},
-                                "valor_neto_pago_total": {"bsonType": ["int", "long", "double"]},
                             },
                         },
                     },
@@ -363,6 +360,46 @@ ESQUEMA_CERTIFICACIONES = {
                     },
                 },
                 "jefe": {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
+                    },
+                },
+                "extra_control": {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
+                    },
+                },
+                "extra_acta_compromiso": {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
+                    },
+                },
+                "extra_balance_general": {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
+                    },
+                },
+                "extra_acta_recibo_entrega": {
                     "bsonType": "object",
                     "required": ["firmante_id", "firmante_nombre", "fecha"],
                     "properties": {

@@ -8,6 +8,7 @@ que le sirve al colaborador como soporte para su cuenta de cobro.
 import hashlib
 import hmac
 import io
+import math
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
@@ -30,6 +31,10 @@ MESES_ES = [
 # (ver ParametrosService, parámetro "dia_inicio_periodo_certificacion").
 DIA_INICIO_PERIODO = 29
 
+# Cantidad de meses hacia adelante del período certificable que se pueden
+# seleccionar en "Formatos de contrato" y "Sup. Formatos" (adelanto de firma).
+MESES_ADELANTO_FIRMA = 1
+
 # ── Firmas secuenciales de Actas (Financiera → Abogado → Jefe) ────────────────
 TIPOS_FIRMA_CORR = ("corr", "gd", "secop")
 TIPOS_FIRMA_ACTAS = ("financiera", "abogado", "jefe")
@@ -39,6 +44,213 @@ ORDEN_FIRMAS_ACTAS = {
     "acta_recibo_entrega_cps": ("financiera", "abogado", "jefe"),        # Balance General CPS
     "acta_recibo_entrega_cps_real": ("financiera", "abogado", "jefe"),   # Acta recibo y entrega CPS
 }
+
+# ── Firma Extra: firma independiente y opcional por formato ───────────────────
+# No participa del flujo/orden de firmas normal: solo bloquea que el documento
+# llegue a estado "aprobado" mientras esté activa (parámetro) y no se haya dado.
+# El "tipo_firmante" cumple triple función: es la clave firmas.<x> en el
+# documento, el "tipo" pasado a guardar_firmante/obtener_firmantes_config, y por
+# tanto define el permiso autogenerado "certificacion.firmar_<tipo_firmante>".
+FIRMA_EXTRA_CONFIG = {
+    "gestion_correspondencia":      {"tipo_firmante": "extra_control",            "parametro": "firma_extra_control_activa"},
+    "acta_compromiso":              {"tipo_firmante": "extra_acta_compromiso",     "parametro": "firma_extra_acta_compromiso_activa"},
+    "acta_recibo_entrega_cps":      {"tipo_firmante": "extra_balance_general",     "parametro": "firma_extra_balance_general_activa"},
+    "acta_recibo_entrega_cps_real": {"tipo_firmante": "extra_acta_recibo_entrega", "parametro": "firma_extra_acta_recibo_entrega_activa"},
+}
+CATEGORIA_FIRMANTES_EXTRA = "firmantes_firma_extra"
+
+
+# ── Helpers compartidos para las versiones Excel (.xlsx) de las Actas ─────────
+# Duplican, a propósito, la lógica ya usada dentro de generar_pdf_acta_recibo_entrega
+# y generar_pdf_acta_recibo_entrega_real (que NO se tocan) para no alterar esos métodos.
+
+_XLSX_CM_A_PT = 28.3465
+_XLSX_PX_POR_CM = 37.7952755906
+
+
+def _xlsx_formatear_documento(doc_str) -> str:
+    if not doc_str:
+        return "—"
+    doc_str = str(doc_str).replace(".", "").replace(",", "").strip()
+    if doc_str.isdigit():
+        reversed_str = doc_str[::-1]
+        chunks = [reversed_str[i:i + 3] for i in range(0, len(reversed_str), 3)]
+        return ".".join(chunks)[::-1]
+    return doc_str
+
+
+def _xlsx_numero_a_letras(n) -> str:
+    n = int(n)
+    if n == 0:
+        return "CERO"
+    unidades = ["", "UNO", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE"]
+    especiales = {
+        10: "DIEZ", 11: "ONCE", 12: "DOCE", 13: "TRECE", 14: "CATORCE", 15: "QUINCE",
+        16: "DIECISEIS", 17: "DIECISIETE", 18: "DIECIOCHO", 19: "DIECINUEVE",
+        21: "VEINTIUNO", 22: "VEINTIDOS", 23: "VEINTITRES", 24: "VEINTICUATRO",
+        25: "VEINTICINCO", 26: "VEINTISEIS", 27: "VEINTISIETE", 28: "VEINTIOCHO", 29: "VEINTINUEVE"
+    }
+    decenas = ["", "DIEZ", "VEINTE", "TREINTA", "CUARENTA", "CINCUENTA", "SESENTA", "SETENTA", "OCHENTA", "NOVENTA"]
+    centenas = ["", "CIENTO", "DOSCIENTOS", "TRESCIENTOS", "CUATROCIENTOS", "QUINIENTOS", "SEISCIENTOS", "SETECIENTOS", "OCHOCIENTOS", "NOVECIENTOS"]
+
+    def _convertir(num):
+        if num in especiales:
+            return especiales[num]
+        elif num < 10:
+            return unidades[num]
+        elif num < 30:
+            if num == 20: return "VEINTE"
+            return especiales.get(num, "")
+        elif num < 100:
+            u = num % 10
+            d = num // 10
+            if u > 0:
+                return f"{decenas[d]} Y {unidades[u]}"
+            return decenas[d]
+        elif num < 1000:
+            if num == 100:
+                return "CIEN"
+            d_u = num % 100
+            c = num // 100
+            if d_u > 0:
+                return f"{centenas[c]} {_convertir(d_u)}"
+            return centenas[c]
+        elif num < 1000000:
+            m = num // 1000
+            resto = num % 1000
+            m_str = "MIL" if m == 1 else f"{_convertir(m)} MIL"
+            if resto > 0:
+                return f"{m_str} {_convertir(resto)}"
+            return m_str
+        elif num < 1000000000:
+            millon = num // 1000000
+            resto = num % 1000000
+            if millon == 1:
+                mill_str = "UN MILLON"
+            else:
+                mill_words = _convertir(millon)
+                if mill_words.endswith("UNO"):
+                    mill_words = mill_words[:-3] + "UN"
+                elif mill_words == "UNO":
+                    mill_words = "UN"
+                mill_str = f"{mill_words} MILLONES"
+            if resto > 0:
+                return f"{mill_str} {_convertir(resto)}"
+            return mill_str
+        return str(num)
+
+    return _convertir(n).strip()
+
+
+def _xlsx_cm_a_ancho_columna(cm_val: float) -> float:
+    """Aproxima un ancho en cm al ancho de columna de xlsxwriter (unidades de caracter, fuente Calibri 11)."""
+    px = cm_val * _XLSX_PX_POR_CM
+    return max((px - 5) / 7.0, 1.0)
+
+
+def _xlsx_cm_a_puntos(cm_val: float) -> float:
+    return cm_val * _XLSX_CM_A_PT
+
+
+def _xlsx_subdividir(anchos_cm: list, col_inicio: int, col_fin_exclusive: int) -> list:
+    """Reparte proporcionalmente una lista de anchos en cm dentro del rango de columnas
+    [col_inicio, col_fin_exclusive) de la grilla. Devuelve una lista de longitud
+    len(anchos_cm) + 1 con los límites de columna acumulados: la caja i ocupa las
+    columnas [bounds[i], bounds[i+1] - 1]. Permite anidar divisiones (sub-tablas del PDF)
+    dentro del rango de columnas ya asignado a una caja exterior."""
+    n_cols = max(col_fin_exclusive - col_inicio, len(anchos_cm))
+    total = sum(anchos_cm) or 1.0
+    bounds = [col_inicio]
+    cum = 0.0
+    for w in anchos_cm:
+        cum += w
+        b = col_inicio + round(cum / total * n_cols)
+        if b <= bounds[-1]:
+            b = bounds[-1] + 1
+        bounds.append(b)
+    bounds[-1] = col_inicio + n_cols
+    for i in range(len(bounds) - 2, 0, -1):
+        if bounds[i] >= bounds[i + 1]:
+            bounds[i] = bounds[i + 1] - 1
+    return bounds
+
+
+def _xlsx_dividir_columnas(anchos_cm: list, total_columnas: int, offset: int = 1) -> list:
+    """Caso particular de _xlsx_subdividir que cubre toda la grilla de contenido, desplazada
+    `offset` columnas desde el borde físico de la hoja. El offset deja una columna (y, por
+    convención del llamador, también una fila) de margen antes del contenido, para que el
+    marco exterior no quede pegado al borde de la página al imprimir."""
+    return _xlsx_subdividir(anchos_cm, offset, offset + total_columnas)
+
+
+def _xlsx_insertar_imagen_proporcional(
+    worksheet, fila: int, col: int, imagen, ancho_cm: float, alto_cm: float,
+    x_offset: int = 2, y_offset: int = 2, recortar_margenes: bool = False,
+) -> None:
+    """Inserta una imagen (bytes o ruta) escalada proporcionalmente para caber dentro de
+    un recuadro de ancho_cm x alto_cm, replicando el comportamiento kind='proportional' de ReportLab.
+    Con recortar_margenes=True, recorta primero el margen transparente que traiga el PNG
+    (usado para el logo institucional, para que ocupe mejor la caja)."""
+    if not imagen:
+        return
+    imagen_bytes = None
+    try:
+        from PIL import Image as PILImage
+        origen = io.BytesIO(imagen) if isinstance(imagen, (bytes, bytearray)) else imagen
+        with PILImage.open(origen) as im:
+            im = im.convert("RGBA")
+            if recortar_margenes:
+                bbox = im.getbbox()
+                if bbox:
+                    im = im.crop(bbox)
+            native_w, native_h = im.size
+            salida = io.BytesIO()
+            im.save(salida, format="PNG")
+            imagen_bytes = salida.getvalue()
+    except Exception:
+        native_w, native_h = 600, 200
+
+    target_w_px = ancho_cm * _XLSX_PX_POR_CM
+    target_h_px = alto_cm * _XLSX_PX_POR_CM
+    escala = min(target_w_px / native_w, target_h_px / native_h) if native_w and native_h else 1.0
+
+    opciones = {"x_scale": escala, "y_scale": escala, "x_offset": x_offset, "y_offset": y_offset, "object_position": 1}
+    try:
+        if imagen_bytes is not None:
+            opciones["image_data"] = io.BytesIO(imagen_bytes)
+            worksheet.insert_image(fila, col, "img.png", opciones)
+        elif isinstance(imagen, str):
+            worksheet.insert_image(fila, col, imagen, opciones)
+    except Exception:
+        pass
+
+
+def _xlsx_altura_para_texto(texto: str, ancho_cm: float, tam_fuente: float = 7.5, min_cm: float = 0.5) -> float:
+    """Estima la altura de fila (en cm) necesaria para que `texto` quepa completo, con wrap,
+    dentro de una celda de ancho ancho_cm y tamaño de fuente tam_fuente (pt). Aproximado
+    a propósito (con margen de seguridad) para evitar que el texto quede cortado."""
+    texto = (texto or "").strip()
+    if not texto:
+        return min_cm
+    import textwrap
+    ancho_char_cm = tam_fuente * 0.021
+    caracteres_por_linea = max(int(ancho_cm / ancho_char_cm * 0.92), 10)
+    lineas = sum(len(textwrap.wrap(p, width=caracteres_por_linea) or [""]) for p in texto.split("\n"))
+    alto_linea_cm = tam_fuente * 0.0352778 * 1.4
+    return max(lineas * alto_linea_cm, min_cm)
+
+
+def _xlsx_columnas_para_texto(texto: str, tam_fuente: float, col_cm: float, min_cols: int = 3, padding_cols: int = 2) -> int:
+    """Estima cuántas columnas de la grilla necesita `texto` en una sola línea (sin wrap),
+    para que una celda combinada tipo 'línea de llenado' se ajuste al ancho real del dato
+    en vez de siempre ocupar el ancho completo disponible."""
+    texto = (texto or "").strip()
+    if not texto:
+        return min_cols
+    ancho_char_cm = tam_fuente * 0.021
+    ancho_texto_cm = len(texto) * ancho_char_cm
+    columnas = math.ceil(ancho_texto_cm / col_cm) + padding_cols
+    return max(columnas, min_cols)
 
 
 class CertificacionService:
@@ -58,8 +270,8 @@ class CertificacionService:
         """Día del mes en que se abre la ventana normal de certificación.
         Configurable por el admin; cae a DIA_INICIO_PERIODO si no está definido."""
         try:
-            from app.services.parametros_service import ParametrosService
-            return ParametrosService().obtener("dia_inicio_periodo_certificacion")
+            from app.core.cache_datos import parametro_admin
+            return parametro_admin("dia_inicio_periodo_certificacion")
         except Exception:
             return DIA_INICIO_PERIODO
 
@@ -95,17 +307,101 @@ class CertificacionService:
         del 29 en adelante se certifica el mes actual."""
         return True
 
+    def _construir_rango_periodos(self, contratos: list) -> List[tuple]:
+        """Genera la lista descendente de (año, mes) desde MESES_ADELANTO_FIRMA meses
+        después del período certificable actual (adelanto de firma) hasta el mes de
+        inicio del contrato más antiguo (fecha_inicio), ambos inclusive. Si no hay
+        contratos con fecha_inicio, devuelve solo el período certificable actual y
+        los meses de adelanto."""
+        año_max, mes_max = self.periodo_certificable()
+        for _ in range(MESES_ADELANTO_FIRMA):
+            mes_max += 1
+            if mes_max == 13:
+                mes_max = 1
+                año_max += 1
+
+        fechas_inicio = [c.get("fecha_inicio") for c in contratos if c.get("fecha_inicio")]
+        if not fechas_inicio:
+            # Sin historial de contrato: el rango baja solo hasta el período
+            # certificable actual (no hay desde cuándo retroceder más).
+            año_min, mes_min = self.periodo_certificable()
+        else:
+            fecha_min = min(fechas_inicio)
+            if fecha_min.tzinfo is None:
+                fecha_min = fecha_min.replace(tzinfo=timezone.utc)
+            fecha_min_bogota = fecha_min.astimezone(ZONA_BOGOTA)
+            año_min, mes_min = fecha_min_bogota.year, fecha_min_bogota.month
+
+        periodos = []
+        año, mes = año_max, mes_max
+        while (año, mes) >= (año_min, mes_min):
+            periodos.append((año, mes))
+            mes -= 1
+            if mes == 0:
+                mes = 12
+                año -= 1
+        return periodos
+
+    def periodos_disponibles_usuario(self, usuario_id: str) -> List[tuple]:
+        """Períodos (año, mes) seleccionables por este contratista en 'Formatos de
+        contrato': desde el inicio de su contrato más antiguo hasta el período
+        certificable actual, orden descendente (más reciente primero)."""
+        from app.repositories.usuario_repo import UsuarioRepositorio
+
+        usuario = UsuarioRepositorio().buscar_por_id(usuario_id)
+        contratos = (usuario.get("contratos") or []) if usuario else []
+        return self._construir_rango_periodos(contratos)
+
+    def periodos_disponibles_global(self) -> List[tuple]:
+        """Períodos (año, mes) seleccionables en 'Sup. Formatos': desde el contrato
+        más antiguo registrado en todo el sistema hasta el período certificable
+        actual, orden descendente."""
+        from app.repositories.usuario_repo import UsuarioRepositorio
+
+        todos_contratos = []
+        for usuario in UsuarioRepositorio().listar():
+            todos_contratos.extend(usuario.get("contratos") or [])
+        return self._construir_rango_periodos(todos_contratos)
+
+    def leyenda_periodo(self, año: int, mes: int) -> str:
+        """Texto coherente con el período efectivamente indicado: el actual, el mes
+        anterior dentro de la ventana automática de gracia, un período pasado
+        elegido manualmente, o un período futuro dentro del adelanto de firma
+        permitido. Reemplaza los mensajes hardcodeados que asumían que el único
+        período posible era 'hoy' o 'el mes anterior automático'."""
+        nombre_mes = MESES_ES[mes - 1]
+        actual = self.periodo_certificable()
+        if (año, mes) == actual:
+            if self.es_mes_anterior():
+                dia_cierre = self._dia_inicio_periodo() - 1
+                return (
+                    f"Período anterior — {nombre_mes} {año} "
+                    f"(ponerse al día, disponible hasta el día {dia_cierre} del mes en curso)"
+                )
+            return f"Período actual — {nombre_mes} {año}"
+        if (año, mes) > actual:
+            return f"Período futuro — {nombre_mes} {año} (adelanto de firma, aún no ha transcurrido)"
+        return f"Período pasado — {nombre_mes} {año} (gestión retroactiva)"
+
     # ──────────────────────────────────────────────────────────────
     # Consultas de certificaciones
     # ──────────────────────────────────────────────────────────────
 
-    def obtener_certificacion_periodo_actual(self, usuario_id: str, tipo_formato: str = None) -> Optional[Dict]:
-        """Devuelve la certificación del período certificable hoy (mes actual o anterior)."""
-        año, mes = self.periodo_certificable()
+    def obtener_certificacion_periodo_actual(
+        self, usuario_id: str, tipo_formato: str = None, año: int = None, mes: int = None
+    ) -> Optional[Dict]:
+        """Devuelve la certificación del período dado (por defecto, el período
+        certificable hoy: mes actual o anterior)."""
+        if año is None or mes is None:
+            año, mes = self.periodo_certificable()
         return self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, tipo_formato)
 
-    def firmar_y_generar_dependencia(self, usuario_id: str, nombre_usuario: str) -> bool:
-        año, mes = self.periodo_certificable()
+    def firmar_y_generar_dependencia(
+        self, usuario_id: str, nombre_usuario: str, año: int = None, mes: int = None
+    ) -> bool:
+        if año is None or mes is None:
+            año, mes = self.periodo_certificable()
+        self._exigir_numero_contrato_valido(usuario_id, año, mes)
         ahora_utc = datetime.now(timezone.utc)
         
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "dependencia_economica")
@@ -135,8 +431,14 @@ class CertificacionService:
                 "mes": mes,
             })
             self.repo.crear(campos)
-    def firmar_y_generar_cuenta_cobro(self, usuario_id: str, nombre_usuario: str) -> bool:
-        año, mes = self.periodo_certificable()
+        return True
+
+    def firmar_y_generar_cuenta_cobro(
+        self, usuario_id: str, nombre_usuario: str, año: int = None, mes: int = None
+    ) -> bool:
+        if año is None or mes is None:
+            año, mes = self.periodo_certificable()
+        self._exigir_numero_contrato_valido(usuario_id, año, mes)
         ahora_utc = datetime.now(timezone.utc)
         
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "cuenta_cobro")
@@ -168,8 +470,49 @@ class CertificacionService:
             self.repo.crear(campos)
         return True
 
-    def firmar_y_generar_retencion_primera(self, usuario_id: str, nombre_usuario: str) -> bool:
-        año, mes = self.periodo_certificable()
+    def firmar_y_generar_informe_actividades_final(
+        self, usuario_id: str, nombre_usuario: str, año: int = None, mes: int = None
+    ) -> bool:
+        if año is None or mes is None:
+            año, mes = self.periodo_certificable()
+        self._exigir_numero_contrato_valido(usuario_id, año, mes)
+        ahora_utc = datetime.now(timezone.utc)
+
+        cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "informe_actividades_final_cps")
+
+        hash_code = (
+            cert_existente["hash_verificacion"]
+            if cert_existente and cert_existente.get("hash_verificacion")
+            else self._generar_hash(usuario_id, año, mes, usuario_id, ahora_utc.isoformat())
+        )
+
+        campos = {
+            "estado": "aprobado",  # Ya queda aprobado porque lo firma el contratista
+            "fecha_corte": ahora_utc,
+            "snapshot_al_dia": True,
+            "tipo_formato": "informe_actividades_final_cps",
+            "hash_verificacion": hash_code,
+            "creado_en": ahora_utc,
+        }
+
+        if cert_existente:
+            self.repo.actualizar(str(cert_existente["_id"]), campos)
+        else:
+            campos.update({
+                "usuario_id": ObjectId(usuario_id),
+                "nombre_usuario": nombre_usuario,
+                "año": año,
+                "mes": mes,
+            })
+            self.repo.crear(campos)
+        return True
+
+    def firmar_y_generar_retencion_primera(
+        self, usuario_id: str, nombre_usuario: str, año: int = None, mes: int = None
+    ) -> bool:
+        if año is None or mes is None:
+            año, mes = self.periodo_certificable()
+        self._exigir_numero_contrato_valido(usuario_id, año, mes)
         ahora_utc = datetime.now(timezone.utc)
         
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "retencion_fuente_primera")
@@ -201,8 +544,12 @@ class CertificacionService:
             self.repo.crear(campos)
         return True
 
-    def firmar_y_generar_retencion_segunda(self, usuario_id: str, nombre_usuario: str) -> bool:
-        año, mes = self.periodo_certificable()
+    def firmar_y_generar_retencion_segunda(
+        self, usuario_id: str, nombre_usuario: str, año: int = None, mes: int = None
+    ) -> bool:
+        if año is None or mes is None:
+            año, mes = self.periodo_certificable()
+        self._exigir_numero_contrato_valido(usuario_id, año, mes)
         ahora_utc = datetime.now(timezone.utc)
         
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "retencion_fuente_segunda")
@@ -234,11 +581,34 @@ class CertificacionService:
             self.repo.crear(campos)
         return True
 
-    def firmar_y_generar_acta_compromiso(self, usuario_id: str, nombre_usuario: str) -> bool:
-        año, mes = self.periodo_certificable()
+    @staticmethod
+    def _exigir_numero_contrato_valido(usuario_id: str, año: int, mes: int) -> None:
+        """Bloquea la generación de cualquier formato si el número del contrato del
+        período no es estrictamente numérico (datos históricos como '0192 2026')."""
+        from app.services.usuario_service import UsuarioService
+        req = UsuarioService().validar_numero_contrato_periodo(usuario_id, año, mes)
+        if not req["valido"]:
+            raise ValueError(f"No se puede generar el formato. {' '.join(req['faltantes'])}")
+
+    @staticmethod
+    def _exigir_firma_secop(usuario_id: str, año: int, mes: int) -> None:
+        """Bloquea la generación de los últimos formatos de contrato si el contrato
+        del período no tiene diligenciada la fecha de firma SECOP."""
+        from app.services.usuario_service import UsuarioService
+        req = UsuarioService().validar_firma_secop_contrato(usuario_id, año, mes)
+        if not req["valido"]:
+            raise ValueError(f"Faltan requisitos para generar el formato: {', '.join(req['faltantes'])}")
+
+    def firmar_y_generar_acta_compromiso(
+        self, usuario_id: str, nombre_usuario: str, año: int = None, mes: int = None
+    ) -> bool:
+        if año is None or mes is None:
+            año, mes = self.periodo_certificable()
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "acta_compromiso")
         if cert_existente:
             return True
+        self._exigir_numero_contrato_valido(usuario_id, año, mes)
+        self._exigir_firma_secop(usuario_id, año, mes)
 
         ahora_utc = datetime.now(timezone.utc)
         campos = {
@@ -255,16 +625,16 @@ class CertificacionService:
         self.repo.crear(campos)
         return True
 
-    def firmar_y_generar_acta_recibo_entrega(self, usuario_id: str, nombre_usuario: str) -> bool:
-        from app.services.usuario_service import UsuarioService
-        req_bg = UsuarioService().validar_datos_balance_general_cps(usuario_id)
-        if not req_bg["valido"]:
-            raise ValueError(f"Faltan requisitos para generar el Balance General CPS: {', '.join(req_bg['faltantes'])}")
-
-        año, mes = self.periodo_certificable()
+    def firmar_y_generar_acta_recibo_entrega(
+        self, usuario_id: str, nombre_usuario: str, año: int = None, mes: int = None
+    ) -> bool:
+        if año is None or mes is None:
+            año, mes = self.periodo_certificable()
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "acta_recibo_entrega_cps")
         if cert_existente:
             return True
+        self._exigir_numero_contrato_valido(usuario_id, año, mes)
+        self._exigir_firma_secop(usuario_id, año, mes)
 
         ahora_utc = datetime.now(timezone.utc)
         campos = {
@@ -281,16 +651,21 @@ class CertificacionService:
         self.repo.crear(campos)
         return True
 
-    def firmar_y_generar_acta_recibo_entrega_cps_real(self, usuario_id: str, nombre_usuario: str) -> bool:
+    def firmar_y_generar_acta_recibo_entrega_cps_real(
+        self, usuario_id: str, nombre_usuario: str, año: int = None, mes: int = None
+    ) -> bool:
         from app.services.usuario_service import UsuarioService
         req_acta = UsuarioService().validar_datos_acta_recibo_entrega_cps(usuario_id)
         if not req_acta["valido"]:
             raise ValueError(f"Faltan requisitos para generar el Acta de Recibo y Entrega CPS: {', '.join(req_acta['faltantes'])}")
 
-        año, mes = self.periodo_certificable()
+        if año is None or mes is None:
+            año, mes = self.periodo_certificable()
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id, año, mes, "acta_recibo_entrega_cps_real")
         if cert_existente:
             return True
+        self._exigir_numero_contrato_valido(usuario_id, año, mes)
+        self._exigir_firma_secop(usuario_id, año, mes)
 
         ahora_utc = datetime.now(timezone.utc)
         campos = {
@@ -318,17 +693,24 @@ class CertificacionService:
         codigo_normalizado = codigo.strip().upper().replace(" ", "")
         return self.repo.buscar_por_hash(codigo_normalizado)
 
-    def obtener_empleados_para_certificar(self, tipo_formato: str = None) -> List[Dict]:
-        """Lista todos los colaboradores con correspondencia, estado de firmas y contrato activo."""
+    def obtener_empleados_para_certificar(
+        self, tipo_formato: str = None, año: int = None, mes: int = None
+    ) -> List[Dict]:
+        """Lista todos los colaboradores con correspondencia, estado de firmas y contrato
+        (vigente hoy si es el período actual, o vigente en ese mes si es un período pasado)."""
         from app.services.correspondencia_service import CorrespondenciaService
         from app.repositories.usuario_repo import UsuarioRepositorio
 
         corr_service = CorrespondenciaService()
         usuario_repo = UsuarioRepositorio()
-        año, mes = self.periodo_certificable()
+        if año is None or mes is None:
+            año, mes = self.periodo_certificable()
 
-        estado_formatos = corr_service.obtener_estado_formatos()
-        todos_usuarios = {str(u["_id"]): u for u in usuario_repo.listar()}
+        lista_usuarios = usuario_repo.listar()
+        todos_usuarios = {str(u["_id"]): u for u in lista_usuarios}
+        usuarios_activos = [u for u in lista_usuarios if u.get("activo", True)]
+
+        estado_formatos = corr_service.obtener_estado_formatos(usuarios_activos=usuarios_activos)
         certs_mes = {
             str(c["usuario_id"]): c
             for c in self.repo.listar_por_periodo(año, mes, tipo_formato)
@@ -342,7 +724,7 @@ class CertificacionService:
 
             usuario_data = todos_usuarios.get(uid, {})
             contratos = usuario_data.get("contratos") or []
-            contrato = self._contrato_vigente(contratos)
+            contrato = self._contrato_relevante(contratos, año, mes)
             tiene_contrato = bool(contrato.get("numero"))
 
             resultados.append({
@@ -356,6 +738,10 @@ class CertificacionService:
                 "tiene_contrato": tiene_contrato,
                 "numero_contrato": contrato.get("numero"),
                 "tipo_contrato": contrato.get("tipo"),
+                # Vigencia del contrato relativa al período (año, mes) seleccionado,
+                # para el reporte visual por mes/formato: 'vigente' (verde),
+                # 'gracia' (temporal, amarillo) o 'sin_contrato'.
+                "estado_contrato": self._estado_vigencia_contrato(contratos, año, mes),
             })
 
         return resultados
@@ -418,6 +804,14 @@ class CertificacionService:
         )
         return True
 
+    def firma_extra_activa(self, tipo_formato: str | None) -> bool:
+        """Indica si la Firma Extra está activada (parámetro de admin) para el
+        formato dado. Formato de control se identifica como "gestion_correspondencia"."""
+        from app.core.cache_datos import parametro_admin
+
+        meta = FIRMA_EXTRA_CONFIG.get(tipo_formato or "gestion_correspondencia")
+        return bool(meta) and bool(parametro_admin(meta["parametro"]))
+
     # ──────────────────────────────────────────────────────────────
     # Registro de firmas por período
     # ──────────────────────────────────────────────────────────────
@@ -430,10 +824,14 @@ class CertificacionService:
         firmante_id: str,
         firmante_nombre: str,
         comentario: str | None = None,
+        año: int | None = None,
+        mes: int | None = None,
     ) -> bool:
-        """Registra la aprobación del firmante. Si con esta firma se completan
-        las 3 y el contratista cumple requisitos, se certifica automáticamente."""
-        año, mes = self.periodo_certificable()
+        """Registra la aprobación del firmante para el período dado (por defecto, el
+        período certificable actual). Si con esta firma se completan las 3 y el
+        contratista cumple requisitos, se certifica automáticamente para ESE período."""
+        if año is None or mes is None:
+            año, mes = self.periodo_certificable()
         self.repo.registrar_firma(
             empleado_id, empleado_nombre, año, mes, tipo, firmante_id, firmante_nombre, comentario
         )
@@ -451,7 +849,8 @@ class CertificacionService:
         año: int,
         mes: int,
     ) -> None:
-        """Auto-certifica cuando hay 3 firmas + contrato activo (sin importar estado de correspondencia)."""
+        """Auto-certifica cuando hay 3 firmas + contrato vigente en ESE período
+        (sin importar estado de correspondencia)."""
         from app.repositories.usuario_repo import UsuarioRepositorio
 
         cert = self.repo.buscar_por_usuario_periodo(empleado_id, año, mes)
@@ -461,17 +860,23 @@ class CertificacionService:
         firmas = cert.get("firmas", {})
         if not all(firmas.get(t) for t in ("corr", "gd", "secop")):
             return
+        if self.firma_extra_activa("gestion_correspondencia") and not firmas.get("extra_control"):
+            return
 
         usuario = UsuarioRepositorio().buscar_por_id(empleado_id)
         contratos = (usuario.get("contratos") or []) if usuario else []
-        if not self._contrato_vigente(contratos).get("numero"):
+        if not self._contrato_relevante(contratos, año, mes).get("numero"):
             return
 
-        self.certificar_empleado(empleado_id, empleado_nombre, firmante_id, firmante_nombre)
+        self.certificar_empleado(empleado_id, empleado_nombre, firmante_id, firmante_nombre, año=año, mes=mes)
 
-    def revocar_firma(self, empleado_id: str, tipo: str) -> bool:
-        """Revoca una firma previamente registrada."""
-        año, mes = self.periodo_certificable()
+    def revocar_firma(
+        self, empleado_id: str, tipo: str, año: int | None = None, mes: int | None = None
+    ) -> bool:
+        """Revoca una firma previamente registrada del período dado (por defecto, el
+        período certificable actual)."""
+        if año is None or mes is None:
+            año, mes = self.periodo_certificable()
         return self.repo.revocar_firma(empleado_id, año, mes, tipo)
 
     def registrar_firma_actas(
@@ -507,20 +912,84 @@ class CertificacionService:
             cert_id, rol, firmante_id, firmante_nombre, comentario
         )
 
-        cert_actualizado = self.repo.buscar_por_id(cert_id)
-        firmas = cert_actualizado.get("firmas") or {}
-        if all(firmas.get(r) for r in orden):
-            ahora_utc = datetime.now(timezone.utc)
-            usuario_id = str(cert_actualizado.get("usuario_id"))
-            año = cert_actualizado.get("año")
-            mes = cert_actualizado.get("mes")
-            hash_code = cert_actualizado.get("hash_verificacion") or self._generar_hash(
-                usuario_id, año, mes, firmante_id, ahora_utc.isoformat()
-            )
-            self.repo.actualizar(str(cert_actualizado["_id"]), {
-                "estado": "aprobado",
-                "hash_verificacion": hash_code,
-            })
+        self._evaluar_aprobacion_actas(cert_id, firmante_id)
+        return True
+
+    def _evaluar_aprobacion_actas(self, cert_id: str, firmante_id: str) -> None:
+        """Aprueba el documento de actas si el orden secuencial requerido está
+        completo y, si la Firma Extra está activa para este formato, también está
+        firmada. No hace nada si ya estaba aprobado o si aún falta algo."""
+        cert = self.repo.buscar_por_id(cert_id)
+        if not cert:
+            return
+
+        tipo_formato = cert.get("tipo_formato")
+        orden = ORDEN_FIRMAS_ACTAS.get(tipo_formato)
+        if not orden:
+            return
+
+        firmas = cert.get("firmas") or {}
+        if not all(firmas.get(r) for r in orden):
+            return
+
+        extra_meta = FIRMA_EXTRA_CONFIG.get(tipo_formato)
+        if extra_meta and self.firma_extra_activa(tipo_formato) and not firmas.get(extra_meta["tipo_firmante"]):
+            return
+
+        ahora_utc = datetime.now(timezone.utc)
+        usuario_id = str(cert.get("usuario_id"))
+        año = cert.get("año")
+        mes = cert.get("mes")
+        hash_code = cert.get("hash_verificacion") or self._generar_hash(
+            usuario_id, año, mes, firmante_id, ahora_utc.isoformat()
+        )
+        self.repo.actualizar(cert_id, {
+            "estado": "aprobado",
+            "hash_verificacion": hash_code,
+        })
+
+    def registrar_firma_extra_actas(
+        self,
+        cert_id: str,
+        firmante_id: str,
+        firmante_nombre: str,
+        comentario: str | None = None,
+    ) -> bool:
+        """Registra la Firma Extra de un formato de actas. Es independiente del
+        orden secuencial (financiera/abogado/jefe): no exige ni depende de las
+        demás firmas, solo aporta la condición adicional que evalúa
+        _evaluar_aprobacion_actas."""
+        cert = self.repo.buscar_por_id(cert_id)
+        if not cert:
+            raise ValueError("No existe el formato especificado.")
+
+        extra_meta = FIRMA_EXTRA_CONFIG.get(cert.get("tipo_formato"))
+        if not extra_meta:
+            raise ValueError(f"Firma Extra no aplica para el formato '{cert.get('tipo_formato')}'.")
+
+        self.repo.registrar_firma_actas_por_id(
+            cert_id, extra_meta["tipo_firmante"], firmante_id, firmante_nombre, comentario
+        )
+        self._evaluar_aprobacion_actas(cert_id, firmante_id)
+        return True
+
+    def revocar_firma_extra_actas(self, cert_id: str) -> bool:
+        """Revoca la Firma Extra de un formato de actas. No dispara cascada (no
+        tiene roles dependientes) y vuelve el documento a 'pendiente' si estaba
+        aprobado gracias a ella."""
+        cert = self.repo.buscar_por_id(cert_id)
+        if not cert:
+            return False
+
+        extra_meta = FIRMA_EXTRA_CONFIG.get(cert.get("tipo_formato"))
+        if not extra_meta:
+            raise ValueError(f"Firma Extra no aplica para el formato '{cert.get('tipo_formato')}'.")
+
+        self.repo.revocar_firmas_actas_por_id(cert_id, [extra_meta["tipo_firmante"]])
+
+        if cert.get("estado") == "aprobado":
+            self.repo.actualizar(cert_id, {"estado": "pendiente"})
+
         return True
 
     def revocar_firma_actas(self, cert_id: str, rol: str) -> bool:
@@ -559,9 +1028,9 @@ class CertificacionService:
         return True
 
     def recuperar_auto_cert(self, empleado_id: str, cert: dict) -> bool:
-        """Certifica retroactivamente si el cert ya tiene las 3 firmas + contrato activo
-        pero quedó en 'pendiente' por un fallo anterior en _intentar_auto_certificar.
-        Retorna True si se certificó ahora."""
+        """Certifica retroactivamente si el cert ya tiene las 3 firmas + contrato vigente
+        en su propio período pero quedó en 'pendiente' por un fallo anterior en
+        _intentar_auto_certificar. Retorna True si se certificó ahora."""
         from app.repositories.usuario_repo import UsuarioRepositorio
 
         if not cert or cert.get("estado") == "aprobado":
@@ -570,10 +1039,15 @@ class CertificacionService:
         firmas = cert.get("firmas", {})
         if not all(firmas.get(t) for t in ("corr", "gd", "secop")):
             return False
+        if self.firma_extra_activa("gestion_correspondencia") and not firmas.get("extra_control"):
+            return False
+
+        año_cert = cert.get("año")
+        mes_cert = cert.get("mes")
 
         usuario = UsuarioRepositorio().buscar_por_id(empleado_id)
         contratos = (usuario.get("contratos") or []) if usuario else []
-        if not self._contrato_vigente(contratos).get("numero"):
+        if not self._contrato_relevante(contratos, año_cert, mes_cert).get("numero"):
             return False
 
         # Usar la última firma como firmante registrado en el certificado
@@ -584,7 +1058,9 @@ class CertificacionService:
         firmante_nombre = ultima_firma.get("firmante_nombre", "") if ultima_firma else ""
         nombre_empleado = cert.get("nombre_usuario", "")
 
-        self.certificar_empleado(empleado_id, nombre_empleado, firmante_id, firmante_nombre)
+        self.certificar_empleado(
+            empleado_id, nombre_empleado, firmante_id, firmante_nombre, año=año_cert, mes=mes_cert
+        )
         return True
 
     # ──────────────────────────────────────────────────────────────
@@ -598,11 +1074,15 @@ class CertificacionService:
         supervisor_id: str,
         supervisor_nombre: str,
         observaciones: str = "",
+        año: int = None,
+        mes: int = None,
     ) -> bool:
-        """Certifica al colaborador para el período actual.
+        """Certifica al colaborador para el período dado (por defecto, el período
+        certificable actual).
         Si ya existe un hash previo, lo preserva para que los PDFs ya entregados
         sigan siendo verificables con el código original."""
-        año, mes = self.periodo_certificable()
+        if año is None or mes is None:
+            año, mes = self.periodo_certificable()
         ahora_utc = datetime.now(timezone.utc)
 
         cert_existente = self.repo.buscar_por_usuario_periodo(usuario_id_empleado, año, mes)
@@ -688,6 +1168,43 @@ class CertificacionService:
         )
         return activos[0]
 
+    def _estado_vigencia_contrato(self, contratos: list, año: int = None, mes: int = None) -> str:
+        """Clasifica el contrato relevante para (año, mes) en 'vigente' (fecha_fin
+        futura o sin fecha_fin), 'gracia' (ya finalizó pero dentro de los
+        DIAS_GRACIA_CONTRATO_VIGENTE días posteriores) o 'sin_contrato' (ninguno
+        activo). La fecha de referencia es "hoy" si (año, mes) es el período
+        certificable actual (o si no se especifica período), y el último día de
+        ese mes si es un período pasado elegido manualmente — misma dualidad que
+        _contrato_relevante, para que un período retroactivo no excluya a alguien
+        cuyo contrato ya venció (más allá de la gracia) respecto a HOY pero seguía
+        vigente o en gracia durante el mes que se está revisando."""
+        if año is None or mes is None or (año, mes) == self.periodo_certificable():
+            contrato = self._contrato_vigente(contratos)
+            referencia = datetime.now(ZONA_BOGOTA).date()
+        else:
+            contrato = self._contrato_relevante(contratos, año, mes)
+            import calendar
+            ultimo_dia = calendar.monthrange(año, mes)[1]
+            referencia = datetime(año, mes, ultimo_dia).date()
+
+        if not contrato.get("numero"):
+            return "sin_contrato"
+
+        fecha_fin = contrato.get("fecha_fin")
+        prorroga = contrato.get("prorrogra_contrato") or {}
+        if prorroga.get("tiene_prorroga") and prorroga.get("fecha_prorrogra"):
+            fecha_fin = prorroga.get("fecha_prorrogra")
+        if not fecha_fin:
+            return "vigente"
+
+        if fecha_fin.tzinfo is None:
+            fecha_fin = fecha_fin.replace(tzinfo=timezone.utc)
+        fecha_fin_bog = fecha_fin.astimezone(ZONA_BOGOTA).date()
+        if fecha_fin_bog >= referencia:
+            return "vigente"
+        fecha_limite = fecha_fin_bog + timedelta(days=self.DIAS_GRACIA_CONTRATO_VIGENTE)
+        return "gracia" if fecha_limite >= referencia else "sin_contrato"
+
     @staticmethod
     def _contrato_para_periodo(contratos: list, anio: int, mes: int) -> dict:
         """Devuelve el contrato que estaba activo durante el año y mes indicados.
@@ -738,6 +1255,454 @@ class CertificacionService:
             reverse=True,
         )
         return pool[0]
+
+    def _contrato_relevante(self, contratos: list, año: int, mes: int) -> dict:
+        """Contrato a usar para mostrar/validar en el período (año, mes): el vigente
+        hoy en tiempo real si es el período certificable actual (preserva el
+        comportamiento exacto de hoy cuando nadie toca el selector), o el vigente
+        históricamente en ese año/mes si es un período pasado elegido manualmente."""
+        if (año, mes) == self.periodo_certificable():
+            return self._contrato_vigente(contratos)
+        return self._contrato_para_periodo(contratos, año, mes)
+
+    def _ultimo_contrato_usuario(self, contratos: list) -> dict:
+        """Contrato activo hoy del usuario; si ninguno está activo (todos terminados),
+        el último que tuvo por fecha_inicio. Usado en formatos que no dependen del
+        período seleccionado sino del contrato más reciente del usuario."""
+        contrato = self._contrato_vigente(contratos)
+        if contrato:
+            return contrato
+        if not contratos:
+            return {}
+        return max(contratos, key=lambda c: c.get("fecha_inicio") or datetime.min)
+
+    def generar_docx(self, certificacion: Dict) -> bytes:
+        """Genera formatos en .docx (Word) con python-docx en memoria."""
+        if certificacion.get("tipo_formato") == "informe_actividades_final_cps":
+            return self.generar_docx_informe_actividades_final(certificacion)
+        raise ValueError(f"No hay generador .docx para el tipo de formato '{certificacion.get('tipo_formato')}'.")
+
+    def generar_docx_informe_actividades_final(self, certificacion: Dict) -> bytes:
+        from docx import Document
+        from docx.shared import Pt, Cm
+        from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+        from docx.enum.table import WD_TABLE_ALIGNMENT
+        from docx.oxml.ns import qn
+        from docx.oxml import OxmlElement
+
+        def _quitar_bordes_tabla(tabla):
+            tblPr = tabla._tbl.tblPr
+            bordes = OxmlElement("w:tblBorders")
+            for borde in ("top", "left", "bottom", "right", "insideH", "insideV"):
+                el = OxmlElement(f"w:{borde}")
+                el.set(qn("w:val"), "none")
+                el.set(qn("w:sz"), "0")
+                el.set(qn("w:space"), "0")
+                el.set(qn("w:color"), "auto")
+                bordes.append(el)
+            tblPr.append(bordes)
+
+        def _sin_relleno_celdas(tabla):
+            """Pone a 0 el margen interno izq/der por defecto de las celdas de una tabla
+            (~0.19cm por lado en el estilo de tabla por defecto de Word), que de otro modo
+            hace que una tabla anidada del mismo ancho que su celda contenedora se desborde
+            y su borde derecho no se vea."""
+            tblPr = tabla._tbl.tblPr
+            tblCellMar = OxmlElement("w:tblCellMar")
+            for lado in ("left", "right"):
+                el = OxmlElement(f"w:{lado}")
+                el.set(qn("w:w"), "0")
+                el.set(qn("w:type"), "dxa")
+                tblCellMar.append(el)
+            tblPr.append(tblCellMar)
+
+        def _borde_inferior_celda(celda):
+            """Línea horizontal (borde inferior) sobre una celda, usada como línea de firma."""
+            tcPr = celda._tc.get_or_add_tcPr()
+            tcBorders = OxmlElement("w:tcBorders")
+            bottom = OxmlElement("w:bottom")
+            bottom.set(qn("w:val"), "single")
+            bottom.set(qn("w:sz"), "6")
+            bottom.set(qn("w:space"), "0")
+            bottom.set(qn("w:color"), "000000")
+            tcBorders.append(bottom)
+            tcPr.append(tcBorders)
+
+        def _set_ancho_celda(celda, ancho):
+            celda.width = ancho
+            for p in celda.paragraphs:
+                p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+
+        def _set_celda(celda, texto, negrita=False, subrayado=False, alineacion=WD_ALIGN_PARAGRAPH.CENTER, tam=10):
+            celda.text = ""
+            p = celda.paragraphs[0]
+            p.alignment = alineacion
+            p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+            run = p.add_run(texto)
+            run.font.name = "Arial"
+            run.font.size = Pt(tam)
+            run.bold = negrita
+            run.underline = subrayado
+            return p
+
+        def _agregar_linea_celda(celda, texto, negrita=False, tam=10):
+            p = celda.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+            run = p.add_run(texto)
+            run.font.name = "Arial"
+            run.font.size = Pt(tam)
+            run.bold = negrita
+            return p
+
+        def _agregar_salto_celda(parrafo, texto, negrita=False, tam=10):
+            parrafo.add_run().add_break()
+            run = parrafo.add_run(texto)
+            run.font.name = "Arial"
+            run.font.size = Pt(tam)
+            run.bold = negrita
+            return run
+
+        doc = Document()
+
+        # El margen lateral por defecto de la plantilla (3.17cm) deja menos de los
+        # 16.3cm que ocupan las dos tablas lado a lado; se reduce a 2cm por lado.
+        seccion = doc.sections[0]
+        seccion.left_margin = Cm(2)
+        seccion.right_margin = Cm(2)
+
+        normal = doc.styles["Normal"]
+        normal.font.name = "Arial"
+        normal.font.size = Pt(11)
+        normal.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+        normal.paragraph_format.space_before = Pt(0)
+        normal.paragraph_format.space_after = Pt(0)
+
+        def _parrafo_centrado(contenedor, texto: str, negrita: bool = False, space_after: int = 0):
+            p = contenedor.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+            p.paragraph_format.space_after = Pt(space_after)
+            run = p.add_run(texto)
+            run.font.name = "Arial"
+            run.font.size = Pt(11)
+            run.bold = negrita
+            return p
+
+        # El bloque logo + Ministerio + título va en el encabezado de página de Word
+        # (se repite en todas las hojas), no en el cuerpo del documento.
+        header = doc.sections[0].header
+
+        # Logo institucional
+        p_logo = header.paragraphs[0]
+        p_logo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_logo.paragraph_format.space_after = Pt(6)
+        ruta_logo = os.path.join("app", "assets", "inv_ff.png")
+        if os.path.exists(ruta_logo):
+            p_logo.add_run().add_picture(ruta_logo, width=Cm(2.2))
+        else:
+            p_logo.paragraph_format.space_after = Pt(45)  # deja el espacio reservado de antes
+
+        _parrafo_centrado(header, "MINISTERIO DE TRANSPORTE", negrita=True)
+        _parrafo_centrado(header, "INSTITUTO NACIONAL DE VIAS", negrita=True)
+
+        _parrafo_centrado(header, "")  # renglón de espacio (interlineado 1.0)
+
+        p_titulo = _parrafo_centrado(
+            header, "INFORME DE ACTIVIDADES CONTRATO DE PRESTACIÓN DE SERVICIOS PROFESIONALES"
+        )
+        p_titulo.add_run().add_break()
+        run_titulo_2 = p_titulo.add_run("Y DE APOYO A LA GESTIÓN")
+        run_titulo_2.font.name = "Arial"
+        run_titulo_2.font.size = Pt(11)
+
+        # ── Datos para las tablas ──
+        usuario_id = str(certificacion.get("usuario_id", ""))
+        usuario_data: dict = {}
+        if usuario_id:
+            try:
+                from app.repositories.usuario_repo import UsuarioRepositorio
+                usuario_data = UsuarioRepositorio().buscar_por_id(usuario_id) or {}
+            except Exception:
+                pass
+        contratos = usuario_data.get("contratos") or []
+        contrato = self._ultimo_contrato_usuario(contratos)
+        no_contrato = contrato.get("numero") or "—"
+        fecha_ini_contrato = contrato.get("fecha_inicio")
+        año_contrato = str(fecha_ini_contrato.year) if fecha_ini_contrato else "—"
+
+        fecha_corte = certificacion.get("fecha_corte")
+        dt_informe = utc_a_bogota(fecha_corte) if fecha_corte else datetime.now(ZONA_BOGOTA)
+        dia_informe = f"{dt_informe.day:02d}"
+        mes_informe = f"{dt_informe.month:02d}"
+        año_informe = str(dt_informe.year)
+
+        # ── Contenedor sin bordes: tabla izquierda + espacio + tabla derecha ──
+        # Los anchos de las columnas 0 y 2 deben coincidir exactamente con el ancho
+        # total de las tablas anidadas que van dentro (10.8cm y 4.5cm).
+        anchos_contenedor = [Cm(10.8), Cm(1.0), Cm(4.5)]
+        contenedor = doc.add_table(rows=1, cols=3)
+        contenedor.autofit = False
+        contenedor.alignment = WD_TABLE_ALIGNMENT.CENTER
+        _quitar_bordes_tabla(contenedor)
+        _sin_relleno_celdas(contenedor)
+        celda_izq, celda_gap, celda_der = contenedor.rows[0].cells
+        for celda, ancho in zip(contenedor.rows[0].cells, anchos_contenedor):
+            _set_ancho_celda(celda, ancho)
+        for col, ancho in zip(contenedor.columns, anchos_contenedor):
+            col.width = ancho
+
+        # ── Tabla izquierda: INFORME No. / FECHA DEL INFORME / DIRIGIDO A ──
+        tabla1 = celda_izq.add_table(rows=4, cols=4)
+        tabla1.style = "Table Grid"
+        tabla1.autofit = False
+        anchos_t1 = [Cm(3.6), Cm(2.2), Cm(2.2), Cm(2.8)]
+        for fila in tabla1.rows:
+            for celda, ancho in zip(fila.cells, anchos_t1):
+                _set_ancho_celda(celda, ancho)
+        for col, ancho in zip(tabla1.columns, anchos_t1):
+            col.width = ancho
+
+        _set_celda(tabla1.cell(0, 0), "INFORME No.", negrita=True)
+        celda_final = tabla1.cell(0, 1).merge(tabla1.cell(0, 3))
+        _set_celda(celda_final, "FINAL")
+
+        celda_fecha_lbl = tabla1.cell(1, 0).merge(tabla1.cell(2, 0))
+        p_fecha_lbl = _set_celda(celda_fecha_lbl, "FECHA DEL", negrita=True)
+        _agregar_salto_celda(p_fecha_lbl, "INFORME", negrita=True)
+
+        _set_celda(tabla1.cell(1, 1), "dd", negrita=True, subrayado=True)
+        _set_celda(tabla1.cell(1, 2), "mm", negrita=True, subrayado=True)
+        _set_celda(tabla1.cell(1, 3), "aa", negrita=True, subrayado=True)
+
+        _set_celda(tabla1.cell(2, 1), dia_informe)
+        _set_celda(tabla1.cell(2, 2), mes_informe)
+        _set_celda(tabla1.cell(2, 3), año_informe)
+
+        _set_celda(tabla1.cell(3, 0), "DIRIGIDO A:", negrita=True)
+        celda_dirigido = tabla1.cell(3, 1).merge(tabla1.cell(3, 3))
+        _set_celda(celda_dirigido, "GLADYS GUTIERREZ BUITRAGO")
+        _agregar_linea_celda(celda_dirigido, "Subdirectora de Reglamentación Técnica e")
+        _agregar_linea_celda(celda_dirigido, "Innovación")
+
+        # ── Tabla derecha: No. DEL CONTRATO Y FECHA ──
+        tabla2 = celda_der.add_table(rows=3, cols=1)
+        tabla2.style = "Table Grid"
+        tabla2.autofit = False
+        for fila in tabla2.rows:
+            _set_ancho_celda(fila.cells[0], Cm(4.5))
+        tabla2.columns[0].width = Cm(4.5)
+
+        p_header_t2 = _set_celda(tabla2.cell(0, 0), "No. DEL CONTRATO Y", negrita=True)
+        _agregar_salto_celda(p_header_t2, "FECHA", negrita=True)
+
+        _set_celda(tabla2.cell(1, 0), "")  # fila espaciadora
+        _set_celda(tabla2.cell(2, 0), f"{no_contrato} de {año_contrato}", negrita=True)
+
+        # ── 3 renglones de espacio antes de la tabla de datos del contratista ──
+        for _ in range(3):
+            _parrafo_centrado(doc, "")
+
+        # ── Datos del contratista y del contrato para la tabla siguiente ──
+        # Todo lo que el sistema no detecte en esta tabla se muestra como "N/A".
+        nombre_contratista = usuario_data.get("nombre_completo") or "N/A"
+        num_doc_raw = usuario_data.get("numero_documento")
+        if num_doc_raw and str(num_doc_raw).isdigit():
+            num_doc_str = f"{int(num_doc_raw):,}".replace(",", ".")
+        else:
+            num_doc_str = str(num_doc_raw) if num_doc_raw else "N/A"
+
+        objeto_contrato = contrato.get("objeto") or "N/A"
+        fecha_fin_contrato = contrato.get("fecha_fin")
+
+        if fecha_fin_contrato:
+            plazo_ejecucion = (
+                f"Hasta {MESES_ES[fecha_fin_contrato.month - 1].lower()} "
+                f"{fecha_fin_contrato.day} de {fecha_fin_contrato.year}"
+            )
+            fecha_prevista_term = (
+                f"{fecha_fin_contrato.day:02d}/{fecha_fin_contrato.month:02d}/{fecha_fin_contrato.year}"
+            )
+        else:
+            plazo_ejecucion = "N/A"
+            fecha_prevista_term = "N/A"
+
+        fecha_orden_inicio = (
+            f"{fecha_ini_contrato.day:02d}/{fecha_ini_contrato.month:02d}/{fecha_ini_contrato.year}"
+            if fecha_ini_contrato else "N/A"
+        )
+
+        valor_base_contrato = contrato.get("valor")
+        valor_inicial_str = (
+            f"$ {valor_base_contrato:,.0f}".replace(",", ".") if valor_base_contrato is not None else "N/A"
+        )
+
+        adiciones = contrato.get("adiciones_contrato") or {}
+        valor_adicion = adiciones.get("valor_adicion") or 0 if adiciones.get("tiene_adiciones") else 0
+        valor_total_str = (
+            f"$ {(valor_base_contrato + valor_adicion):,.0f}".replace(",", ".")
+            if valor_base_contrato is not None else "N/A"
+        )
+
+        prorroga_contrato = contrato.get("prorrogra_contrato") or {}
+        fecha_prorroga = (
+            prorroga_contrato.get("fecha_prorrogra") if prorroga_contrato.get("tiene_prorroga") else None
+        )
+        fecha_terminacion_prorrogas = (
+            f"{fecha_prorroga.day:02d}/{fecha_prorroga.month:02d}/{fecha_prorroga.year}"
+            if fecha_prorroga else "N/A"
+        )
+
+        mes_periodo = certificacion.get("mes", 1)
+        año_periodo = certificacion.get("año", dt_informe.year)
+        nombre_mes_periodo = MESES_ES[mes_periodo - 1].lower()
+        nombre_mes_inicio_contrato = (
+            MESES_ES[fecha_ini_contrato.month - 1].lower() if fecha_ini_contrato else None
+        )
+        periodo_actividades = (
+            f"De {nombre_mes_inicio_contrato} a {nombre_mes_periodo} de {año_periodo}"
+            if nombre_mes_inicio_contrato else "N/A"
+        )
+
+        FILAS_DATOS_CONTRATO = [
+            ("NOMBRE DEL CONTRATISTA", nombre_contratista),
+            ("N° DE IDENTIFICACIÓN", num_doc_str),
+            ("OBJETO DEL CONTRATO", objeto_contrato),
+            ("PLAZO DE EJECUCIÓN", plazo_ejecucion),
+            ("VALOR INICIAL", valor_inicial_str),
+            ("FECHA ORDEN DE INICIO", fecha_orden_inicio),
+            ("FECHA PREVISTA DE TERMINACIÓN", fecha_prevista_term),
+            ("ADICIÓN Y/O PRÓRROGA\n(solo cuando aplique)", ""),
+            ("SUSPENSIONES\n(solo cuando aplique)", ""),
+            ("VALOR TOTAL\n(INCLUIDO ADICION(ES))", valor_total_str),
+            ("FECHA DE TERMINACION\n(DESPUES DE LAS PRORROGAS)", fecha_terminacion_prorrogas),
+            ("PERIODO DE ACTIVIDADES DE ESTE INFORME", periodo_actividades),
+        ]
+
+        # ── Tabla: datos del contratista y del contrato (más angosta, centrada) ──
+        tabla3 = doc.add_table(rows=len(FILAS_DATOS_CONTRATO), cols=2)
+        tabla3.style = "Table Grid"
+        tabla3.autofit = False
+        tabla3.alignment = WD_TABLE_ALIGNMENT.CENTER
+        _sin_relleno_celdas(tabla3)
+        anchos_t3 = [Cm(4.8), Cm(8.2)]
+        for fila in tabla3.rows:
+            for celda, ancho in zip(fila.cells, anchos_t3):
+                _set_ancho_celda(celda, ancho)
+        for col, ancho in zip(tabla3.columns, anchos_t3):
+            col.width = ancho
+
+        for i, (etiqueta, valor) in enumerate(FILAS_DATOS_CONTRATO):
+            lineas_etiqueta = etiqueta.split("\n")
+            p_lbl = _set_celda(
+                tabla3.cell(i, 0), lineas_etiqueta[0], negrita=True, alineacion=WD_ALIGN_PARAGRAPH.LEFT
+            )
+            for linea_extra in lineas_etiqueta[1:]:
+                _agregar_salto_celda(p_lbl, linea_extra, negrita=False, tam=8)
+            _set_celda(tabla3.cell(i, 1), valor, alineacion=WD_ALIGN_PARAGRAPH.LEFT)
+
+        # ══════════════════════════ Hoja 2 ══════════════════════════
+        doc.add_page_break()
+
+        p_titulo2 = doc.add_paragraph()
+        p_titulo2.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+        p_titulo2.paragraph_format.space_before = Pt(8)
+        p_titulo2.paragraph_format.space_after = Pt(6)
+        run_titulo2 = p_titulo2.add_run("2. DESCRIPCIÓN DE ACTIVIDADES")
+        run_titulo2.font.name = "Arial"
+        run_titulo2.font.size = Pt(11)
+        run_titulo2.bold = True
+
+        p_instr = doc.add_paragraph()
+        p_instr.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        p_instr.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+        p_instr.paragraph_format.space_after = Pt(10)
+        run_instr = p_instr.add_run(
+            "Enunciar cada una de las obligaciones específicas establecidas en el contrato y "
+            "describir las actividades realizadas en el período para el cumplimiento de esta, "
+            "así como enunciar las evidencias y su ubicación (actas, documentos, planillas, "
+            "listados, etc.)"
+        )
+        run_instr.font.name = "Arial"
+        run_instr.font.size = Pt(11)
+
+        # ── Tabla de obligaciones específicas / evidencias (para diligenciar manualmente) ──
+        tabla4 = doc.add_table(rows=7, cols=2)
+        tabla4.style = "Table Grid"
+        tabla4.autofit = False
+        tabla4.alignment = WD_TABLE_ALIGNMENT.CENTER
+        _sin_relleno_celdas(tabla4)
+        anchos_t4 = [Cm(8.15), Cm(8.15)]
+        for fila in tabla4.rows:
+            for celda, ancho in zip(fila.cells, anchos_t4):
+                _set_ancho_celda(celda, ancho)
+        for col, ancho in zip(tabla4.columns, anchos_t4):
+            col.width = ancho
+
+        _set_celda(tabla4.cell(0, 0), "Obligaciones específicas", negrita=True)
+        _set_celda(tabla4.cell(0, 1), "Evidencias y ubicación", negrita=True)
+        for i in range(1, 7):
+            _set_celda(tabla4.cell(i, 0), f"Obligación No. {i}:", alineacion=WD_ALIGN_PARAGRAPH.LEFT)
+            _set_celda(tabla4.cell(i, 1), "", alineacion=WD_ALIGN_PARAGRAPH.LEFT)
+
+        p_manifiesto = doc.add_paragraph()
+        p_manifiesto.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        p_manifiesto.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+        p_manifiesto.paragraph_format.space_before = Pt(10)
+        p_manifiesto.paragraph_format.space_after = Pt(18)
+        run_manifiesto = p_manifiesto.add_run(
+            "Para todos los efectos manifiesto que la información bajo mi responsabilidad se "
+            "encuentra actualizada en el SIGEP y que no tengo trámite de radicaciones pendientes "
+            "ya que lo relacionado con peticiones, quejas, reclamos y pruebas que son radicadas "
+            "para esta Subdirección a través del Grupo de Atención al Ciudadano por AZ DIGITAL y "
+            "Correo Electrónico, está centralizada en la coordinación y la parte secretarial. Por "
+            "lo anterior, estoy a paz y salvo por correspondencia radicada en dichos canales de "
+            "información."
+        )
+        run_manifiesto.font.name = "Arial"
+        run_manifiesto.font.size = Pt(11)
+
+        # ── Bloque de firma: imagen + datos reales del usuario guardados en el sistema ──
+        from app.services.firma_service import FirmaService
+        firma_bytes = FirmaService().obtener_imagen(usuario_id)
+        lugar_exp_usuario = usuario_data.get("lugar_expedicion_documento") or "—"
+
+        tabla_firma = doc.add_table(rows=4, cols=1)
+        tabla_firma.autofit = False
+        tabla_firma.alignment = WD_TABLE_ALIGNMENT.CENTER
+        _quitar_bordes_tabla(tabla_firma)
+        _sin_relleno_celdas(tabla_firma)
+        ancho_firma = Cm(6.5)
+        for fila in tabla_firma.rows:
+            _set_ancho_celda(fila.cells[0], ancho_firma)
+        tabla_firma.columns[0].width = ancho_firma
+
+        celda_img = tabla_firma.cell(0, 0)
+        celda_img.text = ""
+        p_img = celda_img.paragraphs[0]
+        p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        if firma_bytes:
+            run_img = p_img.add_run()
+            run_img.add_picture(io.BytesIO(firma_bytes), width=Cm(4.0))
+        _borde_inferior_celda(celda_img)
+
+        _set_celda(tabla_firma.cell(1, 0), "FIRMA")
+        _set_celda(tabla_firma.cell(2, 0), f"NOMBRE: {nombre_contratista.upper()}")
+        _set_celda(tabla_firma.cell(3, 0), f"CC: {num_doc_str} de {lugar_exp_usuario}")
+
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        return buffer.getvalue()
+
+    def generar_excel(self, certificacion: Dict) -> bytes:
+        """Dispatcher análogo a generar_pdf, para los formatos que tienen versión .xlsx editable."""
+        tipo = certificacion.get("tipo_formato")
+        if tipo == "acta_recibo_entrega_cps":
+            return self.generar_excel_acta_recibo_entrega(certificacion)
+        if tipo == "acta_recibo_entrega_cps_real":
+            return self.generar_excel_acta_recibo_entrega_real(certificacion)
+        raise ValueError(f"Tipo de formato sin versión Excel: {tipo}")
 
     def generar_pdf(self, certificacion: Dict) -> bytes:
         """Genera el PDF del certificado con ReportLab en memoria."""
@@ -1707,6 +2672,7 @@ class CertificacionService:
         info_laboral = usuario_data.get("informacion_laboral") or {}
         tributaria = info_laboral.get("tributaria") or {}
         declarante_renta = tributaria.get("declarante_renta", False)
+        seguridad_social = info_laboral.get("seguridad_social") or {}
 
         # Contrato vigente
         contratos = usuario_data.get("contratos") or []
@@ -1716,12 +2682,27 @@ class CertificacionService:
         no_contrato = contrato_vig.get("numero", "—")
         valor_contrato = contrato_vig.get("valor", 0)
         valor_mensual = contrato_vig.get("valor_mensual", 0)
-        
+
         fecha_ini_raw = contrato_vig.get("fecha_inicio")
         fecha_fin_raw = contrato_vig.get("fecha_fin")
-        
+
         fecha_ini_str = fecha_ini_raw.strftime("%d/%m/%Y") if fecha_ini_raw else "—"
         fecha_fin_str = fecha_fin_raw.strftime("%d/%m/%Y") if fecha_fin_raw else "—"
+
+        # EPS / AFP / ARL — valor de la primera cuenta del contrato, con respaldo en
+        # 'valor' (meses intermedios) si el usuario aún no diligenció el campo nuevo.
+        eps_info = seguridad_social.get("eps") or {}
+        afp_info = seguridad_social.get("afp") or {}
+        arl_info = seguridad_social.get("arl") or {}
+
+        eps_name = (eps_info.get("entidad") or "EPS").replace("_", " ").upper()
+        eps_val = eps_info.get("valor_primer_mes") or eps_info.get("valor") or 0
+
+        afp_name = (afp_info.get("entidad") or "FONDO DE PENSIONES").replace("_", " ").upper()
+        afp_val = afp_info.get("valor_primer_mes") or afp_info.get("valor") or 0
+
+        arl_name = (arl_info.get("entidad") or "ARL").replace("_", " ").upper()
+        arl_val = arl_info.get("valor_primer_mes") or arl_info.get("valor") or 0
 
         if fecha_ini_raw:
             dia_ini = str(fecha_ini_raw.day)
@@ -1850,6 +2831,16 @@ class CertificacionService:
             fontSize=9.5, alignment=TA_LEFT, leading=12, textColor=NEGRO,
             fontName="Helvetica",
         )
+        s_cell_center = ParagraphStyle(
+            "ret_cell_c_prim", parent=estilos["Normal"],
+            fontSize=9.5, alignment=TA_CENTER, leading=12, textColor=NEGRO,
+            fontName="Helvetica",
+        )
+        s_cell_hdr = ParagraphStyle(
+            "ret_cell_h_prim", parent=estilos["Normal"],
+            fontSize=9.5, fontName="Helvetica-Bold", alignment=TA_CENTER,
+            leading=12, textColor=NEGRO,
+        )
 
         story = []
 
@@ -1857,19 +2848,7 @@ class CertificacionService:
         story.append(Paragraph(f"Bogotá D.C., {fecha_expedicion_completa}", s_cuerpo_left))
         story.append(Spacer(1, 0.7 * cm))
 
-        # Obtener el nombre del responsable de financiera
-        from app.services.parametros_service import ParametrosService
-        try:
-            nombre_responsable = ParametrosService().obtener("nombre_financiera_retefuente")
-        except Exception:
-            nombre_responsable = "sin nombre_financiera_retefuente"
-
-        if not nombre_responsable or not nombre_responsable.strip():
-            nombre_responsable = "sin nombre_financiera_retefuente"
-
         # Destinatario
-        story.append(Paragraph("Doctor", s_cuerpo_left))
-        story.append(Paragraph(nombre_responsable, s_cuerpo_bold))
         story.append(Paragraph("Subdirección Financiera - Grupo Cuentas Por Pagar", s_cuerpo_left))
         story.append(Paragraph("INSTITUTO NACIONAL DE VÍAS", s_cuerpo_bold))
         story.append(Paragraph("Bogotá D.C", s_cuerpo_left))
@@ -1880,7 +2859,7 @@ class CertificacionService:
         story.append(Spacer(1, 0.7 * cm))
 
         # Saludo
-        story.append(Paragraph("Respetado Señor Jairo,", s_cuerpo_left))
+        story.append(Paragraph("Respetado Grupo Cuentas Por Pagar,", s_cuerpo_left))
         story.append(Spacer(1, 0.15 * cm))
 
         # Párrafo legal
@@ -1936,7 +2915,36 @@ class CertificacionService:
             f"el pago de las cotizaciones al Sistema de Seguridad Social integral se efectuará mes vencido, de conformidad con lo establecido en el Artículo 1 del Decreto 1273 de 2018.</i>"
         )
         story.append(Paragraph(p_seg_social_primera, s_cuerpo))
-        story.append(Spacer(1, 0.3 * cm))
+        story.append(Spacer(1, 0.1 * cm))
+
+        # Párrafo Seguridad Social (valores de la primera cuenta del contrato)
+        p_seg_social = (
+            f"También declaró bajo la gravedad de juramento, que el documento soporte de pago de aportes obligatorios "
+            f"al Sistema General de Seguridad Social, realizados a la Entidad Prestadora de <b>{eps_name}</b> y "
+            f"aporte obligatorio realizados al Fondo de Pensiones <b>{afp_name}</b> correspondiente a la primera cuenta del contrato, "
+            f"corresponde a la suma de:"
+        )
+        story.append(Paragraph(p_seg_social, s_cuerpo))
+        story.append(Spacer(1, 0.1 * cm))
+
+        # Tabla 2: Seguridad Social (más angosta, bordes delgados de 0.25pt y centrada)
+        t2_data = [
+            [Paragraph("<b>Concepto</b>", s_cell_hdr), Paragraph("<b>Valor</b>", s_cell_hdr)],
+            [Paragraph(eps_name, s_cell), Paragraph(f"{_formatear_pesos(eps_val)[:-3]}", s_cell_center)],
+            [Paragraph(afp_name, s_cell), Paragraph(f"{_formatear_pesos(afp_val)[:-3]}", s_cell_center)],
+            [Paragraph(arl_name, s_cell), Paragraph(f"{_formatear_pesos(arl_val)[:-3]}", s_cell_center)],
+        ]
+        t2 = Table(t2_data, colWidths=[8.0 * cm, 3.0 * cm], hAlign='CENTER')
+        t2.setStyle(TableStyle([
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("GRID", (0, 0), (-1, -1), 0.25, HexColor("#999999")),
+            ("BACKGROUND", (0, 0), (-1, 0), HexColor("#F9F9F9")),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        story.append(t2)
+        story.append(Spacer(1, 0.2 * cm))
 
         # Honorarios
         valor_base = contrato_vig.get("valor_primer_pago")
@@ -2209,19 +3217,7 @@ class CertificacionService:
         story.append(Paragraph(f"Bogotá D.C., {fecha_expedicion_completa}", s_cuerpo_left))
         story.append(Spacer(1, 0.7 * cm))
 
-        # Obtener el nombre del responsable de financiera
-        from app.services.parametros_service import ParametrosService
-        try:
-            nombre_responsable = ParametrosService().obtener("nombre_financiera_retefuente")
-        except Exception:
-            nombre_responsable = "sin nombre_financiera_retefuente"
-
-        if not nombre_responsable or not nombre_responsable.strip():
-            nombre_responsable = "sin nombre_financiera_retefuente"
-
         # Destinatario
-        story.append(Paragraph("Doctor", s_cuerpo_left))
-        story.append(Paragraph(nombre_responsable, s_cuerpo_bold))
         story.append(Paragraph("Subdirección Financiera - Grupo Cuentas Por Pagar", s_cuerpo_left))
         story.append(Paragraph("INSTITUTO NACIONAL DE VÍAS", s_cuerpo_bold))
         story.append(Paragraph("Bogotá D.C", s_cuerpo_left))
@@ -2232,7 +3228,7 @@ class CertificacionService:
         story.append(Spacer(1, 0.7 * cm))
 
         # Saludo
-        story.append(Paragraph("Respetado Señor Jairo,", s_cuerpo_left))
+        story.append(Paragraph("Respetado Grupo Cuentas Por Pagar,", s_cuerpo_left))
         story.append(Spacer(1, 0.15 * cm))
 
         # Párrafo legal
@@ -2282,19 +3278,37 @@ class CertificacionService:
         )
         story.append(Paragraph(p_regimen, s_cuerpo))
 
+        # Última cuenta del contrato vigente (misma regla que se usa para los honorarios
+        # más abajo): determina si esta certificación toma el "Valor mensual última
+        # cuenta" de seguridad social o el de meses intermedios ("Valor mensual").
+        es_ultimo_mes = False
+        if fecha_fin_raw and mes_num == fecha_fin_raw.month and año_num == fecha_fin_raw.year:
+            es_ultimo_mes = True
+
+        def _valor_ss_periodo(info: dict) -> int:
+            """Valor mensual del aporte según el periodo certificado.
+
+            En el último mes del contrato usa 'valor_ultimo_mes'; si el usuario aún
+            no lo ha diligenciado, cae de vuelta a 'valor' (meses intermedios) para
+            no dejar en $0 los certificados ya generados antes de este campo.
+            """
+            if es_ultimo_mes:
+                return info.get("valor_ultimo_mes") or info.get("valor") or 0
+            return info.get("valor") or 0
+
         # Párrafo Seguridad Social
         eps_info = seguridad_social.get("eps") or {}
         afp_info = seguridad_social.get("afp") or {}
         arl_info = seguridad_social.get("arl") or {}
 
         eps_name = (eps_info.get("entidad") or "EPS").replace("_", " ").upper()
-        eps_val = eps_info.get("valor") or 0
+        eps_val = _valor_ss_periodo(eps_info)
 
         afp_name = (afp_info.get("entidad") or "FONDO DE PENSIONES").replace("_", " ").upper()
-        afp_val = afp_info.get("valor") or 0
+        afp_val = _valor_ss_periodo(afp_info)
 
         arl_name = (arl_info.get("entidad") or "ARL").replace("_", " ").upper()
-        arl_val = arl_info.get("valor") or 0
+        arl_val = _valor_ss_periodo(arl_info)
 
         if planilla_mes_vencido:
             p_seg_social = (
@@ -2333,10 +3347,6 @@ class CertificacionService:
         story.append(Spacer(1, 0.2 * cm))
 
         # Honorarios
-        es_ultimo_mes = False
-        if fecha_fin_raw and mes_num == fecha_fin_raw.month and año_num == fecha_fin_raw.year:
-            es_ultimo_mes = True
-
         if es_ultimo_mes:
             if contrato_vig.get("personalizar_ultimacuenta"):
                 valor_pago = contrato_vig.get("valor_personalizar_ultimacuenta") or 0
@@ -2350,7 +3360,7 @@ class CertificacionService:
                 valor_pago = max(0, valor_pago)
             else:
                 valor_pago = valor_mensual
-            
+
             dia_fin = fecha_fin_raw.day
             mes_fin_lower = MESES_ES[fecha_fin_raw.month - 1].lower()
             periodo_texto = f"DEL 1 DE {mes_fin_lower.upper()} AL {dia_fin} DE {mes_fin_lower.upper()} DEL {año_num}"
@@ -2860,16 +3870,13 @@ class CertificacionService:
         fecha_fin_str = fecha_fin_dt.strftime("%d/%m/%Y") if fecha_fin_dt else "—"
         objeto_str = (contrato_vig.get("objeto") or "").upper()
 
-        adiciones = (contrato_vig.get("adiciones_contrato") or {}) if contrato_vig else {}
-        tiene_adiciones = bool(adiciones.get("tiene_adiciones"))
-        valor_adicion = adiciones.get("valor_adicion") or 0 if tiene_adiciones else 0
-
         valor_inicial = contrato_vig.get("valor") or 0
-        valor_total = valor_inicial + valor_adicion
+        valor_total = valor_inicial
         valor_str = f"$   {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        valor_total_ejecutado = contrato_vig.get("valor_total_ejecutado_contrato", 0) or 0
+        valor_total_por_pagar = contrato_vig.get("valor_total_por_pagar_contrato", 0) or 0
         valor_total_pagado = contrato_vig.get("valor_total_pagado", 0) or 0
-        saldo_liberar = contrato_vig.get("saldo_presp_lib_contrato", 0) or 0
+        saldo_presp_lib_contrato_1 = abs(valor_total - valor_total_por_pagar)
+        saldo_presp_lib_contrato_2 = abs(valor_total - valor_total_pagado)
 
         s_lbl_body = ParagraphStyle(
             "lbl_body", parent=estilos["Normal"],
@@ -2998,10 +4005,12 @@ class CertificacionService:
         else:
             row_2 = [Paragraph("Valor IVA", s_lbl_body_normal), "", ""]
 
-        row_3 = [Paragraph("Valor Total Ejecutado", s_lbl_body_normal), crear_celda_moneda(valor_total_ejecutado, 4.54 * cm), ""]
+        row_3 = [Paragraph("Valor Total por Pagar", s_lbl_body_normal), crear_celda_moneda(valor_total_por_pagar, 4.54 * cm), ""]
         row_4 = [Paragraph("Valor total Pagado", s_lbl_body_normal), "", crear_celda_moneda(valor_total_pagado, 4.55 * cm)]
-        row_5 = [Paragraph("Saldo presupuestal a Liberar", s_lbl_body_normal), crear_celda_moneda(saldo_liberar, 4.54 * cm), crear_celda_moneda(saldo_liberar, 4.55 * cm)]
-        row_6 = [Paragraph("SUMAS IGUALES", s_lbl_body), crear_celda_moneda(valor_total, 4.54 * cm), crear_celda_moneda(valor_total, 4.55 * cm)]
+        row_5 = [Paragraph("Saldo presupuestal a Liberar", s_lbl_body_normal), crear_celda_moneda(saldo_presp_lib_contrato_1, 4.54 * cm), crear_celda_moneda(saldo_presp_lib_contrato_2, 4.55 * cm)]
+        sumas_iguales_col2 = valor_total_por_pagar + saldo_presp_lib_contrato_1
+        sumas_iguales_col3 = valor_total_pagado + saldo_presp_lib_contrato_2
+        row_6 = [Paragraph("SUMAS IGUALES", s_lbl_body), crear_celda_moneda(sumas_iguales_col2, 4.54 * cm), crear_celda_moneda(sumas_iguales_col3, 4.55 * cm)]
 
         t_balance = Table(
             [row_0, row_1, row_2, row_3, row_4, row_5, row_6],
@@ -3165,15 +4174,10 @@ class CertificacionService:
                     crear_celda_moneda_pagos(None, ancho_mon_col_neto)
                 ])
 
-        # Fila 15: Totales
-        tot_bruto = 0
-        tot_deduc = 0
-        tot_neto = 0
-        if pagos_lista:
-            p_last = pagos_lista[-1]
-            tot_bruto = p_last.get("valor_bruto_total") or 0
-            tot_deduc = p_last.get("deducciones_pago_total") or 0
-            tot_neto = p_last.get("valor_neto_pago_total") or 0
+        # Fila 15: Totales (sumatoria de todos los pagos registrados)
+        tot_bruto = sum(p.get("valor_bruto_pago") or 0 for p in pagos_lista)
+        tot_deduc = sum(p.get("deducciones_pago") or 0 for p in pagos_lista)
+        tot_neto = sum(p.get("valor_neto_pago") or 0 for p in pagos_lista)
 
         rows_pagos.append([
             Paragraph("<b>TOTALES</b>", s_lbl_body_center_bold_pagos), "", "",
@@ -3230,11 +4234,11 @@ class CertificacionService:
             s_cuerpo_texto
         )
 
-        # Formato de valor ejecutado
-        valor_ejec_fmt = f"$ {valor_total_ejecutado:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        valor_ejec_letras = numero_a_letras(valor_total_ejecutado)
+        # Formato del valor bruto total
+        valor_bruto_fmt = f"$ {tot_bruto:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        valor_bruto_letras = numero_a_letras(tot_bruto)
         p_texto_2 = Paragraph(
-            f"El valor ejecutado y pagado, ascendió a la suma de {valor_ejec_fmt} {valor_ejec_letras} PESOS M/CTE",
+            f"El valor ejecutado y pagado, ascendió a la suma de {valor_bruto_fmt} {valor_bruto_letras} PESOS M/CTE",
             s_cuerpo_texto
         )
 
@@ -3469,7 +4473,7 @@ class CertificacionService:
         ]))
 
         p_meta_anexo = Paragraph("<b>Anexo:</b> Relación de Pagos Generada por SIIF NACION – Un (1) Folio.", s_metadata_text)
-        p_meta_acta = Paragraph(f"<b>Acta de Entrega y Recibo del Contrato No</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {no_contrato} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Un (1) Folio", s_metadata_text)
+        p_meta_acta = Paragraph(f"<b>Acta de Entrega y Recibo del Contrato No</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {no_contrato}-{anio_fin} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Un (1) Folio", s_metadata_text)
 
         t_wrapper_metadata = Table(
             [
@@ -3629,6 +4633,438 @@ class CertificacionService:
             canvas.restoreState()
 
         doc.build(story, onFirstPage=draw_page_number, onLaterPages=draw_page_number)
+        buf.seek(0)
+        return buf.getvalue()
+
+    def generar_excel_acta_recibo_entrega(self, certificacion: Dict) -> bytes:
+        """Versión .xlsx editable del formato 'Balance General CPS' (ver generar_pdf_acta_recibo_entrega,
+        que no se modifica). Reproduce la misma estructura de cajas, colores y firmas como hoja de cálculo."""
+        import xlsxwriter
+
+        TOTAL_COLS = 44
+        AZUL_CABECERA = "#3a9ad9"
+        AZUL_CLARO = "#D2E9F6"
+        AZUL_CONSOLIDADO = "#8db3e2"
+
+        # 1. Datos del usuario (duplicado intencional de generar_pdf_acta_recibo_entrega)
+        from app.repositories.usuario_repo import UsuarioRepositorio
+        usuario_id = str(certificacion.get("usuario_id", ""))
+        usuario_data: dict = {}
+        if usuario_id:
+            try:
+                usuario_data = UsuarioRepositorio().buscar_por_id(usuario_id) or {}
+            except Exception:
+                pass
+
+        nombre = usuario_data.get("nombre_completo", "")
+        cedula = usuario_data.get("numero_documento") or "—"
+
+        contratos = usuario_data.get("contratos") or []
+        año_cert = certificacion.get("año")
+        mes_cert = certificacion.get("mes", 1)
+        contrato_vig = self._contrato_para_periodo(contratos, año_cert, mes_cert)
+        no_contrato = contrato_vig.get("numero") or "—"
+
+        informacion_laboral = usuario_data.get("informacion_laboral") or {}
+        paga_iva = informacion_laboral.get("paga_iva", False)
+        valor_iva = informacion_laboral.get("valor_iva", 0) or 0
+
+        fecha_ini_dt = contrato_vig.get("fecha_inicio")
+        fecha_fin_dt = contrato_vig.get("fecha_fin")
+        fecha_fin_str = fecha_fin_dt.strftime("%d/%m/%Y") if fecha_fin_dt else "—"
+        objeto_str = (contrato_vig.get("objeto") or "").upper()
+
+        valor_inicial = contrato_vig.get("valor") or 0
+        valor_total = valor_inicial
+        valor_total_por_pagar = contrato_vig.get("valor_total_por_pagar_contrato", 0) or 0
+        valor_total_pagado = contrato_vig.get("valor_total_pagado", 0) or 0
+        saldo_presp_lib_contrato_1 = abs(valor_total - valor_total_por_pagar)
+        saldo_presp_lib_contrato_2 = abs(valor_total - valor_total_pagado)
+
+        from datetime import datetime as _dt
+        pagos_lista = contrato_vig.get("pagos") or []
+        try:
+            pagos_lista = sorted(pagos_lista, key=lambda x: x.get("fecha_pago") or _dt.min)
+        except Exception:
+            pass
+
+        tot_bruto = sum(p.get("valor_bruto_pago") or 0 for p in pagos_lista)
+        tot_deduc = sum(p.get("deducciones_pago") or 0 for p in pagos_lista)
+        tot_neto = sum(p.get("valor_neto_pago") or 0 for p in pagos_lista)
+
+        valor_bruto_letras = _xlsx_numero_a_letras(tot_bruto)
+
+        dia_fin = fecha_fin_dt.day if fecha_fin_dt else datetime.now().day
+        mes_fin_text = MESES_ES[(fecha_fin_dt.month - 1) if fecha_fin_dt else 0].capitalize()
+        anio_fin = fecha_fin_dt.year if fecha_fin_dt else datetime.now().year
+
+        # --- Firmas ---
+        from app.services.firma_service import FirmaService
+        config_firmantes = self.obtener_firmantes_config("firmantes_formatos_actas", TIPOS_FIRMA_ACTAS)
+
+        firma_fin_doc = certificacion.get("firmas", {}).get("financiera")
+        fin_nombre = "sin nombre_financiera"
+        fin_id_str = None
+        if firma_fin_doc:
+            fin_nombre = firma_fin_doc.get("firmante_nombre", fin_nombre)
+            fin_id_str = str(firma_fin_doc.get("firmante_id", ""))
+        else:
+            fin_config = config_firmantes.get("financiera") or {}
+            fin_nombre = fin_config.get("nombre", fin_nombre)
+            fin_id_str = fin_config.get("usuario_id")
+
+        firma_abog_doc = certificacion.get("firmas", {}).get("abogado")
+        abog_nombre = "sin nombre_abogado"
+        abog_id_str = None
+        if firma_abog_doc:
+            abog_nombre = firma_abog_doc.get("firmante_nombre", abog_nombre)
+            abog_id_str = str(firma_abog_doc.get("firmante_id", ""))
+        else:
+            abog_config = config_firmantes.get("abogado") or {}
+            abog_nombre = abog_config.get("nombre", abog_nombre)
+            abog_id_str = abog_config.get("usuario_id")
+
+        firma_jefe_doc = certificacion.get("firmas", {}).get("jefe")
+        jefe_nombre = "GLADYS GUTIÉRREZ BUITRAGO"
+        jefe_id_str = None
+        if firma_jefe_doc:
+            jefe_nombre = firma_jefe_doc.get("firmante_nombre", jefe_nombre)
+            jefe_id_str = str(firma_jefe_doc.get("firmante_id", ""))
+        else:
+            jefe_config = config_firmantes.get("jefe") or {}
+            jefe_nombre = jefe_config.get("nombre", jefe_nombre)
+            jefe_id_str = jefe_config.get("usuario_id")
+
+        jefe_firma_bytes_o_ruta = None
+        if jefe_id_str:
+            jefe_firma_bytes = FirmaService().obtener_imagen(jefe_id_str)
+            if jefe_firma_bytes:
+                jefe_firma_bytes_o_ruta = jefe_firma_bytes
+        if not jefe_firma_bytes_o_ruta and jefe_nombre == "GLADYS GUTIÉRREZ BUITRAGO":
+            firma_gladys_path = os.path.join("app", "assets", "firma_gla.png")
+            if os.path.exists(firma_gladys_path):
+                jefe_firma_bytes_o_ruta = firma_gladys_path
+
+        firma_fin_img = None
+        if fin_id_str and firma_fin_doc:
+            firma_fin_img = FirmaService().obtener_imagen(fin_id_str)
+
+        firma_abog_img = None
+        if abog_id_str and firma_abog_doc:
+            firma_abog_img = FirmaService().obtener_imagen(abog_id_str)
+
+        # --- Construcción del libro ---
+        buf = io.BytesIO()
+        workbook = xlsxwriter.Workbook(buf, {"in_memory": True})
+        ws = workbook.add_worksheet("Balance General CPS")
+        ws.hide_gridlines(2)
+
+        COL_CM = 19.59 / TOTAL_COLS
+        ws.set_column(0, 0, 2.2)
+        for c in range(1, TOTAL_COLS + 1):
+            ws.set_column(c, c, _xlsx_cm_a_ancho_columna(COL_CM))
+        ws.set_column(TOTAL_COLS + 1, TOTAL_COLS + 1, 2.2)
+
+        fmt_base = {"font_name": "Helvetica", "font_size": 7, "border": 1, "valign": "vcenter"}
+        fmt_titulo_azul = workbook.add_format({**fmt_base, "bold": True, "align": "center", "bg_color": AZUL_CABECERA, "font_color": "white", "font_size": 8, "text_wrap": True, "border": 4})
+        fmt_cell_label = workbook.add_format({**fmt_base, "bold": True, "align": "center", "font_size": 7, "text_wrap": True})
+        fmt_cell_value = workbook.add_format({**fmt_base, "align": "center", "font_size": 7, "text_wrap": True})
+        fmt_proceso = workbook.add_format({**fmt_base, "bold": True, "align": "center", "font_size": 6.5, "text_wrap": True})
+        fmt_lbl_body = workbook.add_format({"font_name": "Helvetica", "bold": True, "font_size": 7.5, "align": "left", "valign": "vcenter"})
+        fmt_val_body = workbook.add_format({"font_name": "Helvetica", "font_size": 7.5, "align": "left", "valign": "vcenter", "bottom": 4})
+        fmt_val_body_wrap = workbook.add_format({"font_name": "Helvetica", "font_size": 7.5, "align": "left", "valign": "top", "text_wrap": True, "bottom": 4})
+        fmt_fecha_lbl = workbook.add_format({**fmt_base, "bold": True, "align": "center"})
+        fmt_fecha_val = workbook.add_format({**fmt_base, "align": "center"})
+        fmt_money = workbook.add_format({"font_name": "Helvetica", "font_size": 7.5, "align": "right", "valign": "vcenter", "border": 4, "num_format": '"$" #,##0.00'})
+        fmt_money_bg = workbook.add_format({"font_name": "Helvetica", "font_size": 7.5, "align": "right", "valign": "vcenter", "border": 4, "num_format": '"$" #,##0.00', "bg_color": AZUL_CLARO})
+        fmt_money_punteado = workbook.add_format({"font_name": "Helvetica", "font_size": 7.5, "align": "left", "valign": "vcenter", "bottom": 4, "num_format": '"$"    #,##0.00'})
+        fmt_blanco = workbook.add_format({"border": 4, "bg_color": AZUL_CLARO})
+        fmt_blanco_sin_bg = workbook.add_format({"border": 4})
+        fmt_bal_lbl = workbook.add_format({"font_name": "Helvetica", "font_size": 7.5, "align": "center", "valign": "vcenter", "border": 4})
+        fmt_sumas_lbl = workbook.add_format({"font_name": "Helvetica", "bold": True, "font_size": 7.5, "align": "center", "valign": "vcenter", "border": 4})
+        fmt_pagos_header = workbook.add_format({**fmt_base, "bold": True, "align": "center", "bg_color": AZUL_CONSOLIDADO, "font_color": "black", "font_size": 8, "border": 4})
+        fmt_pagos_col_lbl = workbook.add_format({**fmt_base, "bold": True, "align": "center", "font_size": 6, "border": 4})
+        fmt_pagos_txt = workbook.add_format({**fmt_base, "align": "center", "font_size": 6, "border": 4})
+        fmt_pagos_center = workbook.add_format({**fmt_base, "align": "center", "font_size": 6, "border": 4})
+        fmt_pagos_money = workbook.add_format({"font_name": "Helvetica", "font_size": 6, "align": "right", "valign": "vcenter", "border": 4, "num_format": '"$" #,##0.00'})
+        fmt_pagos_money_bg = workbook.add_format({"font_name": "Helvetica", "font_size": 6, "align": "right", "valign": "vcenter", "border": 4, "num_format": '"$" #,##0.00', "bg_color": AZUL_CONSOLIDADO})
+        fmt_totales_lbl = workbook.add_format({**fmt_base, "bold": True, "align": "center", "font_size": 6, "border": 4})
+        fmt_texto = workbook.add_format({"font_name": "Helvetica", "font_size": 7.5, "align": "left", "valign": "top", "text_wrap": True})
+        fmt_texto_bold = workbook.add_format({"font_name": "Helvetica", "bold": True, "font_size": 7.5, "align": "left", "valign": "top"})
+        fmt_obs_header = workbook.add_format({**fmt_base, "bold": True, "align": "center", "bg_color": AZUL_CABECERA, "font_size": 7})
+        fmt_obs_body = workbook.add_format({"border": 1})
+        fmt_firma_lbl = workbook.add_format({"font_name": "Helvetica", "bold": True, "font_size": 7, "align": "center", "valign": "bottom", "top": 1})
+        fmt_firma_desc = workbook.add_format({"font_name": "Helvetica", "font_size": 6.5, "align": "center", "valign": "top"})
+        fmt_meta = workbook.add_format({"font_name": "Helvetica", "font_size": 6.5, "align": "left", "valign": "top"})
+
+        def _mr(r0, c0, r1, c1, data="", fmt=None):
+            if r0 == r1 and c0 == c1:
+                ws.write(r0, c0, data, fmt)
+            else:
+                ws.merge_range(r0, c0, r1, c1, data, fmt)
+
+        def _dinero(r0, c0, c1, valor, fmt_con_valor, fmt_vacio=None):
+            if valor:
+                if c0 == c1:
+                    ws.write_number(r0, c0, float(valor), fmt_con_valor)
+                else:
+                    ws.merge_range(r0, c0, r0, c1, float(valor), fmt_con_valor)
+            else:
+                _mr(r0, c0, r0, c1, "", fmt_vacio or fmt_con_valor)
+
+        ws.set_row(0, 6)
+        r = 1
+
+        # --- Encabezado institucional ---
+        b_header = _xlsx_dividir_columnas([3.5, 10.7, 2.5, 2.89], TOTAL_COLS)
+        ALTO_FILA_HEADER = 0.8
+        ws.set_row(r, _xlsx_cm_a_puntos(ALTO_FILA_HEADER))
+        ws.set_row(r + 1, _xlsx_cm_a_puntos(ALTO_FILA_HEADER))
+        fmt_esquina_sup_izq = workbook.add_format({"border": 1, "top": 2, "left": 2})
+        fmt_proceso_top = workbook.add_format({**fmt_base, "bold": True, "align": "center", "font_size": 6.5, "text_wrap": True, "top": 2})
+        fmt_cell_label_top = workbook.add_format({**fmt_base, "bold": True, "align": "center", "font_size": 7, "text_wrap": True, "top": 2})
+        fmt_esquina_sup_der = workbook.add_format({**fmt_base, "bold": True, "align": "center", "font_size": 7, "text_wrap": True, "top": 2, "right": 2})
+        fmt_cell_value_der = workbook.add_format({**fmt_base, "align": "center", "font_size": 7, "text_wrap": True, "right": 2})
+        logo_path = os.path.join("app", "assets", "INVIAS.png")
+        _mr(r, b_header[0], r + 1, b_header[1] - 1, "", fmt_esquina_sup_izq)
+        if os.path.exists(logo_path):
+            ancho_caja_logo = (b_header[1] - b_header[0]) * COL_CM * 0.90
+            alto_caja_logo = ALTO_FILA_HEADER * 2 * 0.90
+            _xlsx_insertar_imagen_proporcional(
+                ws, r, b_header[0], logo_path, ancho_caja_logo, alto_caja_logo, recortar_margenes=True
+            )
+        else:
+            ws.write(r, b_header[0], "INVIAS", fmt_cell_label)
+        _mr(
+            r, b_header[1], r + 1, b_header[2] - 1,
+            "PROCESO: GESTIÓN CONTRACTUAL, PROCESOS ADMINISTRATIVOS Y SANCIONATORIO\n"
+            "FORMATO: BALANCE GENERAL DEL CONTRATO DE PRESTACIÓN DE SERVICIOS PROFESIONALES O DE APOYO A LA GESTIÓN",
+            fmt_proceso_top,
+        )
+        _mr(r, b_header[2], r, b_header[3] - 1, "CÓDIGO", fmt_cell_label_top)
+        _mr(r, b_header[3], r, b_header[4] - 1, "ACPA-FR-11", fmt_esquina_sup_der)
+        _mr(r + 1, b_header[2], r + 1, b_header[3] - 1, "VERSIÓN", fmt_cell_label)
+        _mr(r + 1, b_header[3], r + 1, b_header[4] - 1, "2", fmt_cell_value_der)
+        r += 2
+
+        # --- Fila FECHA --- (una sola línea superior corrida en toda la fila, que continúa
+        # el marco del encabezado; "FECHA" flota sin caja propia; solo el valor va en su cajita)
+        b_fecha = _xlsx_dividir_columnas([14.2, 2.5, 2.89], TOTAL_COLS)
+        ws.set_row(r, _xlsx_cm_a_puntos(0.55))
+        fmt_fecha_blanco_top = workbook.add_format({"top": 2, "left": 2})
+        fmt_fecha_lbl_top = workbook.add_format({"font_name": "Helvetica", "font_size": 7, "bold": True, "align": "center", "valign": "vcenter", "top": 2})
+        fmt_fecha_val_box = workbook.add_format({"font_name": "Helvetica", "font_size": 7, "align": "center", "valign": "vcenter", "top": 2, "left": 1, "right": 2, "bottom": 1})
+        _mr(r, b_fecha[0], r, b_fecha[1] - 1, "", fmt_fecha_blanco_top)
+        _mr(r, b_fecha[1], r, b_fecha[2] - 1, "FECHA", fmt_fecha_lbl_top)
+        _mr(r, b_fecha[2], r, b_fecha[3] - 1, fecha_fin_str, fmt_fecha_val_box)
+        fila_inicio_marco = r + 1
+        r += 2
+
+        # --- Datos del contrato ---
+        b_cuerpo = _xlsx_dividir_columnas([1.0, 5.0, 13.59], TOTAL_COLS)
+        c_lbl0, c_lbl1 = b_cuerpo[1], b_cuerpo[2] - 1
+        c_val0, c_val1 = b_cuerpo[2], b_cuerpo[3] - 1
+
+        campos = [
+            ("Número de Contrato:", str(no_contrato)),
+            ("Contratista:", nombre.upper()),
+            ("Cédula de Ciudadanía o NIT:", _xlsx_formatear_documento(cedula)),
+            ("Fecha de Inicio:", fecha_ini_dt.strftime("%d/%m/%Y") if fecha_ini_dt else "—"),
+            ("Fecha de Terminación:", fecha_fin_dt.strftime("%d/%m/%Y") if fecha_fin_dt else "—"),
+            ("Objeto:", objeto_str),
+        ]
+        for lbl, val in campos:
+            _mr(r, c_lbl0, r, c_lbl1, lbl, fmt_lbl_body)
+            if lbl == "Objeto:":
+                ancho_val_cm = (c_val1 - c_val0 + 1) * COL_CM
+                alto_objeto_cm = _xlsx_altura_para_texto(val, ancho_val_cm, tam_fuente=7.5)
+                ws.set_row(r, _xlsx_cm_a_puntos(alto_objeto_cm))
+                _mr(r, c_val0, r, c_val1, val, fmt_val_body_wrap)
+            else:
+                cols_necesarias = _xlsx_columnas_para_texto(val, 7.5, COL_CM)
+                c_val_fin = min(c_val0 + cols_necesarias - 1, c_val1)
+                _mr(r, c_val0, r, c_val_fin, val, fmt_val_body)
+            r += 1
+
+        _mr(r, c_lbl0, r, c_lbl1, "Valor Total del contrato:", fmt_lbl_body)
+        valor_total_str = f"$    {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        cols_valor_total = _xlsx_columnas_para_texto(valor_total_str, 7.5, COL_CM)
+        c_val_fin_total = min(c_val0 + cols_valor_total - 1, c_val1)
+        if c_val0 == c_val_fin_total:
+            ws.write_number(r, c_val0, float(valor_total), fmt_money_punteado)
+        else:
+            ws.merge_range(r, c_val0, r, c_val_fin_total, float(valor_total), fmt_money_punteado)
+        r += 2
+
+        # --- BALANCE GENERAL DEL CONTRATO ---
+        b_wrap = _xlsx_dividir_columnas([2.0, 13.59, 4.0], TOTAL_COLS)
+        b_bal = _xlsx_subdividir([4.5, 4.54, 4.55], b_wrap[1], b_wrap[2])
+        c1_0, c1_1 = b_bal[0], b_bal[1] - 1
+        c2_0, c2_1 = b_bal[1], b_bal[2] - 1
+        c3_0, c3_1 = b_bal[2], b_bal[3] - 1
+
+        _mr(r, c1_0, r, c3_1, "BALANCE GENERAL DEL CONTRATO", fmt_titulo_azul)
+        r += 1
+        _mr(r, c1_0, r, c1_1, "Valor contratado", fmt_bal_lbl)
+        _dinero(r, c2_0, c3_1, valor_total, fmt_money)
+        r += 1
+        _mr(r, c1_0, r, c1_1, "Valor IVA", fmt_bal_lbl)
+        if paga_iva and valor_iva:
+            _dinero(r, c2_0, c3_1, valor_iva, fmt_money)
+        else:
+            _mr(r, c2_0, r, c3_1, "", fmt_blanco)
+        r += 1
+        _mr(r, c1_0, r, c1_1, "Valor Total por Pagar", fmt_bal_lbl)
+        _dinero(r, c2_0, c2_1, valor_total_por_pagar, fmt_money_bg)
+        _mr(r, c3_0, r, c3_1, "", fmt_blanco_sin_bg)
+        r += 1
+        _mr(r, c1_0, r, c1_1, "Valor total Pagado", fmt_bal_lbl)
+        _mr(r, c2_0, r, c2_1, "", fmt_blanco_sin_bg)
+        _dinero(r, c3_0, c3_1, valor_total_pagado, fmt_money_bg)
+        r += 1
+        _mr(r, c1_0, r, c1_1, "Saldo presupuestal a Liberar", fmt_bal_lbl)
+        _dinero(r, c2_0, c2_1, saldo_presp_lib_contrato_1, fmt_money)
+        _dinero(r, c3_0, c3_1, saldo_presp_lib_contrato_2, fmt_money)
+        r += 1
+        sumas_iguales_col2 = valor_total_por_pagar + saldo_presp_lib_contrato_1
+        sumas_iguales_col3 = valor_total_pagado + saldo_presp_lib_contrato_2
+        _mr(r, c1_0, r, c1_1, "SUMAS IGUALES", fmt_sumas_lbl)
+        _dinero(r, c2_0, c2_1, sumas_iguales_col2, fmt_money)
+        _dinero(r, c3_0, c3_1, sumas_iguales_col3, fmt_money)
+        r += 2
+
+        # --- CONSOLIDADO PAGOS CONTRATO ---
+        b_pag = _xlsx_subdividir([1.8, 2.0, 2.2, 2.53, 2.53, 2.53], b_wrap[1], b_wrap[2])
+        _mr(r, b_pag[0], r, b_pag[6] - 1, f"CONSOLIDADO PAGOS CONTRATO {no_contrato}", fmt_pagos_header)
+        r += 1
+        encabezados_pagos = ["No.", "Fecha de Pago", "Numero de Pago", "Valor Bruto", "Deducciones", "Valor Neto"]
+        for i, txt in enumerate(encabezados_pagos):
+            _mr(r, b_pag[i], r, b_pag[i + 1] - 1, txt, fmt_pagos_col_lbl)
+        r += 1
+
+        for idx in range(12):
+            if idx < len(pagos_lista):
+                p = pagos_lista[idx]
+                f_pago_dt = p.get("fecha_pago")
+                f_pago_str = f_pago_dt.strftime("%d/%m/%Y") if f_pago_dt else "—"
+                num_p_str = str(p.get("numero_pago") or "—")
+                val_bruto = p.get("valor_bruto_pago") or 0
+                deduc = p.get("deducciones_pago") or 0
+                val_neto = p.get("valor_neto_pago") or 0
+            else:
+                f_pago_str, num_p_str, val_bruto, deduc, val_neto = "", "", 0, 0, 0
+
+            _mr(r, b_pag[0], r, b_pag[1] - 1, f"Pago No. {idx + 1}", fmt_pagos_txt)
+            _mr(r, b_pag[1], r, b_pag[2] - 1, f_pago_str, fmt_pagos_center)
+            _mr(r, b_pag[2], r, b_pag[3] - 1, num_p_str, fmt_pagos_center)
+            _dinero(r, b_pag[3], b_pag[4] - 1, val_bruto, fmt_pagos_money)
+            _dinero(r, b_pag[4], b_pag[5] - 1, deduc, fmt_pagos_money)
+            _dinero(r, b_pag[5], b_pag[6] - 1, val_neto, fmt_pagos_money)
+            r += 1
+
+        _mr(r, b_pag[0], r, b_pag[3] - 1, "TOTALES", fmt_totales_lbl)
+        _dinero(r, b_pag[3], b_pag[4] - 1, tot_bruto, fmt_pagos_money_bg)
+        _dinero(r, b_pag[4], b_pag[5] - 1, tot_deduc, fmt_pagos_money)
+        _dinero(r, b_pag[5], b_pag[6] - 1, tot_neto, fmt_pagos_money)
+        r += 2
+
+        # --- Párrafos de cierre ---
+        valor_bruto_fmt = f"$ {tot_bruto:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        ancho_parrafo_cm = (b_wrap[2] - b_wrap[1]) * COL_CM
+        texto_1 = (
+            "Previo al pago de cada una de las cuentas se verificaron los pagos de seguridad social tal "
+            "como consta en la carpeta del contrato."
+        )
+        ws.set_row(r, _xlsx_cm_a_puntos(_xlsx_altura_para_texto(texto_1, ancho_parrafo_cm, tam_fuente=7.5)))
+        _mr(r, b_wrap[1], r, b_wrap[2] - 1, texto_1, fmt_texto)
+        r += 1
+        texto_2 = f"El valor ejecutado y pagado, ascendió a la suma de {valor_bruto_fmt} {valor_bruto_letras} PESOS M/CTE"
+        ws.set_row(r, _xlsx_cm_a_puntos(_xlsx_altura_para_texto(texto_2, ancho_parrafo_cm, tam_fuente=7.5)))
+        _mr(r, b_wrap[1], r, b_wrap[2] - 1, texto_2, fmt_texto)
+        r += 1
+        _mr(r, b_wrap[1], r, b_wrap[2] - 1, f"Bogotá, {dia_fin} de {mes_fin_text} de {anio_fin}.", fmt_texto_bold)
+        r += 2
+
+        # --- Observaciones ---
+        b_obs = _xlsx_dividir_columnas([1.5, 16.59, 1.5], TOTAL_COLS)
+        _mr(r, b_obs[1], r, b_obs[2] - 1, "OBSERVACIONES", fmt_obs_header)
+        r += 1
+        ws.set_row(r, _xlsx_cm_a_puntos(1.05))
+        _mr(r, b_obs[1], r, b_obs[2] - 1, "", fmt_obs_body)
+        r += 2
+
+        # --- Firma Jefe/Supervisor (centrada) --- espacio en blanco intencional: sin imagen de firma
+        b_firmas = _xlsx_dividir_columnas([6.29, 7.0, 6.3], TOTAL_COLS)
+        cf0, cf1 = b_firmas[1], b_firmas[2] - 1
+        ws.set_row(r, _xlsx_cm_a_puntos(1.3))
+        r += 1
+        _mr(r, cf0, r, cf1, jefe_nombre.upper(), fmt_firma_lbl)
+        r += 1
+        desc_jefe = (
+            "Subdirectora de Reglamentación Técnica e Innovación"
+            if jefe_nombre == "GLADYS GUTIÉRREZ BUITRAGO"
+            else "Supervisora de Reglamentación Técnica e Innovación"
+        )
+        _mr(r, cf0, r, cf1, desc_jefe, fmt_firma_desc)
+        r += 1
+        _mr(r, cf0, r, cf1, "Supervisor (a) del Contrato", fmt_firma_desc)
+        r += 2
+
+        # --- Metadata Elaboró/Revisó/Anexo ---
+        c_meta0, c_meta1 = b_obs[1], b_obs[2] - 1
+        fmt_meta_bold = workbook.add_format({"font_name": "Helvetica", "bold": True, "font_size": 6.5})
+        fmt_meta_normal = workbook.add_format({"font_name": "Helvetica", "font_size": 6.5})
+
+        def _mr_rich(r0, c0, c1, etiqueta, valor):
+            if c1 > c0:
+                ws.merge_range(r0, c0, r0, c1, "", fmt_meta)
+            ws.write_rich_string(r0, c0, fmt_meta_bold, etiqueta, fmt_meta_normal, valor or "", fmt_meta)
+
+        _mr_rich(r, c_meta0, c_meta1, "Elaboró: ", nombre)
+        r += 1
+
+        _mr_rich(r, c_meta0, c_meta1, "Revisó: ", fin_nombre)
+        if firma_fin_img:
+            _xlsx_insertar_imagen_proporcional(ws, r, min(c_meta0 + 20, c_meta1), firma_fin_img, 1.4, 0.4)
+        r += 1
+
+        _mr_rich(r, c_meta0, c_meta1, "Revisó: ", abog_nombre)
+        if firma_abog_img:
+            _xlsx_insertar_imagen_proporcional(ws, r, min(c_meta0 + 20, c_meta1), firma_abog_img, 1.4, 0.4)
+        r += 1
+
+        _mr(r, c_meta0, r, c_meta1, "Anexo: Relación de Pagos Generada por SIIF NACION – Un (1) Folio.", fmt_meta)
+        r += 1
+        _mr(r, c_meta0, r, c_meta1, f"Acta de Entrega y Recibo del Contrato No {no_contrato}-{anio_fin}   Un (1) Folio", fmt_meta)
+
+        # --- Marco exterior: cierra visualmente el recuadro que envuelve todo el formato ---
+        r += 1
+        ws.set_row(r, 3)
+        fmt_cierre = workbook.add_format({"top": 2})
+        fmt_cierre_izq = workbook.add_format({"top": 2, "left": 2})
+        fmt_cierre_der = workbook.add_format({"top": 2, "right": 2})
+        for cc in range(1, TOTAL_COLS + 1):
+            ws.write_blank(r, cc, None, fmt_cierre)
+        ws.write_blank(r, 1, None, fmt_cierre_izq)
+        ws.write_blank(r, TOTAL_COLS, None, fmt_cierre_der)
+        fila_cierre_marco = r
+
+        fmt_marco_izq = workbook.add_format({"left": 2})
+        fmt_marco_der = workbook.add_format({"right": 2})
+        for rr in range(fila_inicio_marco, fila_cierre_marco):
+            try:
+                ws.write_blank(rr, 1, None, fmt_marco_izq)
+            except Exception:
+                pass
+            try:
+                ws.write_blank(rr, TOTAL_COLS, None, fmt_marco_der)
+            except Exception:
+                pass
+
+        ws.print_area(0, 0, fila_cierre_marco, TOTAL_COLS + 1)
+        ws.set_landscape()
+        ws.fit_to_pages(1, 1)
+        workbook.close()
         buf.seek(0)
         return buf.getvalue()
 
@@ -3851,6 +5287,8 @@ class CertificacionService:
         
         fecha_ini_dt = contrato_vig.get("fecha_inicio") if contrato_vig and contrato_vig.get("fecha_inicio") else None
         fecha_inicio_str = fecha_ini_dt.strftime("%d/%m/%Y") if fecha_ini_dt else "—"
+        firma_secop_dt = contrato_vig.get("firma_cps_secop") if contrato_vig and contrato_vig.get("firma_cps_secop") else None
+        firma_secop_str = firma_secop_dt.strftime("%d/%m/%Y") if firma_secop_dt else "—"
 
         objeto_contrato_upper = (contrato_vig.get("objeto") or "—").upper()
 
@@ -3929,7 +5367,6 @@ class CertificacionService:
                 num_doc_str = str(usuario_data.get("numero_documento"))
 
         lugar_exp_val = usuario_data.get("lugar_expedicion_documento") or "—"
-        radicado_val = contrato_vig.get("radicado_del_contrato") or "—"
         rp_val = contrato_vig.get("rp_compromiso_presupuestal") or "—"
         fecha_rp_dt = contrato_vig.get("fecha_recurso_presupuestal")
 
@@ -4043,7 +5480,7 @@ class CertificacionService:
 
         # Sub-cuadro para Contrato N° y Fecha con lineas punteadas
         contrato_flowables = [Paragraph(no_contrato, s_val_center), Spacer(1, 1), DottedLine(3.0 * cm, 0.6, NEGRO)]
-        fecha_flowables = [Paragraph(fecha_inicio_str, s_val_center), Spacer(1, 1), DottedLine(3.0 * cm, 0.6, NEGRO)]
+        fecha_flowables = [Paragraph(firma_secop_str, s_val_center), Spacer(1, 1), DottedLine(3.0 * cm, 0.6, NEGRO)]
 
         t_row3_val = Table(
             [
@@ -4168,7 +5605,7 @@ class CertificacionService:
 
         text_12 = f"<b>12.</b> En la ciudad de Bogotá, a los <b>{dia_fin}</b> días del mes de <b>{mes_fin}</b> del año <b>{anio_fin}</b>, se reunieron: GLADYS GUTIERREZ BUITRAGO por parte del Instituto Nacional de Vías, como SUPERVISOR del Contrato de prestación de servicios Profesionales y de apoyo a la gestión <b>Nº {no_contrato} de {anio_fin}</b> y <b>{nombre_contratista}</b> como CONTRATISTA, identificada con {tipo_doc_val} No. {num_doc_str} expedida en {lugar_exp_val}, con el fin de recibir a satisfacción las obligaciones objeto del Contrato, conforme a lo establecido en las cláusulas del mismo."
         
-        text_13_1 = f"<b>13.</b> El plazo inicial de ejecución del contrato de prestación de servicios <b>No. {no_contrato} de {anio_fin}</b> se pactó hasta el {fecha_fin_larga_lower}, a partir de la orden de inicio, impartida mediante oficio <b>No. {radicado_val}</b> suscrito por LA SUBDIRECTORA DE REGLAMENTACION TECNICA E INNOVACION."
+        text_13_1 = f"<b>13.</b> El plazo inicial de ejecución del contrato de prestación de servicios <b>No. {no_contrato} de {anio_fin}</b> se pactó hasta el {fecha_fin_larga_lower}, impartido por la orden de inicio suscrita por LA SUBDIRECTORA DE REGLAMENTACION TECNICA E INNOVACION."
         
         text_13_2 = f"<b>13.</b> El valor de los honorarios pactados fue pagado al contratista en mensualidades vencidas y proporcional al periodo en el cual se prestaron sus servicios profesionales, previa certificación de cumplimiento a satisfacción expedida por el SUPERVISOR del contrato, con cargo al registro presupuestal <b>No. {rp_val} del {fecha_rp_str}</b>."
         
@@ -4258,25 +5695,22 @@ class CertificacionService:
             tipo_contrato_str = f"CONTRATO DE {contrato_vig.get('tipo').replace('_', ' ').upper()}"
         desc_text = f"{tipo_contrato_str}<br/>No. {no_contrato} de {anio_fin}"
 
-        # Col 1: Valor Contratado (Valor del contrato + adición si existe)
-        valor_inicial_int = contrato_vig.get("valor") or 0
-        valor_adicion_int = adiciones.get("valor_adicion") or 0 if tiene_adiciones else 0
-        valor_total_int = valor_inicial_int + valor_adicion_int
-        
+        # Col 1: Valor Contratado (mismo valor del ítem 8, VALOR TOTAL DEL CONTRATO)
+        valor_total_int = valor_total_contrato
         try:
             valor_total_str = f"{valor_total_int:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         except Exception:
             valor_total_str = "0,00"
 
-        # Col 2: Valor Ejecutado
-        valor_ejecutado_int = contrato_vig.get("valor_total_ejecutado_contrato") or 0
+        # Col 2: Valor Ejecutado (suma de los valores brutos de todos los pagos del contrato)
+        valor_ejecutado_int = sum((p.get("valor_bruto_pago") or 0) for p in (contrato_vig.get("pagos") or []))
         try:
             valor_ejecutado_str = f"{valor_ejecutado_int:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         except Exception:
             valor_ejecutado_str = "0,00"
 
-        # Col 3: Saldo Presupuestal a liberar
-        saldo_liberar_int = contrato_vig.get("saldo_presp_lib_contrato") or 0
+        # Col 3: Saldo No Ejecutado (Valor Contratado - Valor Ejecutado, en positivo)
+        saldo_liberar_int = abs(valor_total_int - valor_ejecutado_int)
         try:
             saldo_liberar_str = f"{saldo_liberar_int:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         except Exception:
@@ -4596,7 +6030,7 @@ class CertificacionService:
             ("RIGHTPADDING", (0, 0), (-1, -1), 0),
         ]))
 
-        p_meta_acta = Paragraph(f"<b>Acta de Entrega y Recibo del Contrato No</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {no_contrato} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Un (1) Folio", s_metadata_text)
+        p_meta_acta = Paragraph(f"<b>Acta de Entrega y Recibo del Contrato No</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {no_contrato}-{anio_fin} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Un (1) Folio", s_metadata_text)
 
         t_wrapper_metadata = Table(
             [
@@ -4686,6 +6120,499 @@ class CertificacionService:
         buf.seek(0)
         return buf.getvalue()
 
+    def generar_excel_acta_recibo_entrega_real(self, certificacion: Dict) -> bytes:
+        """Versión .xlsx editable del formato 'Acta de recibo y entrega CPS'
+        (ver generar_pdf_acta_recibo_entrega_real, que no se modifica)."""
+        import xlsxwriter
+
+        TOTAL_COLS = 44
+        AZUL_CABECERA_LIGHT = "#8DB4E2"
+
+        # 1. Datos del usuario (duplicado intencional de generar_pdf_acta_recibo_entrega_real)
+        from app.repositories.usuario_repo import UsuarioRepositorio
+        usuario_id = str(certificacion.get("usuario_id", ""))
+        usuario_data: dict = {}
+        if usuario_id:
+            try:
+                usuario_data = UsuarioRepositorio().buscar_por_id(usuario_id) or {}
+            except Exception:
+                pass
+
+        contratos = usuario_data.get("contratos") or []
+        año_cert = certificacion.get("año")
+        mes_cert = certificacion.get("mes", 1)
+        contrato_vig = self._contrato_para_periodo(contratos, año_cert, mes_cert)
+        no_contrato = contrato_vig.get("numero", "") if contrato_vig else ""
+
+        adiciones = (contrato_vig.get("adiciones_contrato") or {}) if contrato_vig else {}
+        tiene_adiciones = bool(adiciones.get("tiene_adiciones"))
+        valor_adicion = adiciones.get("valor_adicion") or 0
+
+        valor_contrato = contrato_vig.get("valor") or 0 if contrato_vig else 0
+        valor_total_contrato = valor_contrato + (valor_adicion if tiene_adiciones else 0)
+
+        prorroga = (contrato_vig.get("prorrogra_contrato") or {}) if contrato_vig else {}
+        tiene_prorroga = bool(prorroga.get("tiene_prorroga"))
+        fecha_prorroga_dt = prorroga.get("fecha_prorrogra")
+
+        from app.core.zona_horaria import utc_a_bogota  # noqa: F401 (paridad con el método PDF)
+        fecha_fin_efectiva_dt = None
+        if contrato_vig and contrato_vig.get("fecha_fin"):
+            fecha_fin_efectiva_dt = fecha_prorroga_dt if (tiene_prorroga and fecha_prorroga_dt) else contrato_vig["fecha_fin"]
+
+        dia_str = fecha_fin_efectiva_dt.strftime("%d") if fecha_fin_efectiva_dt else "—"
+        mes_str = fecha_fin_efectiva_dt.strftime("%m") if fecha_fin_efectiva_dt else "—"
+        anio_str = fecha_fin_efectiva_dt.strftime("%Y") if fecha_fin_efectiva_dt else "—"
+
+        nombre_contratista = usuario_data.get("nombre_completo", "").upper()
+        fecha_ini_dt = contrato_vig.get("fecha_inicio") if contrato_vig and contrato_vig.get("fecha_inicio") else None
+        fecha_inicio_str = fecha_ini_dt.strftime("%d/%m/%Y") if fecha_ini_dt else "—"
+        firma_secop_dt = contrato_vig.get("firma_cps_secop") if contrato_vig and contrato_vig.get("firma_cps_secop") else None
+        firma_secop_str = firma_secop_dt.strftime("%d/%m/%Y") if firma_secop_dt else "—"
+        objeto_contrato_upper = (contrato_vig.get("objeto") or "—").upper()
+
+        plazo_str = "—"
+        if contrato_vig and contrato_vig.get("fecha_inicio") and contrato_vig.get("fecha_fin"):
+            d1 = contrato_vig["fecha_inicio"]
+            d2 = fecha_fin_efectiva_dt if fecha_fin_efectiva_dt else contrato_vig["fecha_fin"]
+            if hasattr(d1, "date"): d1 = d1.date()
+            if hasattr(d2, "date"): d2 = d2.date()
+            years = d2.year - d1.year
+            months = d2.month - d1.month
+            days = d2.day - d1.day
+            total_months = years * 12 + months
+            if days < 0:
+                total_months -= 1
+                import calendar
+                prev_month = d2.month - 1 if d2.month > 1 else 12
+                prev_year = d2.year if d2.month > 1 else d2.year - 1
+                days_in_prev = calendar.monthrange(prev_year, prev_month)[1]
+                days += days_in_prev
+            parts = []
+            if total_months > 0:
+                parts.append(f"{total_months:02d} MESES")
+            if days > 0:
+                parts.append(f"{days:02d} DÍAS")
+            plazo_str = " Y ".join(parts) if parts else "00 DÍAS"
+
+        MESES_LARGOS_ES = [
+            "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+            "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"
+        ]
+        fecha_fin_larga = "—"
+        if fecha_fin_efectiva_dt:
+            fecha_fin_larga = f"HASTA EL {fecha_fin_efectiva_dt.day} DE {MESES_LARGOS_ES[fecha_fin_efectiva_dt.month - 1]} DE {fecha_fin_efectiva_dt.year}"
+
+        fecha_prorrogra_str = "—"
+        if tiene_prorroga and fecha_prorroga_dt:
+            try:
+                fecha_prorrogra_str = fecha_prorroga_dt.strftime("%d/%m/%Y")
+            except Exception:
+                fecha_prorrogra_str = "—"
+
+        fecha_fin_dt = fecha_fin_efectiva_dt
+        dia_fin = str(fecha_fin_dt.day) if fecha_fin_dt else "—"
+        mes_fin = MESES_ES[fecha_fin_dt.month - 1].capitalize() if fecha_fin_dt else "—"
+        anio_fin = str(fecha_fin_dt.year) if fecha_fin_dt else "—"
+
+        tipo_doc_val = (usuario_data.get("tipo_documento") or "cédula de ciudadanía").lower()
+        num_doc_str = "—"
+        if usuario_data.get("numero_documento"):
+            try:
+                num_doc_raw = int(usuario_data.get("numero_documento"))
+                num_doc_str = f"{num_doc_raw:,}".replace(",", ".")
+            except Exception:
+                num_doc_str = str(usuario_data.get("numero_documento"))
+
+        lugar_exp_val = usuario_data.get("lugar_expedicion_documento") or "—"
+        rp_val = contrato_vig.get("rp_compromiso_presupuestal") or "—"
+        fecha_rp_dt = contrato_vig.get("fecha_recurso_presupuestal")
+
+        _MESES_MIN = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+        fecha_rp_str = "—"
+        if fecha_rp_dt:
+            try:
+                fecha_rp_str = f"{fecha_rp_dt.day:02d} de {_MESES_MIN[fecha_rp_dt.month - 1]} de {fecha_rp_dt.year}"
+            except Exception:
+                fecha_rp_str = "—"
+
+        fecha_fin_larga_lower = "—"
+        if fecha_fin_dt:
+            try:
+                fecha_fin_larga_lower = f"{fecha_fin_dt.day} de {_MESES_MIN[fecha_fin_dt.month - 1]} de {fecha_fin_dt.year}"
+            except Exception:
+                fecha_fin_larga_lower = "—"
+
+        tiene_inventario = bool(contrato_vig.get("tiene_inventario"))
+        desc_inventario = contrato_vig.get("desc_inventario") or ""
+        texto_inventario = desc_inventario if (tiene_inventario and desc_inventario) else "No se tiene inventario a cargo."
+
+        text_12 = (
+            f"12. En la ciudad de Bogotá, a los {dia_fin} días del mes de {mes_fin} del año {anio_fin}, se "
+            "reunieron: GLADYS GUTIERREZ BUITRAGO por parte del Instituto Nacional de Vías, como SUPERVISOR "
+            f"del Contrato de prestación de servicios Profesionales y de apoyo a la gestión Nº {no_contrato} de "
+            f"{anio_fin} y {nombre_contratista} como CONTRATISTA, identificada con {tipo_doc_val} No. {num_doc_str} "
+            f"expedida en {lugar_exp_val}, con el fin de recibir a satisfacción las obligaciones objeto del "
+            "Contrato, conforme a lo establecido en las cláusulas del mismo."
+        )
+        text_13_1 = (
+            f"13. El plazo inicial de ejecución del contrato de prestación de servicios No. {no_contrato} de "
+            f"{anio_fin} se pactó hasta el {fecha_fin_larga_lower}, impartido por la orden de inicio suscrita "
+            f"por LA SUBDIRECTORA DE REGLAMENTACION TECNICA E INNOVACION."
+        )
+        text_13_2 = (
+            "13. El valor de los honorarios pactados fue pagado al contratista en mensualidades vencidas y "
+            "proporcional al periodo en el cual se prestaron sus servicios profesionales, previa certificación "
+            "de cumplimiento a satisfacción expedida por el SUPERVISOR del contrato, con cargo al registro "
+            f"presupuestal No. {rp_val} del {fecha_rp_str}."
+        )
+        text_14 = (
+            "14. El contratista cumplió con el pago de los aportes al sistema de seguridad social en salud, "
+            "pensión y riesgos profesionales de acuerdo con los recibos soporte del pago de los aportes a "
+            "seguridad social y parafiscales durante todo el plazo de ejecución del contrato."
+        )
+
+        tipo_contrato_str = "CONTRATO DE PRESTACIÓN DE SERVICIOS"
+        if contrato_vig and contrato_vig.get("tipo"):
+            tipo_contrato_str = f"CONTRATO DE {contrato_vig.get('tipo').replace('_', ' ').upper()}"
+        desc_text = f"{tipo_contrato_str} No. {no_contrato} de {anio_fin}"
+
+        valor_total_int = valor_total_contrato
+        valor_ejecutado_int = sum((p.get("valor_bruto_pago") or 0) for p in (contrato_vig.get("pagos") or []))
+        saldo_liberar_int = abs(valor_total_int - valor_ejecutado_int)
+
+        mes_fin_lower = mes_fin.lower() if mes_fin else "—"
+        text_constancia = (
+            f"Para constancia de lo anterior, firman la presente acta los que en ella intervinieron a los "
+            f"{dia_fin} días del mes de {mes_fin_lower} de {anio_fin}."
+        )
+
+        # --- Firmas ---
+        from app.services.firma_service import FirmaService
+        firma_contratista_bytes = FirmaService().obtener_imagen(usuario_id)
+
+        config_firmantes = self.obtener_firmantes_config("firmantes_formatos_actas", TIPOS_FIRMA_ACTAS)
+
+        firma_fin_doc = certificacion.get("firmas", {}).get("financiera")
+        fin_nombre = "sin nombre_financiera"
+        fin_id_str = None
+        if firma_fin_doc:
+            fin_nombre = firma_fin_doc.get("firmante_nombre", fin_nombre)
+            fin_id_str = str(firma_fin_doc.get("firmante_id", ""))
+        else:
+            fin_config = config_firmantes.get("financiera") or {}
+            fin_nombre = fin_config.get("nombre", fin_nombre)
+            fin_id_str = fin_config.get("usuario_id")
+
+        firma_abog_doc = certificacion.get("firmas", {}).get("abogado")
+        abog_nombre = "sin nombre_abogado"
+        abog_id_str = None
+        if firma_abog_doc:
+            abog_nombre = firma_abog_doc.get("firmante_nombre", abog_nombre)
+            abog_id_str = str(firma_abog_doc.get("firmante_id", ""))
+        else:
+            abog_config = config_firmantes.get("abogado") or {}
+            abog_nombre = abog_config.get("nombre", abog_nombre)
+            abog_id_str = abog_config.get("usuario_id")
+
+        firma_jefe_doc = certificacion.get("firmas", {}).get("jefe")
+        jefe_nombre = "GLADYS GUTIÉRREZ BUITRAGO"
+        jefe_id_str = None
+        if firma_jefe_doc:
+            jefe_nombre = firma_jefe_doc.get("firmante_nombre", jefe_nombre)
+            jefe_id_str = str(firma_jefe_doc.get("firmante_id", ""))
+        else:
+            jefe_config = config_firmantes.get("jefe") or {}
+            jefe_nombre = jefe_config.get("nombre", jefe_nombre)
+            jefe_id_str = jefe_config.get("usuario_id")
+
+        jefe_firma_bytes_o_ruta = None
+        if jefe_id_str:
+            jefe_firma_bytes = FirmaService().obtener_imagen(jefe_id_str)
+            if jefe_firma_bytes:
+                jefe_firma_bytes_o_ruta = jefe_firma_bytes
+        if not jefe_firma_bytes_o_ruta and jefe_nombre.upper() in ["GLADYS GUTIERREZ BUITRAGO", "GLADYS GUTIÉRREZ BUITRAGO"]:
+            firma_gladys_path = os.path.join("app", "assets", "firma_gla.png")
+            if os.path.exists(firma_gladys_path):
+                jefe_firma_bytes_o_ruta = firma_gladys_path
+
+        firma_fin_img = None
+        if fin_id_str and firma_fin_doc:
+            firma_fin_img = FirmaService().obtener_imagen(fin_id_str)
+
+        firma_abog_img = None
+        if abog_id_str and firma_abog_doc:
+            firma_abog_img = FirmaService().obtener_imagen(abog_id_str)
+
+        nombre_contratista_caps = nombre_contratista.upper() if nombre_contratista else "—"
+
+        # --- Construcción del libro ---
+        buf = io.BytesIO()
+        workbook = xlsxwriter.Workbook(buf, {"in_memory": True})
+        ws = workbook.add_worksheet("Acta Recibo Entrega CPS")
+        ws.hide_gridlines(2)
+
+        COL_CM = 19.59 / TOTAL_COLS
+        ws.set_column(0, 0, 2.2)
+        for c in range(1, TOTAL_COLS + 1):
+            ws.set_column(c, c, _xlsx_cm_a_ancho_columna(COL_CM))
+        ws.set_column(TOTAL_COLS + 1, TOTAL_COLS + 1, 2.2)
+
+        fmt_base = {"font_name": "Helvetica", "font_size": 6.5, "border": 1, "valign": "vcenter"}
+        fmt_meta_lbl = workbook.add_format({**fmt_base, "bold": True, "align": "center", "font_size": 6})
+        fmt_meta_val = workbook.add_format({**fmt_base, "bold": True, "align": "center", "font_size": 6})
+        fmt_proceso = workbook.add_format({**fmt_base, "align": "center", "text_wrap": True})
+        fmt_fecha_lbl = workbook.add_format({**fmt_base, "bold": True, "align": "center"})
+        fmt_fecha_val = workbook.add_format({**fmt_base, "align": "center"})
+        fmt_blank = workbook.add_format({"border": 1})
+        fmt_firma_img_cell = workbook.add_format({})
+        fmt_lbl_contrato = workbook.add_format({"font_name": "Helvetica", "bold": True, "font_size": 7.5, "align": "left", "valign": "top", "text_wrap": True})
+        fmt_val_center = workbook.add_format({"font_name": "Helvetica", "font_size": 7.5, "align": "center", "valign": "vcenter", "bottom": 4, "text_wrap": True})
+        fmt_val_objeto = workbook.add_format({"font_name": "Helvetica", "font_size": 6.5, "align": "center", "valign": "vcenter", "bottom": 4, "text_wrap": True})
+        fmt_money = workbook.add_format({"font_name": "Helvetica", "font_size": 7.5, "align": "right", "valign": "vcenter", "border": 1, "num_format": '"$" #,##0.00'})
+        fmt_chk_lbl = workbook.add_format({"font_name": "Helvetica", "bold": True, "font_size": 7.5, "align": "left", "valign": "vcenter"})
+        fmt_chk_val = workbook.add_format({"font_name": "Helvetica", "bold": True, "font_size": 8, "align": "center", "valign": "vcenter", "border": 1})
+        fmt_narrative = workbook.add_format({"font_name": "Helvetica", "font_size": 7.2, "align": "justify", "valign": "top", "text_wrap": True})
+        fmt_narrative_bold = workbook.add_format({"font_name": "Helvetica", "bold": True, "font_size": 7.5, "align": "left", "valign": "top"})
+        fmt_balance_header = workbook.add_format({"font_name": "Helvetica", "bold": True, "font_size": 6, "align": "center", "valign": "vcenter", "border": 1, "bg_color": AZUL_CABECERA_LIGHT})
+        fmt_balance_desc = workbook.add_format({"font_name": "Helvetica", "bold": True, "font_size": 6, "align": "center", "valign": "vcenter", "border": 1, "text_wrap": True})
+        fmt_balance_money = workbook.add_format({"font_name": "Helvetica", "font_size": 6, "align": "right", "valign": "vcenter", "border": 1, "num_format": '"$" #,##0.00'})
+        fmt_constancia = workbook.add_format({"font_name": "Helvetica", "font_size": 7.2, "align": "justify", "valign": "top", "text_wrap": True})
+        fmt_firma_side_lbl = workbook.add_format({"font_name": "Helvetica", "font_size": 6.5, "align": "left", "valign": "bottom"})
+        fmt_firma_name = workbook.add_format({"font_name": "Helvetica", "bold": True, "font_size": 7, "align": "center", "valign": "vcenter", "border": 1})
+        fmt_firma_role = workbook.add_format({"font_name": "Helvetica", "bold": True, "font_size": 6.5, "align": "center", "valign": "vcenter"})
+        fmt_meta = workbook.add_format({"font_name": "Helvetica", "font_size": 6.5, "align": "left", "valign": "top"})
+        fmt_meta_bold = workbook.add_format({"font_name": "Helvetica", "bold": True, "font_size": 6.5})
+        fmt_meta_normal = workbook.add_format({"font_name": "Helvetica", "font_size": 6.5})
+
+        def _mr(r0, c0, r1, c1, data="", fmt=None):
+            if r0 == r1 and c0 == c1:
+                ws.write(r0, c0, data, fmt)
+            else:
+                ws.merge_range(r0, c0, r1, c1, data, fmt)
+
+        def _dinero(r0, c0, c1, valor, fmt_con_valor):
+            if valor:
+                if c0 == c1:
+                    ws.write_number(r0, c0, float(valor), fmt_con_valor)
+                else:
+                    ws.merge_range(r0, c0, r0, c1, float(valor), fmt_con_valor)
+            else:
+                _mr(r0, c0, r0, c1, "", fmt_con_valor)
+
+        ws.set_row(0, 6)
+        r = 1
+
+        # --- Encabezado institucional ---
+        b_head = _xlsx_dividir_columnas([3.5, 10.7, 5.39], TOTAL_COLS)
+        b_meta = _xlsx_subdividir([2.2, 1.06, 1.07, 1.06], b_head[2], b_head[3])
+        ALTO_FILA_HEADER = 0.45
+        for rr in range(3):
+            ws.set_row(r + rr, _xlsx_cm_a_puntos(ALTO_FILA_HEADER))
+
+        _mr(r, b_head[0], r + 2, b_head[1] - 1, "", fmt_blank)
+        logo_path = os.path.join("app", "assets", "INVIAS.png")
+        if os.path.exists(logo_path):
+            ancho_caja_logo = (b_head[1] - b_head[0]) * COL_CM * 0.90
+            alto_caja_logo = ALTO_FILA_HEADER * 3 * 0.90
+            _xlsx_insertar_imagen_proporcional(
+                ws, r, b_head[0], logo_path, ancho_caja_logo, alto_caja_logo, recortar_margenes=True
+            )
+        _mr(
+            r, b_head[1], r + 2, b_head[2] - 1,
+            "PROCESO: GESTION CONTRACTUAL PROCESOS ADMINISTRATIVOS Y SANCIONATORIO\n"
+            "FORMATO: ACTA DE RECIBO DEFINITIVO CONTRATO POR PRESTACIÓN DE SERVICIOS PROFESIONALES O DE APOYO A LA GESTIÓN",
+            fmt_proceso,
+        )
+        _mr(r, b_meta[0], r, b_meta[1] - 1, "CÓDIGO", fmt_meta_lbl)
+        _mr(r, b_meta[1], r, b_meta[4] - 1, "ACPA-FR-10", fmt_meta_val)
+        _mr(r + 1, b_meta[0], r + 1, b_meta[1] - 1, "VERSIÓN", fmt_meta_lbl)
+        _mr(r + 1, b_meta[1], r + 1, b_meta[4] - 1, "2", fmt_meta_val)
+        _mr(r + 2, b_meta[0], r + 2, b_meta[1] - 1, "PÁGINA", fmt_meta_lbl)
+        _mr(r + 2, b_meta[1], r + 2, b_meta[2] - 1, "1", fmt_meta_val)
+        _mr(r + 2, b_meta[2], r + 2, b_meta[3] - 1, "DE", fmt_meta_lbl)
+        _mr(r + 2, b_meta[3], r + 2, b_meta[4] - 1, "1", fmt_meta_val)
+        r += 3
+
+        # --- Fecha DD/MM/AA ---
+        b_fec = _xlsx_dividir_columnas([16.4, 1.06, 1.07, 1.06], TOTAL_COLS)
+        _mr(r, b_fec[0], r + 1, b_fec[1] - 1, "", fmt_blank)
+        _mr(r, b_fec[1], r, b_fec[2] - 1, "DD", fmt_fecha_lbl)
+        _mr(r, b_fec[2], r, b_fec[3] - 1, "MM", fmt_fecha_lbl)
+        _mr(r, b_fec[3], r, b_fec[4] - 1, "AA", fmt_fecha_lbl)
+        _mr(r + 1, b_fec[1], r + 1, b_fec[2] - 1, dia_str, fmt_fecha_val)
+        _mr(r + 1, b_fec[2], r + 1, b_fec[3] - 1, mes_str, fmt_fecha_val)
+        _mr(r + 1, b_fec[3], r + 1, b_fec[4] - 1, anio_str, fmt_fecha_val)
+        fila_inicio_marco = r + 2
+        r += 3
+
+        # --- Datos del contrato ---
+        b_wrap = _xlsx_dividir_columnas([1.5, 16.59, 1.5], TOTAL_COLS)
+        b_datos = _xlsx_subdividir([5.3, 11.29], b_wrap[1], b_wrap[2])
+        c_lbl0, c_lbl1 = b_datos[0], b_datos[1] - 1
+        c_val0, c_val1 = b_datos[1], b_datos[2] - 1
+
+        filas_simples = [
+            ("1. UNIDAD EJECUTORA", "SUBDIRECCIÓN DE REGLAMENTACIÓN TÉCNICA E INNOVACIÓN", fmt_val_center),
+            ("2. DIRECCIÓN TERRITORIAL", "N.A.", fmt_val_center),
+            ("3. CONTRATO Nº", f"No. {no_contrato}          FECHA: {firma_secop_str}", fmt_val_center),
+            ("4. CONTRATISTA:", nombre_contratista, fmt_val_center),
+            ("5. SUPERVISOR:", "GLADYS GUTIÉRREZ BUITRAGO - SUBDIRECTORA REGLAMENTACIÓN TÉCNICA E INNOVACIÓN", fmt_val_center),
+            ("6. OBJETO DEL CONTRATO:", objeto_contrato_upper, fmt_val_objeto),
+        ]
+        for lbl, val, fmt_v in filas_simples:
+            if lbl.startswith("6."):
+                ancho_val_cm = (c_val1 - c_val0 + 1) * COL_CM
+                alto_objeto_cm = _xlsx_altura_para_texto(val, ancho_val_cm, tam_fuente=6.5)
+                ws.set_row(r, _xlsx_cm_a_puntos(alto_objeto_cm))
+            else:
+                ws.set_row(r, _xlsx_cm_a_puntos(0.75))
+            _mr(r, c_lbl0, r, c_lbl1, lbl, fmt_lbl_contrato)
+            _mr(r, c_val0, r, c_val1, val, fmt_v)
+            r += 1
+
+        _mr(r, c_lbl0, r, c_lbl1, "7. VALOR INICIAL DEL CONTRATO", fmt_lbl_contrato)
+        _dinero(r, c_val0, c_val1, valor_contrato, fmt_money)
+        r += 1
+        _mr(r, c_lbl0, r, c_lbl1, "8. VALOR TOTAL DEL CONTRATO", fmt_lbl_contrato)
+        _dinero(r, c_val0, c_val1, valor_total_contrato, fmt_money)
+        r += 1
+        _mr(r, c_lbl0, r, c_lbl1, "9. FECHA DE INICIO DEL CONTRATO", fmt_lbl_contrato)
+        _mr(r, c_val0, r, c_val1, fecha_inicio_str, fmt_val_center)
+        r += 1
+        _mr(r, c_lbl0, r, c_lbl1, "10. PLAZO DE EJECUCIÓN DEL CONTRATO", fmt_lbl_contrato)
+        _mr(r, c_val0, r, c_val1, plazo_str, fmt_val_center)
+        r += 1
+        _mr(r, c_lbl0, r, c_lbl1, "11. FECHA DE VENCIMIENTO DEL CONTRATO", fmt_lbl_contrato)
+        _mr(r, c_val0, r, c_val1, fecha_fin_larga, fmt_val_center)
+        r += 1
+
+        b_chk = _xlsx_subdividir([3.2, 0.8, 1.3], c_lbl0, c_lbl1 + 1)
+        _mr(r, b_chk[0], r, b_chk[1] - 1, "ADICIÓN", fmt_chk_lbl)
+        _mr(r, b_chk[1], r, b_chk[2] - 1, "X" if tiene_adiciones else "", fmt_chk_val)
+        _dinero(r, c_val0, c_val1, valor_adicion if tiene_adiciones else 0, fmt_money)
+        r += 1
+        _mr(r, b_chk[0], r, b_chk[1] - 1, "PRÓRROGA", fmt_chk_lbl)
+        _mr(r, b_chk[1], r, b_chk[2] - 1, "X" if tiene_prorroga else "", fmt_chk_val)
+        _mr(r, c_val0, r, c_val1, fecha_prorrogra_str, fmt_val_center)
+        r += 2
+
+        # --- Textos narrativos 12-14 e inventario ---
+        ancho_narrativa_cm = (b_wrap[2] - b_wrap[1]) * COL_CM
+        for texto in (text_12, text_13_1, text_13_2, text_14):
+            ws.set_row(r, _xlsx_cm_a_puntos(_xlsx_altura_para_texto(texto, ancho_narrativa_cm, tam_fuente=7.2)))
+            _mr(r, b_wrap[1], r, b_wrap[2] - 1, texto, fmt_narrative)
+            r += 1
+
+        _mr(r, b_wrap[1], r, b_wrap[2] - 1, "15. VERIFICACION Y ENTREGA DE INVENTARIO:", fmt_narrative_bold)
+        r += 1
+        ws.set_row(r, _xlsx_cm_a_puntos(_xlsx_altura_para_texto(texto_inventario, ancho_narrativa_cm, tam_fuente=7.2)))
+        _mr(r, b_wrap[1], r, b_wrap[2] - 1, texto_inventario, fmt_narrative)
+        r += 1
+        _mr(r, b_wrap[1], r, b_wrap[2] - 1, "16. BALANCE FINANCIERO:", fmt_narrative_bold)
+        r += 2
+
+        # --- Balance financiero ---
+        b_balwrap = _xlsx_dividir_columnas([2.0, 14.59, 3.0], TOTAL_COLS)
+        b_baltab = _xlsx_subdividir([5.59, 3.0, 3.0, 3.0], b_balwrap[1], b_balwrap[2])
+        _mr(r, b_baltab[0], r, b_baltab[1] - 1, "DESCRIPCIÓN", fmt_balance_header)
+        _mr(r, b_baltab[1], r, b_baltab[2] - 1, "VALOR CONTRATADO", fmt_balance_header)
+        _mr(r, b_baltab[2], r, b_baltab[3] - 1, "VALOR EJECUTADO", fmt_balance_header)
+        _mr(r, b_baltab[3], r, b_baltab[4] - 1, "SALDO NO EJECUTADO", fmt_balance_header)
+        r += 1
+        ws.set_row(r, _xlsx_cm_a_puntos(0.95))
+        _mr(r, b_baltab[0], r, b_baltab[1] - 1, desc_text, fmt_balance_desc)
+        _dinero(r, b_baltab[1], b_baltab[2] - 1, valor_total_int, fmt_balance_money)
+        _dinero(r, b_baltab[2], b_baltab[3] - 1, valor_ejecutado_int, fmt_balance_money)
+        _dinero(r, b_baltab[3], b_baltab[4] - 1, saldo_liberar_int, fmt_balance_money)
+        r += 2
+
+        # --- Constancia ---
+        ws.set_row(r, _xlsx_cm_a_puntos(_xlsx_altura_para_texto(text_constancia, ancho_narrativa_cm, tam_fuente=7.2)))
+        _mr(r, b_wrap[1], r, b_wrap[2] - 1, text_constancia, fmt_constancia)
+        r += 2
+
+        # --- Firmas Contratista / Supervisor ---
+        b_firmas = _xlsx_subdividir([7.0, 2.59, 7.0], b_wrap[1], b_wrap[2])
+        b_card_c = _xlsx_subdividir([1.2, 5.8], b_firmas[0], b_firmas[1])
+        b_card_s = _xlsx_subdividir([1.2, 5.8], b_firmas[2], b_firmas[3])
+
+        ws.set_row(r, _xlsx_cm_a_puntos(1.3))
+        _mr(r, b_card_c[0], r, b_card_c[1] - 1, "Firma", fmt_firma_side_lbl)
+        _mr(r, b_card_c[1], r, b_card_c[2] - 1, "", fmt_firma_img_cell)
+        ancho_card_c_cm = (b_card_c[2] - b_card_c[1]) * COL_CM
+        x_offset_firma_c = max(int((ancho_card_c_cm - 4.0) / 2 * _XLSX_PX_POR_CM), 2)
+        if firma_contratista_bytes:
+            _xlsx_insertar_imagen_proporcional(ws, r, b_card_c[1], firma_contratista_bytes, 4.0, 1.2, x_offset=x_offset_firma_c)
+        _mr(r, b_card_s[0], r, b_card_s[1] - 1, "Firma", fmt_firma_side_lbl)
+        _mr(r, b_card_s[1], r, b_card_s[2] - 1, "", fmt_firma_img_cell)
+        ancho_card_s_cm = (b_card_s[2] - b_card_s[1]) * COL_CM
+        x_offset_firma_s = max(int((ancho_card_s_cm - 4.0) / 2 * _XLSX_PX_POR_CM), 2)
+        if jefe_firma_bytes_o_ruta:
+            _xlsx_insertar_imagen_proporcional(ws, r, b_card_s[1], jefe_firma_bytes_o_ruta, 4.0, 1.2, x_offset=x_offset_firma_s)
+        r += 1
+
+        _mr(r, b_card_c[0], r, b_card_c[1] - 1, "Nombre", fmt_firma_side_lbl)
+        _mr(r, b_card_c[1], r, b_card_c[2] - 1, nombre_contratista_caps, fmt_firma_name)
+        _mr(r, b_card_s[0], r, b_card_s[1] - 1, "Nombre", fmt_firma_side_lbl)
+        _mr(r, b_card_s[1], r, b_card_s[2] - 1, jefe_nombre.upper(), fmt_firma_name)
+        r += 1
+
+        _mr(r, b_card_c[1], r, b_card_c[2] - 1, "CONTRATISTA", fmt_firma_role)
+        _mr(r, b_card_s[1], r, b_card_s[2] - 1, "SUPERVISOR DEL CONTRATO", fmt_firma_role)
+        r += 2
+
+        # --- Metadata Elaboró/Revisó/Anexo ---
+        b_wrap_meta = _xlsx_dividir_columnas([0.15, 17.94, 1.5], TOTAL_COLS)
+        c_meta0, c_meta1 = b_wrap_meta[1], b_wrap_meta[2] - 1
+
+        def _mr_rich(r0, c0, c1, etiqueta, valor):
+            if c1 > c0:
+                ws.merge_range(r0, c0, r0, c1, "", fmt_meta)
+            ws.write_rich_string(r0, c0, fmt_meta_bold, etiqueta, fmt_meta_normal, valor or "", fmt_meta)
+
+        _mr_rich(r, c_meta0, c_meta1, "Elaboró: ", nombre_contratista)
+        r += 1
+        _mr_rich(r, c_meta0, c_meta1, "Revisó: ", fin_nombre)
+        if firma_fin_img:
+            _xlsx_insertar_imagen_proporcional(ws, r, min(c_meta0 + 20, c_meta1), firma_fin_img, 1.4, 0.4)
+        r += 1
+        _mr_rich(r, c_meta0, c_meta1, "Revisó: ", abog_nombre)
+        if firma_abog_img:
+            _xlsx_insertar_imagen_proporcional(ws, r, min(c_meta0 + 20, c_meta1), firma_abog_img, 1.4, 0.4)
+        r += 1
+        _mr(r, c_meta0, r, c_meta1, f"Acta de Entrega y Recibo del Contrato No {no_contrato}-{anio_fin}   Un (1) Folio", fmt_meta)
+
+        # --- Marco exterior: cierra visualmente el recuadro que envuelve todo el formato ---
+        r += 1
+        ws.set_row(r, 3)
+        fmt_cierre = workbook.add_format({"top": 2})
+        fmt_cierre_izq = workbook.add_format({"top": 2, "left": 2})
+        fmt_cierre_der = workbook.add_format({"top": 2, "right": 2})
+        for cc in range(1, TOTAL_COLS + 1):
+            ws.write_blank(r, cc, None, fmt_cierre)
+        ws.write_blank(r, 1, None, fmt_cierre_izq)
+        ws.write_blank(r, TOTAL_COLS, None, fmt_cierre_der)
+        fila_cierre_marco = r
+
+        fmt_marco_izq = workbook.add_format({"left": 2})
+        fmt_marco_der = workbook.add_format({"right": 2})
+        for rr in range(fila_inicio_marco, fila_cierre_marco):
+            try:
+                ws.write_blank(rr, 1, None, fmt_marco_izq)
+            except Exception:
+                pass
+            try:
+                ws.write_blank(rr, TOTAL_COLS, None, fmt_marco_der)
+            except Exception:
+                pass
+
+        ws.print_area(0, 0, fila_cierre_marco, TOTAL_COLS + 1)
+        ws.set_landscape()
+        ws.fit_to_pages(1, 1)
+        workbook.close()
+        buf.seek(0)
+        return buf.getvalue()
 
 
 

@@ -88,9 +88,12 @@ def render(sesion=None):
 
     for clave, meta in PARAMETROS.items():
         actual = servicio.obtener(clave)
+        deshabilitado = not meta.get("habilitado", True)
         with st.container(border=True):
             st.markdown(f"**{meta['etiqueta']}**")
             st.caption(meta["descripcion"])
+            if deshabilitado:
+                st.info("🔒 Parámetro deshabilitado temporalmente: no admite cambios desde este panel.")
 
             col_in, col_btn = st.columns([3, 1])
             with col_in:
@@ -102,12 +105,21 @@ def render(sesion=None):
                         value=int(actual),
                         step=1,
                         key=f"inp_{clave}",
+                        disabled=deshabilitado,
+                    )
+                elif meta["tipo"] == "bool":
+                    nuevo = st.checkbox(
+                        meta.get("unidad", "Activo"),
+                        value=bool(actual),
+                        key=f"inp_{clave}",
+                        disabled=deshabilitado,
                     )
                 else:
                     nuevo = st.text_input(
                         meta.get("unidad", "Valor"),
                         value=str(actual),
                         key=f"inp_{clave}",
+                        disabled=deshabilitado,
                     )
             with col_btn:
                 st.write("")
@@ -117,7 +129,7 @@ def render(sesion=None):
                     "Guardar",
                     key=f"btn_{clave}",
                     use_container_width=True,
-                    disabled=sin_cambio,
+                    disabled=deshabilitado or sin_cambio,
                 ):
                     st.session_state["_param_pendiente"] = {"clave": clave, "valor": nuevo}
                     st.rerun()

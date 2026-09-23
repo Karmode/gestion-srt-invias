@@ -43,47 +43,6 @@ def render_balance_y_pagos(prefijo: str, c: dict, deshabilitado: bool = False):
             background-color: #b71c1c !important;
             background: #b71c1c !important;
         }}
-        /* Botón de calculadora con estilo naranja forzado */
-        div[data-testid="stPopover"]:has(button[key*="_btn_calc_popover"]) button {{
-            background-color: #FF8C00 !important;
-            background: #FF8C00 !important;
-            color: white !important;
-            font-weight: bold !important;
-            padding: 6px 12px !important;
-            font-size: 13px !important;
-            border-radius: 8px !important;
-            border: none !important;
-            display: inline-flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            height: auto !important;
-            width: auto !important;
-        }}
-        div[data-testid="stPopover"]:has(button[key*="_btn_calc_popover"]) button:hover {{
-            background-color: #E07B00 !important;
-            background: #E07B00 !important;
-        }}
-        /* Ocultar la flecha de expandir predeterminada de Streamlit en este popover específico */
-        div[data-testid="stPopover"]:has(button[key*="_btn_calc_popover"]) button svg,
-        div[data-testid="stPopover"]:has(button[key*="_btn_calc_popover"]) button span[data-testid="stIcon"],
-        div[data-testid="stPopover"]:has(button[key*="_btn_calc_popover"]) button span:not(:has([data-testid="stMarkdownContainer"])) {{
-            display: none !important;
-            visibility: hidden !important;
-        }}
-        /* Reducir espacio interno de la ventana popover de la calculadora */
-        div[data-testid="stPopoverBody"] {{
-            padding: 10px !important;
-            max-width: 280px !important;
-        }}
-        div[data-testid="stPopoverBody"] div[data-testid="stWidgetLabel"] p {{
-            font-size: 11px !important;
-            margin-bottom: -5px !important;
-        }}
-        div[data-testid="stPopoverBody"] input {{
-            height: 28px !important;
-            font-size: 12px !important;
-        }}
-        
         /* Contenedor del Tooltip */
         .srti-tooltip-container {{
             display: inline-flex;
@@ -238,8 +197,7 @@ def render_balance_y_pagos(prefijo: str, c: dict, deshabilitado: bool = False):
         return {
             "tiene_inventario": bool(c.get("tiene_inventario")),
             "desc_inventario": c.get("desc_inventario"),
-            "valor_total_ejecutado_contrato": c.get("valor_total_ejecutado_contrato"),
-            "saldo_presp_lib_contrato": c.get("saldo_presp_lib_contrato"),
+            "valor_total_por_pagar_contrato": c.get("valor_total_por_pagar_contrato"),
             "valor_total_pagado": c.get("valor_total_pagado"),
             "prorrogra_contrato": c.get("prorrogra_contrato") or {"tiene_prorroga": False, "fecha_prorrogra": None, "radicado_prorrogra": None},
             "adiciones_contrato": c.get("adiciones_contrato") or {"tiene_adiciones": False, "valor_adicion": None},
@@ -345,36 +303,20 @@ def render_balance_y_pagos(prefijo: str, c: dict, deshabilitado: bool = False):
             unsafe_allow_html=True
         )
 
-    col1, col2, col3 = st.columns(3)
+    col1, col3 = st.columns(2)
     with col1:
         render_label_con_tooltip(
-            "Valor Total Ejecutado del contrato (COP)",
-            "Valor total ejecutado del contrato",
-            "Es el valor total que se ha ejecutado en los pagos del contrato. Puede ser diferente al valor total del contrato (mayor o menor) según adiciones o reducciones."
+            "Valor Total por Pagar del contrato (COP)",
+            "Valor total por pagar",
+            "Corresponde al valor total ejecutado (planeación) a la fecha de retiro o terminación."
         )
-        val_total_ejec = st.number_input(
-            "label_oculto_total_ejec",
+        val_total_por_pagar = st.number_input(
+            "label_oculto_total_por_pagar",
             min_value=0,
-            value=int(c.get("valor_total_ejecutado_contrato") or 0),
+            value=int(c.get("valor_total_por_pagar_contrato") or 0),
             step=100000,
             format="%d",
-            key=f"{prefijo}_val_total_ejec",
-            disabled=deshabilitado,
-            label_visibility="collapsed"
-        )
-    with col2:
-        render_label_con_tooltip(
-            "Saldo presupuestal a liberar (COP)",
-            "Saldo presupuestal a liberar",
-            "Es el saldo no ejecutado del contrato. Esta información se remitirá al contratista."
-        )
-        saldo_presp = st.number_input(
-            "label_oculto_saldo_presp",
-            min_value=0,
-            value=int(c.get("saldo_presp_lib_contrato") or 0),
-            step=100000,
-            format="%d",
-            key=f"{prefijo}_saldo_presp",
+            key=f"{prefijo}_val_total_por_pagar",
             disabled=deshabilitado,
             label_visibility="collapsed"
         )
@@ -611,123 +553,20 @@ def render_balance_y_pagos(prefijo: str, c: dict, deshabilitado: bool = False):
         # Actualizar el espejo con lo tecleado en este render.
         pagos_datos[pid] = {"num": num_pago, "fec": fecha_pago, "bruto": val_bruto, "deduc": deduc, "neto": val_neto}
 
-        # Guardaremos provisionalmente los acumulados como None o 0 por pago, pues los ingresará globalmente
         pagos_retorno.append({
             "numero_pago": num_pago,
             "fecha_pago": fecha_pago,
             "valor_bruto_pago": val_bruto,
-            "valor_bruto_total": 0,
             "deducciones_pago": deduc,
-            "deducciones_pago_total": 0,
             "valor_neto_pago": val_neto,
-            "valor_neto_pago_total": 0,
         })
         
-    # Fila de Totales Estilizada y MANUAL debajo de la barra divisoria con Tooltip
     st.markdown("<hr style='margin:15px 0; border: 1.5px solid #FF8C00;'>", unsafe_allow_html=True)
-    st.markdown(
-        """
-<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
-<strong style="font-size: 16px; margin: 0; padding: 0;">📊 TOTALES GENERALES DEL CONTRATO</strong>
-<div class="srti-tooltip-container" style="margin: 0;">
-<span class="srti-tooltip-icon" tabindex="0">ⓘ
-<div class="srti-tooltip-content" style="width: 380px;">
-<h4>📊 TOTALES GENERALES DEL CONTRATO</h4>
-<p>El contratista debe sumar todos los valores brutos acumulados, todas las deducciones totales acumuladas y el valor neto acumulado en los pagos e ingresar el valor.</p>
-<p>El proceso no es automático, dada la variabilidad de estos valores según el contratista.</p>
-</div>
-</span>
-</div>
-</div>
-        """,
-        unsafe_allow_html=True
-    )
-    
-    # Inferir o inicializar valores del primer pago o del contrato en general
-    # Para cumplir con el esquema MongoDB, guardaremos los totales generales en las propiedades '..._total' de cada pago de la lista
-    val_bruto_tot_inicial = int(pagos_lista[0].get("valor_bruto_total") or 0) if pagos_lista else 0
-    deduc_tot_inicial = int(pagos_lista[0].get("deducciones_pago_total") or 0) if pagos_lista else 0
-    neto_tot_inicial = int(pagos_lista[0].get("valor_neto_pago_total") or 0) if pagos_lista else 0
-    
-    t1, t2, t3 = st.columns(3)
-    with t1:
-        acum_bruto_total = st.number_input(
-            "Valor Bruto Total (Acumulado)",
-            min_value=0,
-            step=100000,
-            value=val_bruto_tot_inicial,
-            key=f"{prefijo}_val_bruto_tot_global",
-            disabled=deshabilitado
-        )
-    with t2:
-        acum_deduc_total = st.number_input(
-            "Deducciones Total (Acumulado)",
-            min_value=0,
-            step=100000,
-            value=deduc_tot_inicial,
-            key=f"{prefijo}_pago_deduc_tot_global",
-            disabled=deshabilitado
-        )
-    with t3:
-        acum_neto_total = st.number_input(
-            "Valor Neto Total (Acumulado)",
-            min_value=0,
-            step=100000,
-            value=acum_bruto_total - acum_deduc_total if acum_bruto_total > acum_deduc_total else neto_tot_inicial,
-            key=f"{prefijo}_pago_neto_tot_global",
-            disabled=deshabilitado
-        )
-    # Botón de calculadora popover debajo de los inputs de totales
-    c_col1, c_col2 = st.columns([1.2, 4])
-    with c_col1:
-        with st.popover("🧮 Calculadora", key=f"{prefijo}_btn_calc_popover", use_container_width=True):
-            st.markdown("<h4 style='margin:0; padding-bottom:10px; color:#FF8C00;'>🧮 Calculadora Rápida</h4>", unsafe_allow_html=True)
-            calc_v1 = st.number_input("Valor A (COP)", min_value=0, step=10000, key=f"{prefijo}_calc_val_a")
-            calc_op = st.selectbox("Operación", ["+", "-", "*", "/"], key=f"{prefijo}_calc_oper")
-            calc_v2 = st.number_input("Valor B (COP)", min_value=0, step=10000, key=f"{prefijo}_calc_val_b")
-            
-            res_val = 0
-            if calc_op == "+":
-                res_val = calc_v1 + calc_v2
-            elif calc_op == "-":
-                res_val = calc_v1 - calc_v2
-            elif calc_op == "*":
-                res_val = calc_v1 * calc_v2
-            elif calc_op == "/" and calc_v2 != 0:
-                res_val = calc_v1 / calc_v2
-                
-            res_entero = int(res_val)
-            
-            # Autocopiador HTML renderizado usando st.components.v1.html para aislamiento correcto en sandbox de Streamlit
-            import streamlit.components.v1 as components
-            components.html(
-                f"""
-                <div style="font-family:sans-serif; background-color:#E8F5E9; border-radius:8px; padding:8px 12px; border:1px solid #C8E6C9; display:flex; align-items:center; justify-content:between;">
-                    <span style="font-weight:bold; color:#2E7D32; font-size:13px; flex-grow:1;">Resultado: {res_entero}</span>
-                    <button
-                        onclick='navigator.clipboard.writeText("{res_entero}").then(() => {{ this.innerText = "✅"; setTimeout(() => this.innerText = "📋", 1000); }})'
-                        style="border:1px solid #A5D6A7; border-radius:4px; width:26px; height:26px; background:#fff; cursor:pointer; font-size:12px; display:inline-flex; align-items:center; justify-content:center;"
-                        title="Copiar resultado"
-                    >📋</button>
-                </div>
-                """,
-                height=48
-            )
-            st.caption("Usa esta ventana flotante para hacer tus sumas manuales de forma rápida. Haz clic en el botón de la derecha para copiar el resultado.")
 
-    st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
-
-    # Inyectamos los totales del contrato ingresados por el usuario en cada uno de los elementos de pagos para que la base de datos valide correctamente
-    for p in pagos_retorno:
-        p["valor_bruto_total"] = acum_bruto_total
-        p["deducciones_pago_total"] = acum_deduc_total
-        p["valor_neto_pago_total"] = acum_neto_total
-        
     return {
         "tiene_inventario": tiene_inv,
         "desc_inventario": desc_inv if tiene_inv else None,
-        "valor_total_ejecutado_contrato": val_total_ejec,
-        "saldo_presp_lib_contrato": saldo_presp,
+        "valor_total_por_pagar_contrato": val_total_por_pagar,
         "valor_total_pagado": val_tot_pagado,
         "prorrogra_contrato": {
             "tiene_prorroga": tiene_pror,

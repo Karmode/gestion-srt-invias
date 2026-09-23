@@ -16,7 +16,7 @@ from app.core.ui_laboral import (
     limpiar_estado_laboral,
     render_seccion_firma,
 )
-from app.services.usuario_service import UsuarioService
+from app.services.usuario_service import DIAS_GRACIA_DESCARGA_FORMATOS, UsuarioService
 
 TIPOS_DOCUMENTO = {
     "": "— Sin especificar —",
@@ -200,11 +200,17 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
     )
 
     for _c in _contratos:
-        _c_fin = UsuarioService._contrato_finalizado(_c)
+        _c_vencido = UsuarioService._contrato_finalizado(_c)
+        _c_fin = UsuarioService._contrato_finalizado(_c, dias_gracia=DIAS_GRACIA_DESCARGA_FORMATOS)
         _c_num = _c.get("numero", "")
         _c_fi = _c.get("fecha_inicio")
         _c_ff = _c.get("fecha_fin")
-        _estado = "🔴 Finalizado" if _c_fin else "🟢 Activo"
+        if not _c_vencido:
+            _estado = "🟢 Activo"
+        elif not _c_fin:
+            _estado = "🟡 Abierto temporalmente (2 meses)"
+        else:
+            _estado = "🔴 Finalizado"
         with st.expander(f"{_c_num} — {_estado}"):
             _d1, _d2 = st.columns(2)
             with _d1:
@@ -217,18 +223,22 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                 _vpp = _c.get("valor_primer_pago")
                 st.write(f"**Valor primer pago:** {'${:,.0f}'.format(_vpp) if _vpp else '—'}")
                 st.write(f"**RP / compromiso presupuestal:** {_c.get('rp_compromiso_presupuestal') or '—'}")
-            _d3, _d4, _d5 = st.columns(3)
+            _d3, _d_secop, _d4, _d5 = st.columns(4)
             with _d3:
                 _frp = _c.get("fecha_recurso_presupuestal")
                 st.write(f"**Fecha RP:** {_frp.strftime('%d/%m/%Y') if _frp else '—'}")
+            with _d_secop:
+                _secop = _c.get("firma_cps_secop")
+                st.write(f"**Firma SECOP:** {_secop.strftime('%d/%m/%Y') if _secop else '—'}")
             with _d4:
                 st.write(f"**Inicio:** {_c_fi.strftime('%d/%m/%Y') if _c_fi else '—'}")
             with _d5:
                 st.write(f"**Fin:** {_c_ff.strftime('%d/%m/%Y') if _c_ff else '—'}")
             if _c.get("objeto"):
                 st.write(f"**Objeto:** {_c.get('objeto')}")
-            if _c.get("radicado_del_contrato"):
-                st.write(f"**Radicado del contrato:** {_c.get('radicado_del_contrato')}")
+            _c_foi = _c.get("fecha_orden_inicio_contrato")
+            if _c_foi:
+                st.write(f"**Radicado/ Fecha de orden de inicio Contrato:** {_c_foi.strftime('%d/%m/%Y')}")
 
             _fi_ed = _c_fi.date() if _c_fi and hasattr(_c_fi, "date") else _c_fi
             _ff_ed = _c_ff.date() if _c_ff and hasattr(_c_ff, "date") else _c_ff
@@ -277,7 +287,7 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                     unsafe_allow_html=True
                 )
                 _e_rp = st.text_input("RP / compromiso presupuestal", value=_c.get("rp_compromiso_presupuestal") or "", key=f"e_rp_{_c_num}", placeholder="Código alfanumérico", label_visibility="collapsed")
-                _ec3, _ec4, _ec5 = st.columns(3)
+                _ec3, _ec_secop, _ec4, _ec5 = st.columns(4)
                 with _ec3:
                     _e_frp_ed = _c.get("fecha_recurso_presupuestal")
                     if _e_frp_ed and hasattr(_e_frp_ed, "date"):
@@ -299,6 +309,27 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                         unsafe_allow_html=True
                     )
                     _e_frp = st.date_input("Fecha recurso presupuestal", value=_e_frp_ed, format="DD/MM/YYYY", key=f"e_frp_{_c_num}", label_visibility="collapsed")
+                with _ec_secop:
+                    _e_secop_ed = _c.get("firma_cps_secop")
+                    if _e_secop_ed and hasattr(_e_secop_ed, "date"):
+                        _e_secop_ed = _e_secop_ed.date()
+                    st.markdown(
+                        """
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                            <span style="font-size: 14px; font-weight: 500; color: #333333;">Fecha de firma del contrato SECOP</span>
+                            <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                                <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                    <div class="srti-tooltip-content" style="font-weight: normal;">
+                                        <h4>Fecha de firma del contrato SECOP</h4>
+                                        <p>Fecha en que se firmó el contrato en la plataforma SECOP.</p>
+                                    </div>
+                                </span>
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                    _e_secop = st.date_input("Fecha de firma del contrato SECOP", value=_e_secop_ed, format="DD/MM/YYYY", key=f"e_secop_{_c_num}", label_visibility="collapsed")
                 with _ec4:
                     st.markdown(
                         """
@@ -339,12 +370,12 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                 st.markdown(
                     """
                     <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
-                        <span style="font-size: 14px; font-weight: 500; color: #333333;">Radicado del contrato</span>
+                        <span style="font-size: 14px; font-weight: 500; color: #333333;">Radicado/ Fecha de orden de inicio Contrato</span>
                         <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
                             <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
                                 <div class="srti-tooltip-content" style="font-weight: normal;">
-                                    <h4>Radicado del contrato</h4>
-                                    <p>Este radicado puede ser encontrado en las cláusulas, estudios previos o repositorios del contrato, y será necesario para el Acta de entrega.</p>
+                                    <h4>Radicado/ Fecha de orden de inicio Contrato</h4>
+                                    <p>Fecha de la orden de inicio del contrato, encontrable en las cláusulas, estudios previos o repositorios del contrato, y necesaria para el Acta de entrega.</p>
                                 </div>
                             </span>
                         </div>
@@ -352,7 +383,9 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                     """,
                     unsafe_allow_html=True
                 )
-                _e_rad = st.text_input("Radicado del contrato", value=_c.get("radicado_del_contrato") or "", key=f"e_rad_{_c_num}", label_visibility="collapsed")
+                _foi_c = _c.get("fecha_orden_inicio_contrato")
+                _foi_ed = _foi_c.date() if _foi_c and hasattr(_foi_c, "date") else _foi_c
+                _e_rad = st.date_input("Radicado/ Fecha de orden de inicio Contrato", value=_foi_ed, format="DD/MM/YYYY", key=f"e_rad_{_c_num}", label_visibility="collapsed")
                 
                 # RENDERIZAMOS EL BALANCE GENERAL Y PLAN DE PAGOS
                 from app.core.ui_contratos import render_balance_y_pagos
@@ -370,10 +403,11 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                         "fecha_inicio": _e_fi,
                         "fecha_fin": _e_ff,
                         "fecha_recurso_presupuestal": _e_frp,
+                        "firma_cps_secop": _e_secop,
                         "valor_mensual": _e_vm if _e_vm > 0 else None,
                         "valor_primer_pago": _e_vpp if _e_vpp > 0 else None,
                         "objeto": _e_obj.strip(),
-                        "radicado_del_contrato": _e_rad.strip() if _e_rad else None,
+                        "fecha_orden_inicio_contrato": _e_rad,
                     }
                     datos_totales.update(_balance_pagos_datos)
                     
@@ -427,7 +461,7 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                 unsafe_allow_html=True
             )
             _n_rp = st.text_input("RP / compromiso presupuestal", placeholder="Código alfanumérico", label_visibility="collapsed")
-            _nc3, _nc4, _nc5 = st.columns(3)
+            _nc3, _nc_secop, _nc4, _nc5 = st.columns(4)
             with _nc3:
                 st.markdown(
                     """
@@ -446,6 +480,24 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                     unsafe_allow_html=True
                 )
                 _n_frp = st.date_input("Fecha recurso presupuestal", value=None, format="DD/MM/YYYY", label_visibility="collapsed")
+            with _nc_secop:
+                st.markdown(
+                    """
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                        <span style="font-size: 14px; font-weight: 500; color: #333333;">Fecha de firma del contrato SECOP</span>
+                        <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
+                            <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
+                                <div class="srti-tooltip-content" style="font-weight: normal;">
+                                    <h4>Fecha de firma del contrato SECOP</h4>
+                                    <p>Fecha en que se firmó el contrato en la plataforma SECOP.</p>
+                                </div>
+                            </span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                _n_secop = st.date_input("Fecha de firma del contrato SECOP", value=None, format="DD/MM/YYYY", label_visibility="collapsed")
             with _nc4:
                 st.markdown(
                     """
@@ -486,12 +538,12 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
             st.markdown(
                 """
                 <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
-                    <span style="font-size: 14px; font-weight: 500; color: #333333;">Radicado del contrato</span>
+                    <span style="font-size: 14px; font-weight: 500; color: #333333;">Radicado/ Fecha de orden de inicio Contrato</span>
                     <div class="srti-tooltip-container" style="margin: 0; display: inline-flex;">
                         <span class="srti-tooltip-icon" tabindex="0" style="margin: 0; width: 16px; height: 16px; font-size: 12px;">ⓘ
                             <div class="srti-tooltip-content" style="font-weight: normal;">
-                                <h4>Radicado del contrato</h4>
-                                <p>Este radicado puede ser encontrado en las cláusulas, estudios previos o repositorios del contrato, y será necesario para el Acta de entrega.</p>
+                                <h4>Radicado/ Fecha de orden de inicio Contrato</h4>
+                                <p>Fecha de la orden de inicio del contrato, encontrable en las cláusulas, estudios previos o repositorios del contrato, y necesaria para el Acta de entrega.</p>
                             </div>
                         </span>
                     </div>
@@ -499,7 +551,7 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                 """,
                 unsafe_allow_html=True
             )
-            _n_rad = st.text_input("Radicado del contrato", label_visibility="collapsed")
+            _n_rad = st.date_input("Radicado/ Fecha de orden de inicio Contrato", value=None, format="DD/MM/YYYY", label_visibility="collapsed")
             _n_env = st.form_submit_button("Agregar contrato", use_container_width=True)
         if _n_env:
             try:
@@ -511,10 +563,11 @@ def modal_editar_usuario(usuario_doc, permisos, sesion, roles_disponibles, permi
                     "fecha_inicio": _n_fi,
                     "fecha_fin": _n_ff,
                     "fecha_recurso_presupuestal": _n_frp,
+                    "firma_cps_secop": _n_secop,
                     "valor_mensual": _n_vm if _n_vm > 0 else None,
                     "valor_primer_pago": _n_vpp if _n_vpp > 0 else None,
                     "objeto": _n_obj.strip(),
-                    "radicado_del_contrato": _n_rad.strip() if _n_rad else None,
+                    "fecha_orden_inicio_contrato": _n_rad,
                 })
                 st.session_state["mensaje_exito_usuarios"] = "Contrato agregado correctamente."
                 st.session_state["last_opened_usuario_id"] = None
