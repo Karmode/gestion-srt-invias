@@ -554,10 +554,10 @@ def _render_opcion_1_cuenta_cobro(servicio, sesion, año_cert, mes_cert, nombre_
         
         st.write("---")
         if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
-            if servicio.firmar_y_generar_cuenta_cobro(usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert):
-                st.success("¡Formato generado y firmado digitalmente con éxito!")
-                limpiar_cache_lecturas()
-                st.rerun()
+            _generar_formato_seguro(
+                servicio.firmar_y_generar_cuenta_cobro,
+                usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert,
+            )
 
 
 def _render_opcion_2_retencion_primera(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, bloqueado=False):
@@ -648,10 +648,10 @@ def _render_opcion_2_retencion_primera(servicio, sesion, año_cert, mes_cert, no
 
         st.write("---")
         if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
-            if servicio.firmar_y_generar_retencion_primera(usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert):
-                st.success("¡Formato generado y firmado digitalmente con éxito!")
-                limpiar_cache_lecturas()
-                st.rerun()
+            _generar_formato_seguro(
+                servicio.firmar_y_generar_retencion_primera,
+                usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert,
+            )
 
 
 def _render_opcion_3_retencion_segunda(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, bloqueado=False):
@@ -742,10 +742,10 @@ def _render_opcion_3_retencion_segunda(servicio, sesion, año_cert, mes_cert, no
 
         st.write("---")
         if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
-            if servicio.firmar_y_generar_retencion_segunda(usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert):
-                st.success("¡Formato generado y firmado digitalmente con éxito!")
-                limpiar_cache_lecturas()
-                st.rerun()
+            _generar_formato_seguro(
+                servicio.firmar_y_generar_retencion_segunda,
+                usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert,
+            )
 
 
 def _render_opcion_4_declarante_dependencia(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, bloqueado=False):
@@ -835,10 +835,10 @@ def _render_opcion_4_declarante_dependencia(servicio, sesion, año_cert, mes_cer
         
         st.write("---")
         if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
-            if servicio.firmar_y_generar_dependencia(usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert):
-                st.success("¡Formato generado y firmado digitalmente con éxito!")
-                limpiar_cache_lecturas()
-                st.rerun()
+            _generar_formato_seguro(
+                servicio.firmar_y_generar_dependencia,
+                usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert,
+            )
 
 
 def _render_opcion_5_acta_compromiso(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, bloqueado=False):
@@ -881,6 +881,9 @@ def _render_opcion_5_acta_compromiso(servicio, sesion, año_cert, mes_cert, nomb
         )
         _mostrar_avance_actas("acta_compromiso", cert_actual)
     else:
+        if _bloqueado_por_firma_secop(usuario_id, año_cert, mes_cert):
+            return
+
         st.warning(f"Aún no has generado el formato para el período **{nombre_mes_cert} {año_cert}**.")
         
         # Mostrar resumen de datos del usuario
@@ -933,10 +936,38 @@ def _render_opcion_5_acta_compromiso(servicio, sesion, año_cert, mes_cert, nomb
         
         st.write("---")
         if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
-            if servicio.firmar_y_generar_acta_compromiso(usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert):
-                st.success("¡Formato generado y firmado digitalmente con éxito!")
-                limpiar_cache_lecturas()
-                st.rerun()
+            _generar_formato_seguro(
+                servicio.firmar_y_generar_acta_compromiso,
+                usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert,
+            )
+
+
+def _bloqueado_por_firma_secop(usuario_id: str, año_cert: int, mes_cert: int) -> bool:
+    """Muestra el aviso y devuelve True si el contrato del período no tiene la
+    fecha de firma SECOP diligenciada (bloquea la generación del formato)."""
+    req = UsuarioService().validar_firma_secop_contrato(usuario_id, año_cert, mes_cert)
+    if req["valido"]:
+        return False
+    st.warning(
+        "🔒 **No puedes generar este formato todavía**\n\n"
+        "Para generarlo debes diligenciar el siguiente dato en tu contrato en **Mi Perfil › 📄 Contratos**:\n\n" +
+        "\n".join([f"- {item}" for item in req["faltantes"]])
+    )
+    st.page_link("pages/2_mi_perfil.py", label="Ir a Mi Perfil →", icon="👤")
+    return True
+
+
+def _generar_formato_seguro(generar, *args, **kwargs) -> None:
+    """Ejecuta la generación del formato mostrando los errores de negocio en la UI."""
+    try:
+        exito = generar(*args, **kwargs)
+    except ValueError as e:
+        st.error(str(e))
+        return
+    if exito:
+        st.success("¡Formato generado y firmado digitalmente con éxito!")
+        limpiar_cache_lecturas()
+        st.rerun()
 
 
 def _render_opcion_9_acta_recibo_entrega_real(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, bloqueado=False):
@@ -979,8 +1010,10 @@ def _render_opcion_9_acta_recibo_entrega_real(servicio, sesion, año_cert, mes_c
         )
         _mostrar_avance_actas("acta_recibo_entrega_cps_real", cert_actual)
     else:
+        if _bloqueado_por_firma_secop(usuario_id, año_cert, mes_cert):
+            return
+
         # Validar requisitos específicos de Acta de Recibo y Entrega CPS
-        from app.services.usuario_service import UsuarioService
         req_acta = UsuarioService().validar_datos_acta_recibo_entrega_cps(usuario_id)
         if not req_acta["valido"]:
             st.warning(
@@ -1015,10 +1048,10 @@ def _render_opcion_9_acta_recibo_entrega_real(servicio, sesion, año_cert, mes_c
 
         st.write("---")
         if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
-            if servicio.firmar_y_generar_acta_recibo_entrega_cps_real(usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert):
-                st.success("¡Formato generado y firmado digitalmente con éxito!")
-                limpiar_cache_lecturas()
-                st.rerun()
+            _generar_formato_seguro(
+                servicio.firmar_y_generar_acta_recibo_entrega_cps_real,
+                usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert,
+            )
 
 
 def _render_opcion_8_acta_recibo_entrega(servicio, sesion, año_cert, mes_cert, nombre_mes_cert, bloqueado=False):
@@ -1061,6 +1094,9 @@ def _render_opcion_8_acta_recibo_entrega(servicio, sesion, año_cert, mes_cert, 
         )
         _mostrar_avance_actas("acta_recibo_entrega_cps", cert_actual)
     else:
+        if _bloqueado_por_firma_secop(usuario_id, año_cert, mes_cert):
+            return
+
         st.warning(f"Aún no has generado el formato para el período **{nombre_mes_cert} {año_cert}**.")
         
         # Mostrar resumen de datos del usuario
@@ -1084,10 +1120,10 @@ def _render_opcion_8_acta_recibo_entrega(servicio, sesion, año_cert, mes_cert, 
 
         st.write("---")
         if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
-            if servicio.firmar_y_generar_acta_recibo_entrega(usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert):
-                st.success("¡Formato generado y firmado digitalmente con éxito!")
-                limpiar_cache_lecturas()
-                st.rerun()
+            _generar_formato_seguro(
+                servicio.firmar_y_generar_acta_recibo_entrega,
+                usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert,
+            )
 
 
 
@@ -1147,10 +1183,10 @@ def _render_opcion_10_informe_actividades_final(servicio, sesion, año_cert, mes
 
         st.write("---")
         if st.button("✍️ Firmar y Generar Formato", type="primary", use_container_width=True, disabled=not bool(contrato_vig.get("numero"))):
-            if servicio.firmar_y_generar_informe_actividades_final(usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert):
-                st.success("¡Formato generado y firmado digitalmente con éxito!")
-                limpiar_cache_lecturas()
-                st.rerun()
+            _generar_formato_seguro(
+                servicio.firmar_y_generar_informe_actividades_final,
+                usuario_id, nombre_usuario_actual, año=año_cert, mes=mes_cert,
+            )
 
 
 def _render_alerta_faltantes(faltantes: dict) -> None:
