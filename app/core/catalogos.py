@@ -35,6 +35,14 @@ GRUPOS_TRABAJO = {
 }
 
 
+# Semilla del catálogo 'grupos_trabajo' (colección). Las claves coinciden con GRUPOS_TRABAJO.
+GRUPOS_TRABAJO_BASE = [
+    {"clave": "despacho", "nombre": "DESPACHO", "descripcion": "Grupo de Despacho", "orden": 1},
+    {"clave": "permisos", "nombre": "PERMISOS", "descripcion": "Grupo de Permisos (SUIT)", "orden": 2},
+    {"clave": "normativa_tecnica", "nombre": "NORMATIVA", "descripcion": "Grupo de Normativa Técnica", "orden": 3},
+    {"clave": "innovacion_tecnica", "nombre": "INNOVACIÓN", "descripcion": "Grupo de Innovación Técnica", "orden": 4},
+]
+
 # Fuente única de los 7 permisos SUIT que puede tramitar la entidad. Se usa para
 # generar el catálogo de permisos de app (PERMISOS_BASE) y para construir tanto los
 # botones de "Cargue SUIT Permiso" como el multiselect de asignación en Gestores Perm.
@@ -116,6 +124,7 @@ PERMISOS_BASE = [
     {"clave": "grupo.permisos.ver", "descripcion": "Ver sección de Permisos (SUIT)", "modulo": "grupos"},
     {"clave": "grupo.normativa_tecnica.ver", "descripcion": "Ver sección de Normativa Técnica", "modulo": "grupos"},
     {"clave": "grupo.innovacion_tecnica.ver", "descripcion": "Ver sección de Innovación Técnica", "modulo": "grupos"},
+    {"clave": "grupo.gestionar_miembros", "descripcion": "Asignar y retirar personas de los grupos de trabajo", "modulo": "grupos"},
 ] + [
     {"clave": p["clave"], "descripcion": f"Ver y cargar: {p['label_corto']}", "modulo": "suit"}
     for p in PERMISOS_SUIT_CARGUE
