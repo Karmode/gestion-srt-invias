@@ -153,7 +153,7 @@ ROLES_BASE = [
     {
         "nombre": "firmante_certificacion",
         "descripcion": "Firmante designado para aprobación de certificaciones",
-        "permisos": ["certificacion.ver"],
+        "permisos": ["certificacion.ver", "dashboard.ver"],
         "activo": True,
     },
     {
@@ -165,7 +165,7 @@ ROLES_BASE = [
     {
         "nombre": "asignacion",
         "descripcion": "Rol de asignación de correspondencia",
-        "permisos": ["correspondencia.ver", "correspondencia.crear", "correspondencia.editar"],
+        "permisos": ["correspondencia.ver", "correspondencia.crear", "correspondencia.editar", "dashboard.ver"],
         "activo": True,
     },
     {
@@ -177,13 +177,13 @@ ROLES_BASE = [
     {
         "nombre": "lider",
         "descripcion": "Líder de equipo",
-        "permisos": ["correspondencia.ver"],
+        "permisos": ["correspondencia.ver", "dashboard.ver"],
         "activo": True,
     },
     {
         "nombre": "gestor",
         "descripcion": "Gestor de correspondencia",
-        "permisos": ["correspondencia.ver"],
+        "permisos": ["correspondencia.ver", "dashboard.ver"],
         "activo": True,
     },
     {

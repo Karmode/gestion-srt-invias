@@ -42,12 +42,12 @@
 |---|---|---|
 | `admin` | Administrador del sistema | Todos excepto `firmar_corr`, `firmar_gd`, `firmar_secop`, `firmar_financiera`, `firmar_abogado`, `firmar_jefe` |
 | `supervisor` | Supervisor de certificaciones mensuales | `certificacion.ver`, `certificacion.aprobar`, `correspondencia.ver`, `dashboard.ver` |
-| `firmante_certificacion` | Firmante designado — solo como base; el permiso específico de firma va en `permisos_extra` | `certificacion.ver` |
+| `firmante_certificacion` | Firmante designado — solo como base; el permiso específico de firma va en `permisos_extra` | `certificacion.ver`, `dashboard.ver` |
 | `coordinador` | Coordinador de área | `correspondencia.ver`, `dashboard.ver`, `reporte.ver` |
-| `asignacion` | Asignador de correspondencia | `correspondencia.ver`, `correspondencia.crear`, `correspondencia.editar` |
+| `asignacion` | Asignador de correspondencia | `correspondencia.ver`, `correspondencia.crear`, `correspondencia.editar`, `dashboard.ver` |
 | `direccion` | Dirección / gerencia con acceso a reportes | `reporte.ver`, `dashboard.ver` |
-| `lider` | Líder de equipo | `correspondencia.ver` |
-| `gestor` | Gestor de correspondencia | `correspondencia.ver` |
+| `lider` | Líder de equipo | `correspondencia.ver`, `dashboard.ver` |
+| `gestor` | Gestor de correspondencia | `correspondencia.ver`, `dashboard.ver` |
 
 ---
 
