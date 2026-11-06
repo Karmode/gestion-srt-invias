@@ -91,6 +91,45 @@ PERMISOS_SUIT_CARGUE = [
     },
 ]
 
+# Identificador corto y estable de cada trámite (el que se guarda en la BD):
+# "suit.ver_cierre_vias" -> "cierre_vias".
+for _p in PERMISOS_SUIT_CARGUE:
+    _p["tramite"] = _p["clave"].removeprefix("suit.ver_")
+del _p
+
+TRAMITES_SUIT = {p["tramite"]: p for p in PERMISOS_SUIT_CARGUE}
+
+# Campos de ENTRADA del formulario de cargue mensual SUIT (iguales para los 7 trámites).
+# seccion: "resueltas" o "pqrd". Los totales NO se digitan: se calculan (ver TOTALES_SUIT).
+CAMPOS_SUIT = [
+    {"id": "solicitudes_linea", "seccion": "resueltas", "etiqueta": (
+        "Número de solicitudes resueltas en línea (Respuestas a las solicitudes del trámite tanto "
+        "favorables como desfavorables en las cuales se usaron medios electrónicos para su envío)")},
+    {"id": "solicitudes_presencial", "seccion": "resueltas",
+     "etiqueta": "Número de solicitudes resueltas de forma presencial"},
+    {"id": "otras_pqrd", "seccion": "pqrd", "etiqueta": "Número de otras PQRD relacionadas con el trámite"},
+    {"id": "quejas", "seccion": "pqrd", "etiqueta": "Quejas recibidas (PQRD)"},
+    {"id": "reclamos", "seccion": "pqrd", "etiqueta": "Reclamos recibidos (PQRD)"},
+    {"id": "denuncias", "seccion": "pqrd", "etiqueta": "Denuncias recibidas (PQRD)"},
+]
+CLAVES_CAMPOS_SUIT = [c["id"] for c in CAMPOS_SUIT]
+
+# Totales calculados del formato SUIT (seccion en la que se muestran). Ninguno se guarda en la base de datos.
+TOTALES_SUIT = {
+    "total_resueltas": {
+        "seccion": "resueltas",
+        "etiqueta": "Total solicitudes resueltas",
+        "ayuda": ('La cifra de la sumatoria aquí calculada no podrá ser superior al dato de la fila '
+                  '"Número de PQRD recibidas", si esto pasa por favor revisar y ajustar lo pertinente'),
+    },
+    "pqrd_recibidas": {
+        "seccion": "pqrd",
+        "etiqueta": "Número de PQRD recibidas",
+        "ayuda": ("Total calculado: solicitudes resueltas (en línea + presenciales) más otras PQRD, "
+                  "quejas, reclamos y denuncias del mes."),
+    },
+}
+
 
 PERMISOS_BASE = [
     {"clave": "usuario.ver", "descripcion": "Ver usuarios", "modulo": "usuarios"},
