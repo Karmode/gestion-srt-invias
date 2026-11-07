@@ -769,7 +769,25 @@ with tab_gestion:
                 key="descarga_plantilla_cargue",
             )
             archivo_cargue = st.file_uploader(
-                "Archivo del cargue", type=["xlsx", "csv", "txt"], key="archivo_cargue_masivo"
+                "Archivo del cargue", type=["xlsx", "csv", "txt"], key="archivo_cargue_masivo",
+                help=(
+                    "**Cómo hacerlo**\n\n"
+                    "1. Descargue el formato de muestra y llénelo (borre las filas de ejemplo).\n"
+                    "2. Conserve las 4 columnas: **Radicado, Fecha respuesta, Estado, Comentario**.\n"
+                    "3. Suba el archivo (.xlsx, .csv o .txt; máx. 1.000 filas) y pulse *Procesar cargue*.\n\n"
+                    "**Columna Estado**\n\n"
+                    "- Un número de radicado de salida (ej. 2026_VUVRAZ_200000) → **Respondido**.\n"
+                    "- *Archivado* → **Archivado**.\n"
+                    "- *Traslado* / *Traslado por competencia* → **Traslado por competencia**.\n"
+                    "- *Borrador* o vacío → se omite.\n\n"
+                    "**Tenga en cuenta**\n\n"
+                    "- El radicado debe existir y estar abierto; los ya cerrados no se modifican.\n"
+                    "- Un solo código por celda: si hay dos, se rechaza todo el archivo.\n"
+                    "- La fecha (dd/mm/aaaa) es opcional, y no puede ser futura.\n"
+                    "- Si faltan columnas o los encabezados no coinciden, se rechaza todo el archivo.\n"
+                    "- Usted responde por la calidad de los datos: cada cambio queda en la "
+                    "trazabilidad con su nombre y la fecha del cargue."
+                ),
             )
             if archivo_cargue is not None and st.button("Procesar cargue", type="primary", key="btn_procesar_cargue"):
                 try:
