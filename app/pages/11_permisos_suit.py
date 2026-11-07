@@ -21,7 +21,7 @@ from app.core.ui_suit_seguimiento import render_seguimiento
 from app.core.ui_titulos import mostrar_titulo_decorado
 from app.core.sesion import obtener_sesion
 from app.core.zona_horaria import utc_a_bogota
-from app.services.suit_service import ErrorSuit, SuitService, permisos_efectivos
+from app.services.suit_service import ErrorConflictoSuit, ErrorSuit, SuitService, permisos_efectivos
 
 st.set_page_config(
     page_title="SUIT",
@@ -113,6 +113,19 @@ def _render_formulario(tramite: str, sesion: dict) -> None:
 
     guardado = servicio.obtener_mes(tramite, anio, mes)
     previos = (guardado or {}).get("valores", {})
+
+    # Versión del mes que el usuario está viendo (para detectar ediciones de otra persona).
+    # Los campos conservan lo digitado entre reruns; si aún no existen, parten de lo guardado.
+    prefijo = f"{tramite}_{anio}_{mes}_"
+    clave_version = f"suit_version_{prefijo}"
+    if f"{prefijo}{CAMPOS_SUIT[0]['id']}" not in st.session_state:
+        st.session_state[clave_version] = (guardado or {}).get("actualizado_en")
+
+    def recargar_guardado() -> None:
+        for campo in CAMPOS_SUIT:
+            st.session_state.pop(f"{prefijo}{campo['id']}", None)
+        st.session_state.pop(clave_version, None)
+
     if guardado:
         actualizado = utc_a_bogota(guardado["actualizado_en"]).strftime("%d/%m/%Y %H:%M")
         st.caption(f":material/history: Último guardado: {actualizado} por {guardado.get('actualizado_por', '—')}")
@@ -145,12 +158,18 @@ def _render_formulario(tramite: str, sesion: dict) -> None:
                 actor=sesion.get("usuario", "sistema"),
                 permisos_actor=permisos_efectivos(sesion),
                 actor_id=sesion.get("id"),
+                version_esperada=st.session_state.get(clave_version),
             )
+        except ErrorConflictoSuit as e:
+            st.warning(str(e))
+            st.button("Recargar valores guardados", icon=":material/refresh:",
+                      on_click=recargar_guardado, key=f"recargar_{prefijo}")
         except (ErrorSuit, ValidacionAutorizacion) as e:
             st.warning(str(e))
         except Exception as e:
             st.error(f"No se pudo guardar el cargue: {e}")
         else:
+            st.session_state[clave_version] = (servicio.obtener_mes(tramite, anio, mes) or {}).get("actualizado_en")
             seguimiento_suit.clear()  # el tablero de Seguimiento debe reflejar este guardado
             st.toast(f"Cargue de {nombre_mes} {anio} {accion} correctamente.", icon=":material/check_circle:")
     refrescar_avance()
