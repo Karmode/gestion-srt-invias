@@ -145,6 +145,7 @@ PERMISOS_BASE = [
     {"clave": "correspondencia.ver", "descripcion": "Ver correspondencia", "modulo": "correspondencia"},
     {"clave": "correspondencia.crear", "descripcion": "Crear correspondencia", "modulo": "correspondencia"},
     {"clave": "correspondencia.editar", "descripcion": "Editar correspondencia", "modulo": "correspondencia"},
+    {"clave": "correspondencia.cargue_masivo", "descripcion": "Cargue masivo de respuestas de correspondencia", "modulo": "correspondencia"},
     {"clave": "pago.cargar", "descripcion": "Cargar pagos masivos desde Excel", "modulo": "pagos"},
     {"clave": "certificacion.ver", "descripcion": "Ver certificaciones propias", "modulo": "certificaciones"},
     {"clave": "certificacion.aprobar", "descripcion": "Aprobar certificaciones de colaboradores", "modulo": "certificaciones"},
@@ -210,13 +211,13 @@ ROLES_BASE = [
     {
         "nombre": "coordinador",
         "descripcion": "Coordinador de área",
-        "permisos": ["correspondencia.ver", "dashboard.ver", "reporte.ver"],
+        "permisos": ["correspondencia.ver", "correspondencia.cargue_masivo", "dashboard.ver", "reporte.ver"],
         "activo": True,
     },
     {
         "nombre": "lider",
         "descripcion": "Líder de equipo",
-        "permisos": ["correspondencia.ver", "dashboard.ver"],
+        "permisos": ["correspondencia.ver", "correspondencia.cargue_masivo", "dashboard.ver"],
         "activo": True,
     },
     {
