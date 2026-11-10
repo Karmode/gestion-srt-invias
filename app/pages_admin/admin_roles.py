@@ -1,4 +1,5 @@
 import streamlit as st
+from app.core.ui_titulos import mostrar_titulo_decorado
 import pandas as pd
 
 from app.core.autorizacion import validar_permiso, ValidacionAutorizacion
@@ -13,7 +14,7 @@ def render(sesion=None):
     usuario_serv = UsuarioService()
     sesion = sesion or obtener_sesion()
 
-    st.title("Administración de roles")
+    mostrar_titulo_decorado("Administración de roles")
 
     if not sesion:
         st.warning("Debes iniciar sesión.")
@@ -41,7 +42,7 @@ def render(sesion=None):
     with col_r1:
         st.subheader("Listado de roles")
     with col_r2:
-        if st.button("🔄 Actualizar", use_container_width=True, key="refresh_roles"):
+        if st.button("🔄 Actualizar", width="stretch", key="refresh_roles"):
             st.rerun()
 
     show_dataframe(pd.DataFrame(datos), hide_index=True)

@@ -17,8 +17,56 @@ class UsuarioRepositorio:
     def buscar_por_id(self, id_usuario: str):
         return self.coleccion.find_one({"_id": ObjectId(id_usuario)})
 
+    def listar_por_ids(self, ids: list) -> list:
+        return list(self.coleccion.find({"_id": {"$in": list(ids)}}, {"password_hash": 0}))
+
+    def listar_con_permisos_extra(self, claves: list) -> list:
+        """Usuarios que tienen alguna de las claves dadas en ``permisos_extra``."""
+        return list(self.coleccion.find({"permisos_extra": {"$in": list(claves)}}, {"password_hash": 0}))
+
+    def contar_por_banco(self, clave_banco: str) -> int:
+        return self.coleccion.count_documents(
+            {"informacion_laboral.bancaria.banco": clave_banco}
+        )
+
+    def buscar_por_numero_documento(self, numero_documento: str):
+        return self.coleccion.find_one({"numero_documento": numero_documento})
+
+    def buscar_por_numero_contrato(self, numero: str, excluir_id: str = None):
+        query = {"contratos.numero": numero}
+        if excluir_id:
+            query["_id"] = {"$ne": ObjectId(excluir_id)}
+        return self.coleccion.find_one(query)
+
+    def agregar_contrato_a_usuario(self, id_usuario: str, contrato: dict):
+        self.coleccion.update_one(
+            {"_id": ObjectId(id_usuario)},
+            {
+                "$push": {"contratos": contrato},
+                "$set": {"fecha_actualizacion": datetime.now(timezone.utc)},
+            },
+        )
+
+    def editar_contrato_en_usuario(self, id_usuario: str, numero_contrato: str, nuevo_contrato: dict):
+        self.coleccion.update_one(
+            {"_id": ObjectId(id_usuario), "contratos.numero": numero_contrato},
+            {
+                "$set": {
+                    "contratos.$": nuevo_contrato,
+                    "fecha_actualizacion": datetime.now(timezone.utc),
+                }
+            },
+        )
+
     def listar(self):
-        return list(self.coleccion.find().sort("usuario", 1))
+        return list(self.coleccion.find({}, {"password_hash": 0}).sort("usuario", 1))
+
+    def listar_por_grupo_trabajo(self, grupo: str):
+        return list(
+            self.coleccion.find(
+                {"informacion_laboral.grupo_trabajo": grupo}, {"password_hash": 0}
+            ).sort("usuario", 1)
+        )
 
     def crear(self, datos: dict):
         datos["fecha_creacion"] = datetime.now(timezone.utc)

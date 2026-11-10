@@ -25,6 +25,7 @@ class AuthService:
 
         permisos = self._obtener_permisos(registro)
         self.repositorio.actualizar(str(registro["_id"]), {"ultimo_acceso": datetime.now(timezone.utc)})
+        informacion_laboral = registro.get("informacion_laboral") or {}
         sesion = {
             "id": str(registro["_id"]),
             "usuario": registro["usuario"],
@@ -32,7 +33,16 @@ class AuthService:
             "email": registro.get("email", ""),
             "roles": registro.get("roles", []),
             "permisos": permisos,
+            "tipo_documento": registro.get("tipo_documento", ""),
+            "numero_documento": registro.get("numero_documento", ""),
         }
+        try:
+            from app.services.asignacion_grupo_service import AsignacionGrupoService
+            grupos = AsignacionGrupoService().claves_de_usuario(sesion["id"])
+        except Exception:
+            grupos = {"grupos": [], "lider": []}
+        sesion["grupos"] = grupos["grupos"]
+        sesion["grupos_lider"] = grupos["lider"]
         sesion["id_sesion"] = self.sesion_service.abrir_sesion(sesion)
         return sesion, None
 

@@ -1,3 +1,23 @@
+# Sub-esquema reutilizable: afiliación a una entidad de seguridad social
+# (EPS / ARL / AFP / CCF). El aporte lo paga el contratista (registra 'valor',
+# 'valor_primer_mes' y 'valor_ultimo_mes') o la entidad (registra 'radicado');
+# 'paga' indica cuál de los dos casos aplica.
+_ESQUEMA_AFILIACION = {
+    "bsonType": ["object", "null"],
+    "properties": {
+        "entidad": {"bsonType": ["string", "null"], "description": "Clave del catálogo correspondiente"},
+        "paga": {
+            "bsonType": ["string", "null"],
+            "enum": ["contratista", "entidad", None],
+            "description": "Quién paga el aporte: 'contratista' (registra valor) o 'entidad' (registra radicado)",
+        },
+        "valor": {"bsonType": ["int", "long", "double", "null"], "description": "Valor mensual del aporte (COP) para los meses intermedios del contrato (segundo mes en adelante), cuando lo paga el contratista"},
+        "valor_primer_mes": {"bsonType": ["int", "long", "double", "null"], "description": "Valor del aporte (COP) correspondiente al primer mes del contrato, cuando lo paga el contratista"},
+        "valor_ultimo_mes": {"bsonType": ["int", "long", "double", "null"], "description": "Valor del aporte (COP) correspondiente al último mes del contrato, cuando lo paga el contratista"},
+        "radicado": {"bsonType": ["string", "null"], "description": "Número de radicado del pago, cuando lo paga la entidad"},
+    },
+}
+
 ESQUEMA_USUARIOS = {
     "bsonType": "object",
     "required": [
@@ -14,6 +34,172 @@ ESQUEMA_USUARIOS = {
     "properties": {
         "usuario": {"bsonType": "string", "minLength": 3},
         "nombre_completo": {"bsonType": "string"},
+        "tipo_documento": {
+            "bsonType": ["string", "null"],
+            "enum": ["CC", "CE", "TI", "PA", "RC", "PEP", "PPT", None],
+            "description": "CC=Cédula de Ciudadanía, CE=Cédula de Extranjería, TI=Tarjeta de Identidad, PA=Pasaporte, RC=Registro Civil, PEP=Permiso Especial de Permanencia, PPT=Permiso por Protección Temporal",
+        },
+        "numero_documento": {"bsonType": ["string", "null"]},
+        "lugar_expedicion_documento": {
+            "bsonType": ["string", "null"],
+            "description": "Ciudad de expedición del documento de identidad (texto libre)",
+        },
+        "contratos": {
+            "bsonType": ["array", "null"],
+            "items": {
+                "bsonType": "object",
+                "required": ["numero"],
+                "properties": {
+                    "numero": {"bsonType": "string", "minLength": 1},
+                    "tipo": {
+                        "bsonType": ["string", "null"],
+                        "enum": ["termino_indefinido", "termino_fijo", "obra_labor", "prestacion_servicios", "aprendizaje", None],
+                    },
+                    "objeto": {"bsonType": ["string", "null"]},
+                    "fecha_orden_inicio_contrato": {
+                        "bsonType": ["string", "date", "null"],
+                        "description": "Radicado / fecha de la orden de inicio (texto libre). 'date' solo por contratos guardados antes de que el campo fuera abierto.",
+                    },
+                    "valor": {"bsonType": ["int", "long", "double", "null"]},
+                    "valor_mensual": {"bsonType": ["int", "long", "double", "null"]},
+                    "valor_primer_pago": {"bsonType": ["int", "long", "double", "null"]},
+                    "rp_compromiso_presupuestal": {
+                        "bsonType": ["string", "null"],
+                        "description": "Código de Registro Presupuestal / compromiso presupuestal (alfanumérico)",
+                    },
+                    "fecha_recurso_presupuestal": {"bsonType": ["date", "null"]},
+                    "firma_cps_secop": {"bsonType": ["date", "null"]},
+                    "fecha_inicio": {"bsonType": ["date", "null"]},
+                    "fecha_fin": {"bsonType": ["date", "null"]},
+                    "tiene_inventario": {"bsonType": ["bool", "null"]},
+                    "desc_inventario": {"bsonType": ["string", "null"]},
+                    "valor_total_por_pagar_contrato": {"bsonType": ["int", "long", "double", "null"]},
+                    "valor_total_pagado": {"bsonType": ["int", "long", "double", "null"]},
+                    "prorrogra_contrato": {
+                        "bsonType": ["object", "null"],
+                        "properties": {
+                            "tiene_prorroga": {"bsonType": ["bool", "null"]},
+                            "fecha_prorrogra": {"bsonType": ["date", "null"]},
+                            "radicado_prorrogra": {"bsonType": ["string", "null"]},
+                        },
+                    },
+                    "adiciones_contrato": {
+                        "bsonType": ["object", "null"],
+                        "properties": {
+                            "tiene_adiciones": {"bsonType": ["bool", "null"]},
+                            "valor_adicion": {"bsonType": ["int", "long", "double", "null"]},
+                        },
+                    },
+                    "personalizar_ultimacuenta": {"bsonType": ["bool", "null"]},
+                    "valor_personalizar_ultimacuenta": {"bsonType": ["int", "long", "double", "null"]},
+                    "pagos": {
+                        "bsonType": ["array", "null"],
+                        "maxItems": 20,
+                        "items": {
+                            "bsonType": "object",
+                            "required": [
+                                "numero_pago",
+                                "fecha_pago",
+                                "valor_bruto_pago",
+                                "deducciones_pago",
+                                "valor_neto_pago",
+                            ],
+                            "properties": {
+                                "numero_pago": {"bsonType": "string"},
+                                "fecha_pago": {"bsonType": "date"},
+                                "valor_bruto_pago": {"bsonType": ["int", "long", "double"]},
+                                "deducciones_pago": {"bsonType": ["int", "long", "double"]},
+                                "valor_neto_pago": {"bsonType": ["int", "long", "double"]},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        "informacion_laboral": {
+            "bsonType": ["object", "null"],
+            "description": "Datos de seguridad social, bancarios, tributarios y dependientes. Opcional (no aplica a todos los usuarios).",
+            "properties": {
+                "es_pensionado": {
+                    "bsonType": ["bool", "null"],
+                    "description": "Si es True, AFP y CCF no aplican y no se validan para descarga de formatos",
+                },
+                "planilla_mes_vencido": {
+                    "bsonType": ["bool", "null"],
+                    "description": "True si paga planilla a mes vencido, False en caso contrario",
+                },
+                "grupo_trabajo": {
+                    "bsonType": ["string", "null"],
+                    "enum": ["despacho", "normativa_tecnica", "innovacion_tecnica", "permisos", "", None],
+                    "description": "Grupo de trabajo al que pertenece",
+                },
+                "ibc_prestaciones_sociales": {
+                    "bsonType": ["int", "long", "double", "null"],
+                    "description": "Ingreso Base de Cotización - Prestaciones sociales (valor numérico)",
+                },
+                "paga_iva": {
+                    "bsonType": ["bool", "null"],
+                    "description": "Indica si paga IVA",
+                },
+                "valor_iva": {
+                    "bsonType": ["int", "long", "double", "null"],
+                    "description": "Valor del IVA",
+                },
+                "seguridad_social": {
+                    "bsonType": ["object", "null"],
+                    "properties": {
+                        "eps": _ESQUEMA_AFILIACION,
+                        "arl": _ESQUEMA_AFILIACION,
+                        "afp": _ESQUEMA_AFILIACION,
+                        "ccf": _ESQUEMA_AFILIACION,
+                    },
+                },
+                "bancaria": {
+                    "bsonType": ["object", "null"],
+                    "properties": {
+                        "banco": {"bsonType": ["string", "null"], "description": "Clave del catálogo 'banco'"},
+                        "numero_cuenta": {
+                            "bsonType": ["string", "null"],
+                            "description": "Número de cuenta (string para preservar ceros a la izquierda)",
+                        },
+                        "tipo_cuenta": {
+                            "bsonType": ["string", "null"],
+                            "enum": ["ahorros", "corriente", "cts", None],
+                            "description": "ahorros=Cuenta de Ahorros, corriente=Cuenta Corriente, cts=Cuentas de Trámite Simplificado",
+                        },
+                    },
+                },
+                "tributaria": {
+                    "bsonType": ["object", "null"],
+                    "properties": {
+                        "rut": {"bsonType": ["string", "null"], "description": "Número de RUT (alfanumérico, admite símbolos)"},
+                        "declarante_renta": {"bsonType": ["bool", "null"]},
+                        "regimen": {
+                            "bsonType": ["string", "null"],
+                            "enum": ["no_responsable_iva", "responsable_iva", "simple_rst", "especial_rte", None],
+                            "description": "Clave del catálogo 'regimen_tributario'"
+                        },
+                    },
+                },
+                "dependientes": {
+                    "bsonType": ["array", "null"],
+                    "description": "Dependientes económicos; lista vacía = sin dependientes",
+                    "items": {
+                        "bsonType": "object",
+                        "required": ["nombre"],
+                        "properties": {
+                            "nombre": {"bsonType": "string", "minLength": 1},
+                            "tipo_documento": {
+                                "bsonType": ["string", "null"],
+                                "enum": ["CC", "TI", "CE", "RC", "OTRO", None],
+                            },
+                            "numero_documento": {"bsonType": ["string", "null"]},
+                            "tipo": {"bsonType": ["string", "null"], "description": "Clave del catálogo 'tipo_dependiente'"},
+                        },
+                    },
+                },
+            },
+        },
         "email": {"bsonType": "string"},
         "password_hash": {"bsonType": "string"},
         "activo": {"bsonType": "bool"},
@@ -72,14 +258,14 @@ ESQUEMA_SESIONES = {
 
 ESQUEMA_OPCIONES_CONFIGURACION = {
     "bsonType": "object",
-    "required": ["categoria", "opciones"],
+    "required": ["categoria"],
     "properties": {
         "categoria": {
-            "enum": ["tipo", "grupo", "clase_correspondencia", "estados"],
-            "description": "Define a qué desplegable pertenece",
+            "bsonType": "string",
+            "description": "Categoría del documento de configuración",
         },
         "opciones": {
-            "bsonType": "array",
+            "bsonType": ["array", "null"],
             "items": {
                 "bsonType": "object",
                 "required": ["clave", "etiqueta", "activo"],
@@ -93,6 +279,377 @@ ESQUEMA_OPCIONES_CONFIGURACION = {
                         "description": "Valor visual",
                     },
                     "activo": {"bsonType": "bool"},
+                },
+            },
+        },
+    },
+}
+
+ESQUEMA_CERTIFICACIONES = {
+    "bsonType": "object",
+    "required": ["usuario_id", "nombre_usuario", "año", "mes", "estado", "creado_en"],
+    "properties": {
+        "usuario_id": {"bsonType": "objectId"},
+        "nombre_usuario": {"bsonType": "string"},
+        "año": {"bsonType": "int"},
+        "mes": {"bsonType": "int"},
+        "estado": {"enum": ["pendiente", "aprobado", "rechazado"]},
+        "tipo_formato": {"bsonType": "string"},
+        "fecha_corte": {"bsonType": ["date", "null"]},
+        "snapshot_al_dia": {"bsonType": ["bool", "null"]},
+        "observaciones": {"bsonType": ["string", "null"]},
+        "observacion": {"bsonType": ["string", "null"]},
+        "aprobado_por": {
+            "bsonType": "object",
+            "required": ["usuario_id", "nombre", "fecha"],
+            "properties": {
+                "usuario_id": {"bsonType": "objectId"},
+                "nombre": {"bsonType": "string"},
+                "fecha": {"bsonType": "date"},
+            },
+        },
+        "firmas": {
+            "bsonType": ["object", "null"],
+            "description": "Aprobaciones de firmantes designados: corr/gd/secop (correspondencia) o financiera/abogado/jefe (actas)",
+            "properties": {
+                "corr":  {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
+                    },
+                },
+                "gd":    {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
+                    },
+                },
+                "secop": {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
+                    },
+                },
+                "financiera": {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
+                    },
+                },
+                "abogado": {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
+                    },
+                },
+                "jefe": {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
+                    },
+                },
+                "extra_control": {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
+                    },
+                },
+                "extra_acta_compromiso": {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
+                    },
+                },
+                "extra_balance_general": {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
+                    },
+                },
+                "extra_acta_recibo_entrega": {
+                    "bsonType": "object",
+                    "required": ["firmante_id", "firmante_nombre", "fecha"],
+                    "properties": {
+                        "firmante_id":     {"bsonType": "objectId"},
+                        "firmante_nombre": {"bsonType": "string"},
+                        "fecha":           {"bsonType": "date"},
+                        "comentario":      {"bsonType": ["string", "null"]},
+                    },
+                },
+            },
+        },
+        "eventos": {
+            "bsonType": ["array", "null"],
+            "description": "Bitácora de eventos del documento (ej. revocaciones en cascada de firmas de actas)",
+            "items": {
+                "bsonType": "object",
+                "properties": {
+                    "tipo":         {"bsonType": "string"},
+                    "rol_revocado": {"bsonType": "string"},
+                    "causada_por":  {"bsonType": "string"},
+                    "fecha":        {"bsonType": "date"},
+                },
+            },
+        },
+        "hash_verificacion": {"bsonType": ["string", "null"]},
+        "creado_en": {"bsonType": "date"},
+    },
+}
+
+ESQUEMA_POLITICAS_DATOS = {
+    "bsonType": "object",
+    "required": ["numero_version", "titulo", "contenido", "activa", "fecha_vigencia", "fecha_creacion"],
+    "properties": {
+        "numero_version": {"bsonType": "int", "minimum": 1},
+        "titulo": {"bsonType": "string"},
+        "contenido": {"bsonType": "string"},
+        "activa": {"bsonType": "bool"},
+        "fecha_vigencia": {"bsonType": "date"},
+        "fecha_creacion": {"bsonType": "date"},
+        "creada_por": {"bsonType": ["string", "null"]},
+    },
+}
+
+ESQUEMA_ACEPTACIONES_POLITICA = {
+    "bsonType": "object",
+    "required": [
+        "usuario_id",
+        "politica_id",
+        "numero_version",
+        "fecha_aceptacion",
+        "metodo",
+    ],
+    "properties": {
+        "usuario_id": {"bsonType": "objectId"},
+        "politica_id": {"bsonType": "objectId"},
+        "numero_version": {"bsonType": "int"},
+        "fecha_aceptacion": {"bsonType": "date"},
+        "ip_address": {"bsonType": ["string", "null"]},
+        "user_agent": {"bsonType": ["string", "null"]},
+        "nombre_completo": {"bsonType": ["string", "null"]},
+        "email": {"bsonType": ["string", "null"]},
+        "sesion_id": {"bsonType": ["string", "null"]},
+        "metodo": {"bsonType": "string"},
+    },
+}
+
+ESQUEMA_INSTRUCTIVOS = {
+    "bsonType": "object",
+    "required": ["titulo", "url", "tipo", "activo", "orden", "fecha_creacion"],
+    "properties": {
+        "titulo": {"bsonType": "string", "minLength": 1},
+        "descripcion": {"bsonType": ["string", "null"]},
+        "url": {"bsonType": "string", "minLength": 1},
+        "tipo": {
+            "enum": ["pdf", "video", "enlace"],
+            "description": "pdf y video se incrustan en iframe; enlace solo muestra botón externo",
+        },
+        "icono": {"bsonType": ["string", "null"], "description": "Emoji o texto corto para el botón"},
+        "activo": {"bsonType": "bool"},
+        "orden": {"bsonType": "int", "minimum": 1},
+        "embed_height": {"bsonType": ["int", "null"], "description": "Altura del iframe en px"},
+        "fecha_creacion": {"bsonType": "date"},
+        "fecha_actualizacion": {"bsonType": ["date", "null"]},
+        "creado_por": {"bsonType": ["string", "null"]},
+        "actualizado_por": {"bsonType": ["string", "null"]},
+    },
+}
+
+ESQUEMA_FIRMAS = {
+    "bsonType": "object",
+    "required": ["usuario_id", "imagen", "bytes", "actualizado_en"],
+    "description": "Firma del usuario como PNG procesado (fondo transparente). Colección aparte para no inflar el documento usuario.",
+    "properties": {
+        "usuario_id": {"bsonType": "objectId"},
+        "imagen": {"bsonType": "binData", "description": "PNG con transparencia, ya procesado y optimizado"},
+        "ancho": {"bsonType": ["int", "null"]},
+        "alto": {"bsonType": ["int", "null"]},
+        "bytes": {"bsonType": ["int", "long"], "description": "Tamaño del PNG procesado"},
+        "actualizado_en": {"bsonType": "date"},
+        "actualizado_por": {"bsonType": ["string", "null"]},
+    },
+}
+
+ESQUEMA_NOTIFICACIONES_CORREO = {
+    "bsonType": "object",
+    "required": ["usuario_id", "tipo", "clave", "fecha_envio"],
+    "description": "Avisos por correo ya enviados, para no repetirlos (ver NotificacionRepositorio).",
+    "properties": {
+        "usuario_id": {"bsonType": "objectId"},
+        "tipo": {"enum": ["correspondencia", "formatos", "firmas"]},
+        "clave": {
+            "bsonType": "string",
+            "description": "Fecha ISO (correspondencia), AAAA-MM (formatos) o id de certificación (firmas)",
+        },
+        "fecha_envio": {"bsonType": "date"},
+    },
+}
+
+ESQUEMA_GRUPOS_TRABAJO = {
+    "bsonType": "object",
+    "required": ["clave", "nombre", "activo", "creado_en"],
+    "description": "Catálogo de grupos de trabajo (despacho, permisos, normativa técnica, innovación técnica).",
+    "properties": {
+        "clave": {"bsonType": "string", "description": "Identificador estable, igual a usuarios.informacion_laboral.grupo_trabajo"},
+        "nombre": {"bsonType": "string"},
+        "descripcion": {"bsonType": ["string", "null"]},
+        "orden": {"bsonType": ["int", "long"]},
+        "activo": {"bsonType": "bool"},
+        "creado_en": {"bsonType": "date"},
+        "actualizado_en": {"bsonType": ["date", "null"]},
+        "actualizado_por": {"bsonType": ["string", "null"]},
+    },
+}
+
+ESQUEMA_ASIGNACIONES_GRUPO = {
+    "bsonType": "object",
+    "required": ["usuario_id", "grupo_clave", "estado", "fecha_ingreso", "asignado_por", "trazabilidad"],
+    "description": "Pertenencia de un usuario a un grupo de trabajo. Un documento por periodo de pertenencia; un usuario puede tener varias activas (grupos distintos) y se conserva el historial de retiros.",
+    "properties": {
+        "usuario_id": {"bsonType": "objectId"},
+        "grupo_clave": {"bsonType": "string"},
+        "estado": {"enum": ["activo", "retirado"]},
+        "fecha_ingreso": {"bsonType": "date"},
+        "razon_ingreso": {"bsonType": ["string", "null"]},
+        "asignado_por": {"bsonType": "string"},
+        "fecha_retiro": {"bsonType": ["date", "null"]},
+        "razon_retiro": {"bsonType": ["string", "null"]},
+        "retirado_por": {"bsonType": ["string", "null"]},
+        "es_lider": {"bsonType": "bool", "description": "True si es líder del grupo (puede asignar y retirar miembros)"},
+        "trazabilidad": {
+            "bsonType": "array",
+            "items": {
+                "bsonType": "object",
+                "required": ["fecha", "accion", "usuario"],
+                "properties": {
+                    "fecha": {"bsonType": "date"},
+                    "accion": {"enum": ["asignado", "retirado", "lider_definido"]},
+                    "usuario": {"bsonType": "string"},
+                    "detalle": {"bsonType": ["string", "null"]},
+                },
+            },
+        },
+    },
+    # Si está retirado, la fecha, la razón y quién retiró son obligatorios.
+    "oneOf": [
+        {"properties": {"estado": {"enum": ["activo"]}}},
+        {
+            "required": ["fecha_retiro", "razon_retiro", "retirado_por"],
+            "properties": {
+                "estado": {"enum": ["retirado"]},
+                "fecha_retiro": {"bsonType": "date"},
+                "razon_retiro": {"bsonType": "string", "minLength": 5},
+                "retirado_por": {"bsonType": "string"},
+            },
+        },
+    ],
+}
+
+ESQUEMA_SUIT_ASIGNACIONES = {
+    "bsonType": "object",
+    "required": ["usuario_id", "tramite", "estado", "fecha_asignacion", "asignado_por", "trazabilidad"],
+    "description": "Quién puede diligenciar cada trámite SUIT. Un documento por periodo de encargo; se conserva el historial de retiros.",
+    "properties": {
+        "usuario_id": {"bsonType": "objectId"},
+        "tramite": {"bsonType": "string", "description": "Identificador del trámite (catalogos.TRAMITES_SUIT)"},
+        "estado": {"enum": ["activo", "retirado"]},
+        "fecha_asignacion": {"bsonType": "date"},
+        "asignado_por": {"bsonType": "string"},
+        "fecha_retiro": {"bsonType": ["date", "null"]},
+        "razon_retiro": {"bsonType": ["string", "null"]},
+        "retirado_por": {"bsonType": ["string", "null"]},
+        "trazabilidad": {
+            "bsonType": "array",
+            "items": {
+                "bsonType": "object",
+                "required": ["fecha", "accion", "usuario"],
+                "properties": {
+                    "fecha": {"bsonType": "date"},
+                    "accion": {"enum": ["asignado", "retirado"]},
+                    "usuario": {"bsonType": "string"},
+                    "detalle": {"bsonType": ["string", "null"]},
+                },
+            },
+        },
+    },
+    "oneOf": [
+        {"properties": {"estado": {"enum": ["activo"]}}},
+        {
+            "required": ["fecha_retiro", "razon_retiro", "retirado_por"],
+            "properties": {
+                "estado": {"enum": ["retirado"]},
+                "fecha_retiro": {"bsonType": "date"},
+                "razon_retiro": {"bsonType": "string"},
+                "retirado_por": {"bsonType": "string"},
+            },
+        },
+    ],
+}
+
+ESQUEMA_SUIT_CARGUES = {
+    "bsonType": "object",
+    "required": ["tramite", "anio", "trimestre", "mes", "valores", "creado_por", "creado_en", "trazabilidad"],
+    "description": "Cargue mensual de un trámite SUIT. Un documento por (tramite, anio, mes); siempre editable.",
+    "properties": {
+        "tramite": {"bsonType": "string"},
+        "anio": {"bsonType": ["int", "long"]},
+        "trimestre": {"bsonType": ["int", "long"], "minimum": 1, "maximum": 4},
+        "mes": {"bsonType": ["int", "long"], "minimum": 1, "maximum": 12},
+        "valores": {
+            "bsonType": "object",
+            "description": "Contadores del formulario (catalogos.CAMPOS_SUIT), enteros >= 0",
+            "additionalProperties": {"bsonType": ["int", "long"], "minimum": 0},
+        },
+        "creado_por": {"bsonType": "string"},
+        "creado_en": {"bsonType": "date"},
+        "actualizado_por": {"bsonType": ["string", "null"]},
+        "actualizado_en": {"bsonType": ["date", "null"]},
+        "trazabilidad": {
+            "bsonType": "array",
+            "items": {
+                "bsonType": "object",
+                "required": ["fecha", "accion", "usuario"],
+                "properties": {
+                    "fecha": {"bsonType": "date"},
+                    "accion": {"enum": ["creado", "actualizado"]},
+                    "usuario": {"bsonType": "string"},
+                    "valores": {"bsonType": "object"},
                 },
             },
         },

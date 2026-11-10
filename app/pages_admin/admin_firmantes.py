@@ -1,0 +1,874 @@
+"""Módulo de aprobaciones de certificaciones – SRTI INVIAS.
+
+Accesible para los 3 firmantes designados y para el administrador.
+  - Firmantes: pueden aprobar o revocar su tipo de firma específico.
+  - Admin: vista de solo lectura + gestión de quiénes son los firmantes.
+"""
+
+import streamlit as st
+from app.core.ui_titulos import mostrar_titulo_decorado
+
+from app.core.cache_datos import (
+    empleados_para_certificar,
+    limpiar_cache_lecturas,
+    periodos_disponibles_global,
+)
+from app.core.sesion import obtener_sesion
+from app.core.ui_certificado import (
+    abrir_dialogo_documento,
+    render_dialogo_documento_si_activo,
+)
+from app.core.zona_horaria import formato_fecha_bogota
+from app.services.certificacion_service import (
+    CertificacionService, MESES_ES, ORDEN_FIRMAS_ACTAS, TIPOS_FIRMA_ACTAS, FIRMA_EXTRA_CONFIG,
+)
+
+TIPOS_FIRMA = ("corr", "gd", "secop")
+
+_META_FIRMA = {
+    "corr":   ("F. Corr",  "Correspondencia",        "certificacion.firmar_corr"),
+    "gd":     ("F. GD",    "Gestión Documental",      "certificacion.firmar_gd"),
+    "secop":  ("F. SECOP", "SECOP II",                "certificacion.firmar_secop"),
+    "extra_control": ("F. Extra", "Firma Extra", "certificacion.firmar_extra_control"),
+}
+
+MAPA_TIPOS_CONTRATO = {
+    "termino_indefinido": "Término indefinido",
+    "termino_fijo": "Término fijo",
+    "obra_labor": "Obra o labor",
+    "prestacion_servicios": "Prestación de servicios",
+    "aprendizaje": "Aprendizaje",
+}
+
+_LABEL_FORMATO_ACTAS = {
+    "acta_compromiso": "Acta de compromiso",
+    "acta_recibo_entrega_cps": "Balance General CPS",
+    "acta_recibo_entrega_cps_real": "Acta de recibo y entrega CPS",
+}
+
+_META_FIRMA_ACTAS = {
+    "financiera": ("F. Financiera", "Financiera",    "certificacion.firmar_financiera"),
+    "abogado":    ("F. Jurídica",   "Jurídico",       "certificacion.firmar_abogado"),
+    "jefe":       ("F. Jefe",       "Jefe inmediato", "certificacion.firmar_jefe"),
+    "extra_acta_compromiso":     ("F. Extra", "Firma Extra", "certificacion.firmar_extra_acta_compromiso"),
+    "extra_balance_general":     ("F. Extra", "Firma Extra", "certificacion.firmar_extra_balance_general"),
+    "extra_acta_recibo_entrega": ("F. Extra", "Firma Extra", "certificacion.firmar_extra_acta_recibo_entrega"),
+}
+
+
+# ── Helpers de badges ────────────────────────────────────────────
+
+def _badge_firma(tipo: str, firma: dict | None) -> str:
+    label = _META_FIRMA[tipo][0]
+    if firma:
+        bg, fg, bd = "#1b4721", "#75db8b", "#2d7a3e"
+        icono = "✅"
+    else:
+        bg, fg, bd = "#2c2c2c", "#aaaaaa", "#444"
+        icono = "⏳"
+    return (
+        f'<span style="background:{bg};color:{fg};border:1px solid {bd};'
+        f'border-radius:4px;padding:1px 8px;font-size:.76em;font-weight:700;">'
+        f"{icono} {label}</span>"
+    )
+
+
+def _badge_corr(pendientes: int, vencidas: int) -> str:
+    if pendientes == 0:
+        bg, fg, bd = "#1b4721", "#75db8b", "#2d7a3e"
+        txt = "✅ Al Día"
+    elif vencidas > 0:
+        bg, fg, bd = "#511c1e", "#ff9ca2", "#8a2d32"
+        txt = f"❌ {pendientes} pend. ({vencidas} venc.)"
+    else:
+        bg, fg, bd = "#4d3d0f", "#ffe69c", "#7a6010"
+        txt = f"⚠️ {pendientes} pend."
+    return (
+        f'<span style="background:{bg};color:{fg};border:1px solid {bd};'
+        f'border-radius:4px;padding:2px 8px;font-size:.78em;font-weight:700;">'
+        f"{txt}</span>"
+    )
+
+
+def _badge_firma_actas(rol: str, firma: dict | None) -> str:
+    label = _META_FIRMA_ACTAS[rol][0]
+    if firma:
+        bg, fg, bd = "#1b4721", "#75db8b", "#2d7a3e"
+        icono = "✅"
+    else:
+        bg, fg, bd = "#2c2c2c", "#aaaaaa", "#444"
+        icono = "⏳"
+    return (
+        f'<span style="background:{bg};color:{fg};border:1px solid {bd};'
+        f'border-radius:4px;padding:1px 8px;font-size:.76em;font-weight:700;">'
+        f"{icono} {label}</span>"
+    )
+
+
+def _barra_resumen_semaforo(aprobados: int, sin_aprobar: int, sin_generar: int) -> None:
+    """Resumen visual tipo semáforo del período/formato: verde = aprobados,
+    amarillo = generado pero sin aprobar, rojo = sin generar todavía. Solo
+    cuenta contratistas con contrato vigente o temporal (regla de gracia);
+    los que no tienen contrato activo no entran en este reporte."""
+    total = aprobados + sin_aprobar + sin_generar
+
+    def _pct(n: int) -> float:
+        return (n / total * 100) if total else 0.0
+
+    if total == 0:
+        st.caption("📋 Ningún contratista con contrato vigente o temporal este período.")
+        return
+
+    st.markdown(
+        f"""
+        <div style="margin:2px 0 12px;">
+            <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;
+                        font-size:.85em;margin-bottom:6px;">
+                <span>📋 <b>{total}</b> con contrato activo</span>
+                <span style="color:#75db8b;">✅ <b>{aprobados}</b> aprobados</span>
+                <span style="color:#ffcf6e;">⏳ <b>{sin_aprobar}</b> sin aprobar</span>
+                <span style="color:#ff9ca2;">❌ <b>{sin_generar}</b> sin generar</span>
+            </div>
+            <div style="width:100%;height:16px;border-radius:8px;overflow:hidden;
+                        background:#2c2c2c;border:1px solid #444;display:flex;">
+                <div style="width:{_pct(aprobados):.1f}%;background:linear-gradient(90deg,#1e7e34,#28a745);"></div>
+                <div style="width:{_pct(sin_aprobar):.1f}%;background:linear-gradient(90deg,#c9971f,#e6ac1f);"></div>
+                <div style="width:{_pct(sin_generar):.1f}%;background:linear-gradient(90deg,#8a2d32,#c0392b);"></div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _lista_movil_estado(aprobados: list, sin_aprobar: list, sin_generar: list) -> None:
+    """Lista compacta (estilo móvil) de contratistas con contrato vigente o
+    temporal, coloreada según su estado en el formato del período: verde =
+    aprobados, amarillo = generado y sin aprobar, rojo = con contrato pero sin
+    generar/firmar. No hace consultas nuevas: reutiliza los empleados ya
+    cargados."""
+    total = len(aprobados) + len(sin_aprobar) + len(sin_generar)
+    if total == 0:
+        return
+
+    def _fila(nombre: str, dot: str, color: str) -> str:
+        return (
+            f'<div style="font-size:.85em;padding:3px 6px;border-left:3px solid {color};'
+            f'margin-bottom:3px;">{dot} {nombre}</div>'
+        )
+
+    with st.expander(f"📱 Contratistas del período ({total})", expanded=False):
+        if aprobados:
+            st.markdown("**🟢 Aprobados**")
+            st.markdown(
+                "".join(_fila(e["nombre"], "🟢", "#28a745") for e in aprobados),
+                unsafe_allow_html=True,
+            )
+        if sin_aprobar:
+            st.markdown("**🟡 Sin aprobar**")
+            st.markdown(
+                "".join(_fila(e["nombre"], "🟡", "#e6ac1f") for e in sin_aprobar),
+                unsafe_allow_html=True,
+            )
+        if sin_generar:
+            st.markdown("**🔴 Sin generar/firmar**")
+            st.markdown(
+                "".join(_fila(e["nombre"], "🔴", "#c0392b") for e in sin_generar),
+                unsafe_allow_html=True,
+            )
+
+
+def _cerrar_dialogo_confirmar_firma_actas() -> None:
+    st.session_state.pop("_confirmar_firma_actas", None)
+
+
+@st.dialog("Confirmar aprobación", width="small", on_dismiss=_cerrar_dialogo_confirmar_firma_actas)
+def _dialog_confirmar_firma_actas(servicio: CertificacionService, sesion: dict) -> None:
+    pend = st.session_state.get("_confirmar_firma_actas")
+    if not pend:
+        return
+
+    uid = pend["uid"]
+    nombre = pend["nombre"]
+    tipo_formato = pend["tipo_formato"]
+    rol = pend["rol"]
+    _, label_largo, _ = _META_FIRMA_ACTAS[rol]
+
+    st.markdown(f"**Firma:** {label_largo}")
+    st.markdown(f"**Formato:** {_LABEL_FORMATO_ACTAS[tipo_formato]}")
+    st.markdown(f"**Contratista:** {nombre}")
+    st.divider()
+
+    comentario = st.text_area(
+        "Comentario (opcional)",
+        placeholder="Ej: se aprueba con observaciones...",
+        key=f"txt_comentario_actas_{uid}_{tipo_formato}_{rol}",
+    )
+
+    st.write("")
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Confirmar aprobación", type="primary", use_container_width=True, key="btn_confirmar_actas"):
+            firmante_nombre = sesion.get("nombre_completo") or sesion["usuario"]
+            try:
+                cert_id = pend.get("cert_id")
+                if not cert_id:
+                    raise ValueError("No se encontró el ID del documento en la sesión.")
+                extra_meta = FIRMA_EXTRA_CONFIG.get(tipo_formato)
+                if extra_meta and extra_meta["tipo_firmante"] == rol:
+                    servicio.registrar_firma_extra_actas(cert_id, sesion["id"], firmante_nombre, comentario)
+                else:
+                    servicio.registrar_firma_actas(cert_id, rol, sesion["id"], firmante_nombre, comentario)
+            except ValueError as e:
+                st.error(str(e))
+            else:
+                limpiar_cache_lecturas()
+                st.session_state.pop("_confirmar_firma_actas", None)
+                st.rerun()
+    with c2:
+        if st.button("Cancelar", use_container_width=True, key="btn_cancelar_actas"):
+            st.session_state.pop("_confirmar_firma_actas", None)
+            st.rerun()
+
+# ── Diálogo de confirmación de firma (aplica a los 3 tipos) ──────
+
+def _cerrar_dialogo_confirmar_firma() -> None:
+    st.session_state.pop("_confirmar_firma", None)
+
+
+@st.dialog("Confirmar aprobación", width="small", on_dismiss=_cerrar_dialogo_confirmar_firma)
+def _dialog_confirmar_firma(
+    servicio: CertificacionService, sesion: dict, año: int, mes: int, nombre_mes: str
+) -> None:
+    pend = st.session_state.get("_confirmar_firma")
+    if not pend:
+        return
+
+    uid = pend["uid"]
+    nombre = pend["nombre"]
+    tipo = pend["tipo"]
+    _, label_largo, _ = _META_FIRMA[tipo]
+
+    st.markdown(f"**Firma:** {label_largo}")
+    st.markdown(f"**Contratista:** {nombre}")
+    st.markdown(f"**Período a certificar:** {nombre_mes} {año}")
+    st.divider()
+
+    if tipo == "corr":
+        from app.services.correspondencia_service import CorrespondenciaService
+
+        with st.spinner("Consultando correspondencia del período…"):
+            stats = CorrespondenciaService().obtener_correspondencia_del_periodo(uid, año, mes)
+
+        pendientes = stats["pendientes"]
+        vencidas = stats["vencidas"]
+
+        if pendientes == 0:
+            st.success("✅ Esta persona está al día en correspondencia para este período.")
+        elif vencidas > 0:
+            st.error(
+                f"⚠️ Esta persona tiene **{pendientes} solicitud(es)** con vencimiento en {nombre_mes} {año}, "
+                f"de las cuales **{vencidas} están vencidas**.\n\n"
+                "Al aprobar, aceptas la responsabilidad de esta decisión como firmante de Correspondencia."
+            )
+        else:
+            st.warning(
+                f"⚠️ Esta persona tiene **{pendientes} solicitud(es) pendiente(s)** con vencimiento en "
+                f"{nombre_mes} {año} (ninguna vencida aún)."
+            )
+        st.divider()
+
+    comentario = st.text_area(
+        "Comentario (opcional)",
+        placeholder="Ej: se aprueba con pendientes, ponerse al día en...",
+        key=f"txt_comentario_firma_{uid}_{tipo}",
+    )
+
+    st.write("")
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Confirmar aprobación", type="primary", use_container_width=True):
+            firmante_nombre = sesion.get("nombre_completo") or sesion["usuario"]
+            servicio.registrar_firma(uid, nombre, tipo, sesion["id"], firmante_nombre, comentario, año=año, mes=mes)
+            limpiar_cache_lecturas()
+            st.session_state.pop("_confirmar_firma", None)
+            st.rerun()
+    with c2:
+        if st.button("Cancelar", use_container_width=True):
+            st.session_state.pop("_confirmar_firma", None)
+            st.rerun()
+
+
+def _render_panel_actas(
+    servicio: CertificacionService, sesion: dict, tipo_formato: str, año: int, mes: int
+) -> None:
+    permisos = sesion.get("permisos", [])
+    roles_sesion = sesion.get("roles", [])
+    es_admin = any(r in {"admin", "administrador"} for r in roles_sesion)
+
+    orden = ORDEN_FIRMAS_ACTAS[tipo_formato]
+    mis_roles = [r for r in orden if _META_FIRMA_ACTAS[r][2] in permisos]
+
+    extra_meta = FIRMA_EXTRA_CONFIG.get(tipo_formato)
+    extra_activa = bool(extra_meta) and servicio.firma_extra_activa(tipo_formato)
+    # Firma Extra se suma a las opciones de "actuando como" (no participa del
+    # orden secuencial financiera→abogado→jefe, es independiente).
+    if extra_activa and f"certificacion.firmar_{extra_meta['tipo_firmante']}" in permisos:
+        mis_roles = mis_roles + [extra_meta["tipo_firmante"]]
+
+    if not es_admin and not mis_roles:
+        st.warning("No tienes permiso de firma para este formato.")
+        return
+
+    st.subheader(_LABEL_FORMATO_ACTAS[tipo_formato])
+
+    if len(mis_roles) > 1:
+        opciones_rol = {r: _META_FIRMA_ACTAS[r][1] for r in mis_roles}
+        rol_activo = st.radio(
+            "Estás actuando como firmante de:",
+            options=list(opciones_rol.keys()),
+            format_func=lambda r: f"✍️ {opciones_rol[r]}",
+            horizontal=True,
+            key=f"sel_rol_actas_{tipo_formato}",
+        )
+    elif mis_roles:
+        rol_activo = mis_roles[0]
+    else:
+        rol_activo = None
+
+    if es_admin and rol_activo is None:
+        st.info("🛡️ **Administrador** — Vista de solo lectura.")
+    elif rol_activo:
+        _, label_largo, _ = _META_FIRMA_ACTAS[rol_activo]
+        st.info(f"✍️ **Actuando como:** Firma {label_largo}")
+
+    st.divider()
+
+    with st.spinner("Consultando colaboradores…"):
+        todos_empleados = empleados_para_certificar(tipo_formato, año, mes)
+    empleados = [e for e in todos_empleados if e.get("certificacion")]
+
+    # Resumen visual (semáforo) del período/formato: solo contratistas con
+    # contrato vigente o temporal (regla de gracia) cuentan en el reporte; los
+    # que no tienen contrato activo se excluyen por completo de esta línea.
+    con_contrato = [e for e in todos_empleados if e.get("estado_contrato") in ("vigente", "gracia")]
+    aprobados = [e for e in con_contrato if (e.get("certificacion") or {}).get("estado") == "aprobado"]
+    pendientes_firma_movil = [
+        e for e in con_contrato
+        if e.get("certificacion") and (e.get("certificacion") or {}).get("estado") != "aprobado"
+    ]
+    faltan_generar = [e for e in con_contrato if not e.get("certificacion")]
+
+    _barra_resumen_semaforo(len(aprobados), len(pendientes_firma_movil), len(faltan_generar))
+    _lista_movil_estado(aprobados, pendientes_firma_movil, faltan_generar)
+
+    st.divider()
+
+    if not empleados:
+        st.info("Ningún colaborador ha generado este formato todavía.")
+        return
+
+    total = len(empleados)
+
+    # Filtros
+    fc1, fc2, fc3 = st.columns([3, 3, 2])
+    with fc1:
+        contratistas_unicos = sorted(list(set(e["nombre"] for e in empleados)))
+        opciones_contratista = ["Todos"] + contratistas_unicos
+        buscar = st.selectbox(
+            "Filtro por Gestor",
+            options=opciones_contratista,
+            index=0,
+            key=f"filtro_contratista_aprob_{tipo_formato}",
+        )
+    with fc2:
+        opciones_tipo = ["Con contrato activo", "Todos (con y sin contrato)"] + list(MAPA_TIPOS_CONTRATO.values()) + ["Sin contrato"]
+        filtro_tipo = st.selectbox(
+            "Filtro por Contrato",
+            options=opciones_tipo,
+            index=0,
+            key=f"filtro_tipo_contrato_aprob_{tipo_formato}",
+        )
+    with fc3:
+        if rol_activo:
+            filtro = st.selectbox(
+                "Filtro por Aprobados",
+                options=["Todos", "Pendientes mi aprobación", "Aprobados"],
+                index=0,
+                key=f"filtro_estado_firma_aprob_{tipo_formato}",
+            )
+        else:
+            filtro = st.selectbox(
+                "Filtro por Aprobados",
+                options=["Todos", "Con todas las firmas", "Faltan firmas"],
+                index=0,
+                key=f"filtro_estado_firma_aprob_{tipo_formato}",
+            )
+
+    # Aplicar Filtros
+    lista = empleados
+    if buscar != "Todos":
+        lista = [e for e in lista if e["nombre"] == buscar]
+
+    if filtro_tipo == "Con contrato activo":
+        lista = [e for e in lista if e.get("tiene_contrato")]
+    elif filtro_tipo == "Sin contrato":
+        lista = [e for e in lista if not e.get("tiene_contrato")]
+    elif filtro_tipo == "Todos (con y sin contrato)":
+        pass
+    else:
+        inv_map = {v: k for k, v in MAPA_TIPOS_CONTRATO.items()}
+        clave_tecnica = inv_map.get(filtro_tipo)
+        lista = [e for e in lista if e.get("tipo_contrato") == clave_tecnica]
+
+    if rol_activo:
+        if filtro == "Pendientes mi aprobación":
+            lista = [e for e in lista if not e.get("firmas", {}).get(rol_activo)]
+        elif filtro == "Aprobados":
+            lista = [e for e in lista if e.get("firmas", {}).get(rol_activo)]
+    else:
+        if filtro == "Con todas las firmas":
+            lista = [e for e in lista if (e.get("certificacion") or {}).get("estado") == "aprobado"]
+        elif filtro == "Faltan firmas":
+            lista = [e for e in lista if (e.get("certificacion") or {}).get("estado") != "aprobado"]
+
+    st.caption(f"Mostrando {len(lista)} de {total} contratistas")
+
+    if not lista:
+        st.info("Ningún contratista coincide con los filtros aplicados.")
+        return
+
+    for emp in lista:
+        uid = emp["usuario_id"]
+        nombre = emp["nombre"]
+        cert = emp.get("certificacion") or {}
+        firmas = emp.get("firmas", {})
+        eventos = cert.get("eventos") or []
+        cert_año = cert.get("año") or ""
+        cert_mes = cert.get("mes") or 1
+        cert_nombre_mes = MESES_ES[cert_mes - 1] if cert_mes else ""
+
+        with st.container(border=True):
+            c_nom, c_badges, c_accion = st.columns([3, 5, 2])
+
+            with c_nom:
+                st.markdown(f"**{nombre}**")
+                st.caption("✅ Formato aprobado" if cert.get("estado") == "aprobado" else "⏳ Pendiente de firmas")
+
+            with c_badges:
+                roles_badges = list(orden) + ([extra_meta["tipo_firmante"]] if extra_activa else [])
+                badges = "&nbsp;".join(_badge_firma_actas(r, firmas.get(r)) for r in roles_badges)
+                st.markdown(badges, unsafe_allow_html=True)
+
+                eventos_rol_activo = [
+                    ev for ev in eventos
+                    if ev.get("tipo") == "revocacion_cascada" and ev.get("rol_revocado") == rol_activo
+                ]
+                if rol_activo and eventos_rol_activo and not firmas.get(rol_activo):
+                    ultimo = eventos_rol_activo[-1]
+                    st.caption(f"⚠️ Tu aprobación fue removida porque **{ultimo.get('causada_por')}** revocó la suya.")
+
+            with c_accion:
+                ya_aprobado = cert.get("estado") == "aprobado"
+                tiene_excel = tipo_formato in ("acta_recibo_entrega_cps", "acta_recibo_entrega_cps_real")
+
+                prefijos_archivo = {
+                    "acta_compromiso": "Acta_Compromiso",
+                    "acta_recibo_entrega_cps": "Balance_General_CPS",
+                    "acta_recibo_entrega_cps_real": "Acta_Recibo_Entrega_CPS",
+                }
+                prefijo = prefijos_archivo.get(tipo_formato, "Acta")
+                periodo = f"{cert_nombre_mes}_{cert_año}"
+
+                # El PDF/Excel se genera solo al abrir el diálogo (clic del botón), no antes.
+                c_pdf, c_xlsx = st.columns(2) if tiene_excel else (st.container(), None)
+                with c_pdf:
+                    if st.button(
+                        "📄 PDF" if tiene_excel else "👁️ Ver / Descargar",
+                        key=f"ver_{tipo_formato}_{uid}",
+                        use_container_width=True,
+                    ):
+                        abrir_dialogo_documento(cert, nombre, "pdf", prefijo, periodo, es_borrador=not ya_aprobado)
+                if tiene_excel:
+                    with c_xlsx:
+                        if st.button("📊 Excel", key=f"ver_xlsx_{tipo_formato}_{uid}", use_container_width=True):
+                            abrir_dialogo_documento(cert, nombre, "xlsx", prefijo, periodo, es_borrador=not ya_aprobado)
+
+                if rol_activo:
+                    es_extra = bool(extra_meta) and rol_activo == extra_meta["tipo_firmante"]
+                    if es_extra:
+                        # Firma Extra es independiente: no depende del orden secuencial.
+                        rol_anterior = None
+                        puede_firmar = True
+                    else:
+                        idx = orden.index(rol_activo)
+                        rol_anterior = orden[idx - 1] if idx > 0 else None
+                        puede_firmar = rol_anterior is None or bool(firmas.get(rol_anterior))
+                    ya_firmado = bool(firmas.get(rol_activo))
+
+                    if ya_firmado:
+                        if st.button("↩ Revocar", key=f"revocar_actas_{tipo_formato}_{uid}", use_container_width=True):
+                            if es_extra:
+                                servicio.revocar_firma_extra_actas(str(cert["_id"]))
+                            else:
+                                servicio.revocar_firma_actas(str(cert["_id"]), rol_activo)
+                            limpiar_cache_lecturas()
+                            st.rerun()
+                    elif not ya_aprobado:
+                        if not puede_firmar:
+                            st.button(
+                                "✅ Aprobar",
+                                key=f"aprobar_actas_{tipo_formato}_{uid}",
+                                use_container_width=True,
+                                disabled=True,
+                                help=f"Esperando firma de {_META_FIRMA_ACTAS[rol_anterior][1]}",
+                            )
+                        else:
+                            if st.button(
+                                "✅ Aprobar",
+                                key=f"aprobar_actas_{tipo_formato}_{uid}",
+                                type="primary",
+                                use_container_width=True,
+                            ):
+                                st.session_state["_confirmar_firma_actas"] = {
+                                    "uid": uid,
+                                    "cert_id": str(cert["_id"]),
+                                    "nombre": nombre,
+                                    "tipo_formato": tipo_formato,
+                                    "rol": rol_activo,
+                                }
+                                st.rerun()
+
+
+# ── Render principal ─────────────────────────────────────────────
+
+def render(sesion=None):
+    sesion = sesion or obtener_sesion()
+
+    if not sesion:
+        st.warning("Debes iniciar sesión.")
+        st.stop()
+
+    servicio = CertificacionService()
+    permisos = sesion.get("permisos", [])
+    roles = sesion.get("roles", [])
+    es_admin = any(r in {"admin", "administrador"} for r in roles)
+
+    # Recopilar todos los tipos de firma que tiene este usuario.
+    # Un mismo usuario puede tener más de un permiso de firma (ej. corr + gd).
+    mis_tipos_firma = [t for t in TIPOS_FIRMA if _META_FIRMA[t][2] in permisos]
+    # Firma Extra del formato de control: se suma a las opciones de "actuando
+    # como" solo si el parámetro está activo y el usuario tiene el permiso.
+    extra_control_activa = servicio.firma_extra_activa("gestion_correspondencia")
+    if extra_control_activa and "certificacion.firmar_extra_control" in permisos:
+        mis_tipos_firma = mis_tipos_firma + ["extra_control"]
+    # Idem para los roles de firma de actas (financiera/abogado/jefe) — un usuario
+    # puede tener solo permisos de actas y ningún permiso corr/gd/secop.
+    mis_roles_actas = [r for r in TIPOS_FIRMA_ACTAS if _META_FIRMA_ACTAS[r][2] in permisos]
+    # Un usuario puede tener SOLO un permiso de Firma Extra de actas y ningún
+    # otro permiso de firma — hay que contarlo para el guard de acceso general.
+    tengo_algun_permiso_extra_actas = any(
+        servicio.firma_extra_activa(tf) and f"certificacion.firmar_{m['tipo_firmante']}" in permisos
+        for tf, m in FIRMA_EXTRA_CONFIG.items() if tf != "gestion_correspondencia"
+    )
+    puede_ver_control = bool(mis_tipos_firma) or es_admin or "certificacion.aprobar" in permisos
+
+    if not es_admin and not mis_tipos_firma and not mis_roles_actas and not tengo_algun_permiso_extra_actas:
+        st.error("No tienes permiso para acceder a esta sección.")
+        st.stop()
+
+    # Inyectar CSS para dar fondo verde al botón de certificado
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stDownloadButton"] button {
+            background-color: #2e7d32 !important;
+            color: white !important;
+            border: 1px solid #1b5e20 !important;
+        }
+        div[data-testid="stDownloadButton"] button:hover {
+            background-color: #1b5e20 !important;
+            color: white !important;
+            border-color: #1b5e20 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    mostrar_titulo_decorado("Sup. Formatos")
+
+    periodos_globales = periodos_disponibles_global()
+    año, mes = st.selectbox(
+        "📅 Período a firmar",
+        options=periodos_globales,
+        format_func=lambda p: f"{MESES_ES[p[1] - 1]} {p[0]}",
+        index=periodos_globales.index(servicio.periodo_certificable()),
+        key="sup_periodo_seleccionado",
+    )
+    nombre_mes = MESES_ES[mes - 1]
+    st.caption(servicio.leyenda_periodo(año, mes))
+
+    # Inicializar estado para mostrar/ocultar el formato de control
+    if "ver_formato_control" not in st.session_state:
+        st.session_state["ver_formato_control"] = False
+    if "tab_actas_activo" not in st.session_state:
+        st.session_state["tab_actas_activo"] = None
+    # Botones de navegación
+    st.write("")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        if puede_ver_control:
+            tipo_btn1 = "primary" if st.session_state["ver_formato_control"] else "secondary"
+            if st.button("1-Formato de control Corr-GD-SECOP", type=tipo_btn1, use_container_width=True, key="btn_formato_control"):
+                st.session_state["ver_formato_control"] = not st.session_state["ver_formato_control"]
+                st.session_state["tab_actas_activo"] = None
+                st.rerun()
+    with col2:
+        activo_compromiso = st.session_state["tab_actas_activo"] == "acta_compromiso"
+        tipo_btn2 = "primary" if activo_compromiso else "secondary"
+        if st.button("2- Acta de compromiso", type=tipo_btn2, use_container_width=True, key="btn_acta_compromiso_sup"):
+            st.session_state["tab_actas_activo"] = None if activo_compromiso else "acta_compromiso"
+            st.session_state["ver_formato_control"] = False
+            st.rerun()
+    with col3:
+        activo_balance = st.session_state["tab_actas_activo"] == "acta_recibo_entrega_cps"
+        tipo_btn3 = "primary" if activo_balance else "secondary"
+        if st.button("3- Balance General CPS", type=tipo_btn3, use_container_width=True, key="btn_balance_general_sup"):
+            st.session_state["tab_actas_activo"] = None if activo_balance else "acta_recibo_entrega_cps"
+            st.session_state["ver_formato_control"] = False
+            st.rerun()
+    with col4:
+        activo_recibo = st.session_state["tab_actas_activo"] == "acta_recibo_entrega_cps_real"
+        tipo_btn4 = "primary" if activo_recibo else "secondary"
+        if st.button("4- Acta de recibo y entrega CPS", type=tipo_btn4, use_container_width=True, key="btn_acta_recibo_sup"):
+            st.session_state["tab_actas_activo"] = None if activo_recibo else "acta_recibo_entrega_cps_real"
+            st.session_state["ver_formato_control"] = False
+            st.rerun()
+
+    st.write("")
+
+    # Selector de rol cuando el usuario tiene más de un permiso de firma
+    if st.session_state["ver_formato_control"] and puede_ver_control:
+        if len(mis_tipos_firma) > 1:
+            opciones_firma = {t: _META_FIRMA[t][1] for t in mis_tipos_firma}
+            tipo_mi_firma = st.radio(
+                "Estás actuando como firmante de:",
+                options=list(opciones_firma.keys()),
+                format_func=lambda t: f"✍️ {opciones_firma[t]}",
+                horizontal=True,
+                key="sel_tipo_firma_activo",
+            )
+        elif mis_tipos_firma:
+            tipo_mi_firma = mis_tipos_firma[0]
+        else:
+            tipo_mi_firma = None
+
+        # Banner de rol
+        if es_admin and tipo_mi_firma is None:
+            st.info(
+                "🛡️ **Administrador** — Vista de solo lectura. "
+                "Para configurar los firmantes ve a **Seguimiento de Certificaciones**."
+            )
+        elif tipo_mi_firma:
+            _, label_largo, _ = _META_FIRMA[tipo_mi_firma]
+            roles_txt = (
+                " · ".join(_META_FIRMA[t][1] for t in mis_tipos_firma)
+                if len(mis_tipos_firma) > 1
+                else label_largo
+            )
+            st.info(f"✍️ **Actuando como:** Firma de {label_largo}  ·  Tienes permiso para: {roles_txt}")
+
+        st.divider()
+
+        with st.spinner("Consultando estado de correspondencia…"):
+            empleados = empleados_para_certificar(None, año, mes)
+
+        if not empleados:
+            st.info("No hay colaboradores con correspondencia registrada.")
+        else:
+            # Resumen visual (semáforo) del período: solo contratistas con
+            # contrato vigente o temporal (regla de gracia) cuentan aquí.
+            total = len(empleados)
+            con_contrato = [e for e in empleados if e.get("estado_contrato") in ("vigente", "gracia")]
+            aprobados = [e for e in con_contrato if (e.get("certificacion") or {}).get("estado") == "aprobado"]
+            pendientes_firma_movil = [
+                e for e in con_contrato
+                if e.get("certificacion") and (e.get("certificacion") or {}).get("estado") != "aprobado"
+            ]
+            faltan_generar = [e for e in con_contrato if not e.get("certificacion")]
+
+            _barra_resumen_semaforo(len(aprobados), len(pendientes_firma_movil), len(faltan_generar))
+            _lista_movil_estado(aprobados, pendientes_firma_movil, faltan_generar)
+
+            st.divider()
+
+            # Filtros
+            fc1, fc2, fc3 = st.columns([3, 3, 2])
+            with fc1:
+                contratistas_unicos = sorted(list(set(e["nombre"] for e in empleados)))
+                opciones_contratista = ["Todos"] + contratistas_unicos
+                buscar = st.selectbox(
+                    "Filtro por Gestor",
+                    options=opciones_contratista,
+                    index=0,
+                    key="filtro_contratista_aprob",
+                )
+            with fc2:
+                opciones_tipo = ["Con contrato activo", "Todos (con y sin contrato)"] + list(MAPA_TIPOS_CONTRATO.values()) + ["Sin contrato"]
+                filtro_tipo = st.selectbox(
+                    "Filtro por Contrato",
+                    options=opciones_tipo,
+                    index=0,
+                    key="filtro_tipo_contrato_aprob",
+                )
+            with fc3:
+                if tipo_mi_firma:
+                    filtro = st.selectbox(
+                        "Filtro por Aprobados",
+                        options=["Todos", "Pendientes mi aprobación", "Aprobados"],
+                        index=0,
+                        key="filtro_estado_firma_aprob",
+                    )
+                else:
+                    filtro = st.selectbox(
+                        "Filtro por Aprobados",
+                        options=["Todos", "Con las 3 firmas", "Faltan firmas"],
+                        index=0,
+                        key="filtro_estado_firma_aprob",
+                    )
+
+            lista = empleados
+            if buscar != "Todos":
+                lista = [e for e in lista if e["nombre"] == buscar]
+
+            if filtro_tipo == "Con contrato activo":
+                lista = [e for e in lista if e.get("tiene_contrato")]
+            elif filtro_tipo == "Sin contrato":
+                lista = [e for e in lista if not e.get("tiene_contrato")]
+            elif filtro_tipo == "Todos (con y sin contrato)":
+                pass
+            else:
+                inv_map = {v: k for k, v in MAPA_TIPOS_CONTRATO.items()}
+                clave_tecnica = inv_map.get(filtro_tipo)
+                lista = [e for e in lista if e.get("tipo_contrato") == clave_tecnica]
+
+            if tipo_mi_firma:
+                if filtro == "Pendientes mi aprobación":
+                    lista = [e for e in lista if not e.get("firmas", {}).get(tipo_mi_firma)]
+                elif filtro == "Aprobados":
+                    lista = [e for e in lista if e.get("firmas", {}).get(tipo_mi_firma)]
+            else:
+                if filtro == "Con las 3 firmas":
+                    lista = [e for e in lista if all(e.get("firmas", {}).get(t) for t in TIPOS_FIRMA)]
+                elif filtro == "Faltan firmas":
+                    lista = [e for e in lista if not all(e.get("firmas", {}).get(t) for t in TIPOS_FIRMA)]
+
+            st.caption(f"Mostrando {len(lista)} de {total} contratistas")
+
+            if not lista:
+                st.info("Ningún contratista coincide con los filtros aplicados.")
+            else:
+                for emp in lista:
+                    uid = emp["usuario_id"]
+                    nombre = emp["nombre"]
+                    pendientes = emp["cantidad_pendientes"]
+                    vencidas = emp["cantidad_vencidas"]
+                    firmas = emp.get("firmas", {})
+                    tiene_contrato = emp.get("tiene_contrato", False)
+                    mi_firma_dada = firmas.get(tipo_mi_firma) if tipo_mi_firma else None
+
+                    with st.container(border=True):
+                        c_nom, c_badges, c_accion = st.columns([3, 5, 2])
+
+                        with c_nom:
+                            cert_emp = emp.get("certificacion") or {}
+                            obs_existente = cert_emp.get("observacion") or ""
+                            st.markdown(f"**{nombre}**")
+                            if obs_existente:
+                                st.caption(f"💬 *Obs: {obs_existente}*")
+                            if mi_firma_dada:
+                                fecha_firma = mi_firma_dada.get("fecha")
+                                fecha_str = formato_fecha_bogota(fecha_firma, "%d/%m/%Y %H:%M") if fecha_firma else ""
+                                st.caption(f"Aprobado · {fecha_str}")
+                            elif not tiene_contrato:
+                                st.caption("⚠️ Sin contrato activo")
+
+                        with c_badges:
+                            tipos_badges = TIPOS_FIRMA + (("extra_control",) if extra_control_activa else ())
+                            badges = (
+                                _badge_corr(pendientes, vencidas)
+                                + "&nbsp;&nbsp;"
+                                + "&nbsp;".join(_badge_firma(t, firmas.get(t)) for t in tipos_badges)
+                            )
+                            st.markdown(badges, unsafe_allow_html=True)
+
+                            # Detalle de cada firma existente
+                            detalles = []
+                            comentarios_firma = []
+                            for t in tipos_badges:
+                                f = firmas.get(t)
+                                if f:
+                                    fecha_f = formato_fecha_bogota(f.get("fecha"), "%d/%m %H:%M")
+                                    detalles.append(f"{_META_FIRMA[t][0]}: {f.get('firmante_nombre', '')} · {fecha_f}")
+                                    if f.get("comentario"):
+                                        comentarios_firma.append(f"💬 {_META_FIRMA[t][0]}: *{f['comentario']}*")
+                            if detalles:
+                                st.caption(" · ".join(detalles))
+                            for linea in comentarios_firma:
+                                st.caption(linea)
+
+                        with c_accion:
+                            cert_emp = emp.get("certificacion") or {}
+                            ya_certificado = cert_emp.get("estado") == "aprobado"
+
+                            if ya_certificado:
+                                # El PDF se genera solo al abrir el diálogo (clic del
+                                # botón), no antes — igual que en el panel de Actas.
+                                if st.button(
+                                    "👁️ Ver / Descargar",
+                                    key=f"ver_cert_{uid}",
+                                    use_container_width=True,
+                                ):
+                                    abrir_dialogo_documento(
+                                        cert_emp, nombre, "pdf", "Certificado",
+                                        f"{nombre_mes}_{año}", es_borrador=False,
+                                    )
+                            elif not tipo_mi_firma:
+                                # Admin sin designación solo visualiza
+                                pass
+                            elif mi_firma_dada:
+                                if st.button(
+                                    "↩ Revocar",
+                                    key=f"firma_{uid}",
+                                    use_container_width=True,
+                                    help="Revocar mi aprobación.",
+                                ):
+                                    servicio.revocar_firma(uid, tipo_mi_firma, año=año, mes=mes)
+                                    limpiar_cache_lecturas()
+                                    st.rerun()
+                            else:
+                                if st.button(
+                                    "✅ Aprobar",
+                                    key=f"firma_{uid}",
+                                    type="primary",
+                                    use_container_width=True,
+                                ):
+                                    st.session_state["_confirmar_firma"] = {
+                                        "uid": uid,
+                                        "nombre": nombre,
+                                        "tipo": tipo_mi_firma,
+                                    }
+                                    st.rerun()
+
+    tab_actas = st.session_state.get("tab_actas_activo")
+    if tab_actas:
+        _render_panel_actas(servicio, sesion, tab_actas, año, mes)
+
+    if st.session_state.get("_confirmar_firma_actas"):
+        _dialog_confirmar_firma_actas(servicio, sesion)
+
+    if st.session_state.get("_confirmar_firma"):
+        _dialog_confirmar_firma(servicio, sesion, año, mes, nombre_mes)
+
+    render_dialogo_documento_si_activo(servicio)

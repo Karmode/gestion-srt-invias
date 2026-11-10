@@ -7,6 +7,16 @@ from app.core.esquemas import (
     ESQUEMA_USUARIOS,
     ESQUEMA_OPCIONES_CONFIGURACION,
     ESQUEMA_CORRESPONDENCIA,
+    ESQUEMA_CERTIFICACIONES,
+    ESQUEMA_POLITICAS_DATOS,
+    ESQUEMA_ACEPTACIONES_POLITICA,
+    ESQUEMA_FIRMAS,
+    ESQUEMA_INSTRUCTIVOS,
+    ESQUEMA_NOTIFICACIONES_CORREO,
+    ESQUEMA_GRUPOS_TRABAJO,
+    ESQUEMA_ASIGNACIONES_GRUPO,
+    ESQUEMA_SUIT_ASIGNACIONES,
+    ESQUEMA_SUIT_CARGUES,
 )
 from app.db.mongo import obtener_base_datos
 
@@ -24,11 +34,27 @@ class MongoBootstrapService:
             "opciones_configuracion", ESQUEMA_OPCIONES_CONFIGURACION
         )
         self._asegurar_coleccion("correspondencia", ESQUEMA_CORRESPONDENCIA)
+        self._asegurar_coleccion("certificaciones", ESQUEMA_CERTIFICACIONES)
+        self._asegurar_coleccion("politicas_datos", ESQUEMA_POLITICAS_DATOS)
+        self._asegurar_coleccion("aceptaciones_politica", ESQUEMA_ACEPTACIONES_POLITICA)
+        self._asegurar_coleccion("firmas", ESQUEMA_FIRMAS)
+        self._asegurar_coleccion("instructivos", ESQUEMA_INSTRUCTIVOS)
+        self._asegurar_coleccion("notificaciones_correo", ESQUEMA_NOTIFICACIONES_CORREO)
+        self._asegurar_coleccion("grupos_trabajo", ESQUEMA_GRUPOS_TRABAJO)
+        self._asegurar_coleccion("asignaciones_grupo", ESQUEMA_ASIGNACIONES_GRUPO)
+        self._asegurar_coleccion("suit_asignaciones", ESQUEMA_SUIT_ASIGNACIONES)
+        self._asegurar_coleccion("suit_cargues", ESQUEMA_SUIT_CARGUES)
 
         self.db["usuarios"].create_index(
             "usuario", unique=True, name="idx_usuarios_usuario_unico"
         )
         self.db["usuarios"].create_index("activo", name="idx_usuarios_activo")
+        self.db["usuarios"].create_index(
+            "contratos.numero",
+            unique=True,
+            sparse=True,
+            name="idx_usuarios_contratos_numero_unico",
+        )
         self.db["usuarios"].create_index("roles", name="idx_usuarios_roles")
         self.db["roles"].create_index(
             "nombre", unique=True, name="idx_roles_nombre_unico"
@@ -62,6 +88,100 @@ class MongoBootstrapService:
         self.db["correspondencia"].create_index(
             "responsable_actual.usuario_id", name="idx_correspondencia_responsable"
         )
+        self.db["correspondencia"].create_index(
+            [("fecha_radicacion", -1)],
+            name="idx_correspondencia_fecha_radicacion",
+        )
+        self.db["correspondencia"].create_index(
+            [
+                ("responsable_actual.usuario_id", 1),
+                ("estado_actual", 1),
+                ("fecha_vencimiento", 1),
+            ],
+            name="idx_correspondencia_resp_estado_venc",
+        )
+        self.db["correspondencia"].create_index(
+            [
+                ("numero_radicado", "text"),
+                ("peticionario", "text"),
+                ("asunto", "text"),
+                ("respuesta.numero_oficio", "text"),
+            ],
+            name="idx_correspondencia_texto",
+            default_language="spanish",
+        )
+        self.db["certificaciones"].create_index(
+            [("usuario_id", 1), ("año", -1), ("mes", -1)],
+            name="idx_cert_usuario_periodo",
+        )
+        self.db["certificaciones"].create_index(
+            [("año", -1), ("mes", -1)],
+            name="idx_cert_periodo",
+        )
+        self.db["certificaciones"].create_index(
+            "hash_verificacion",
+            unique=True,
+            sparse=True,
+            name="idx_cert_hash_unico",
+        )
+        self.db["politicas_datos"].create_index(
+            "numero_version", unique=True, name="idx_politicas_version_unica"
+        )
+        self.db["politicas_datos"].create_index("activa", name="idx_politicas_activa")
+        self.db["aceptaciones_politica"].create_index(
+            [("usuario_id", 1), ("politica_id", 1)],
+            unique=True,
+            name="idx_aceptaciones_usuario_politica_unico",
+        )
+        self.db["aceptaciones_politica"].create_index(
+            "usuario_id", name="idx_aceptaciones_usuario"
+        )
+        self.db["aceptaciones_politica"].create_index(
+            "politica_id", name="idx_aceptaciones_politica"
+        )
+        self.db["firmas"].create_index(
+            "usuario_id", unique=True, name="idx_firmas_usuario_unico"
+        )
+        self.db["instructivos"].create_index("activo", name="idx_instructivos_activo")
+        self.db["instructivos"].create_index("orden", name="idx_instructivos_orden")
+        self.db["notificaciones_correo"].create_index(
+            [("usuario_id", 1), ("tipo", 1), ("clave", 1)],
+            unique=True,
+            name="idx_notificaciones_usuario_tipo_clave_unico",
+        )
+        self.db["grupos_trabajo"].create_index(
+            "clave", unique=True, name="idx_grupos_trabajo_clave_unico"
+        )
+        # Un usuario no puede estar activo dos veces en el mismo grupo; si en grupos
+        # distintos, y puede tener varios periodos retirados (historial).
+        self.db["asignaciones_grupo"].create_index(
+            [("usuario_id", 1), ("grupo_clave", 1)],
+            unique=True,
+            partialFilterExpression={"estado": "activo"},
+            name="idx_asignaciones_usuario_grupo_activo_unico",
+        )
+        self.db["asignaciones_grupo"].create_index(
+            [("grupo_clave", 1), ("estado", 1)], name="idx_asignaciones_grupo_estado"
+        )
+        self.db["asignaciones_grupo"].create_index(
+            "usuario_id", name="idx_asignaciones_usuario"
+        )
+        # SUIT: una persona no puede estar activa dos veces en el mismo trámite.
+        self.db["suit_asignaciones"].create_index(
+            [("usuario_id", 1), ("tramite", 1)],
+            unique=True,
+            partialFilterExpression={"estado": "activo"},
+            name="idx_suit_asignaciones_usuario_tramite_activo_unico",
+        )
+        self.db["suit_asignaciones"].create_index(
+            [("tramite", 1), ("estado", 1)], name="idx_suit_asignaciones_tramite_estado"
+        )
+        # SUIT: un solo documento por trámite, año y mes.
+        self.db["suit_cargues"].create_index(
+            [("tramite", 1), ("anio", 1), ("mes", 1)],
+            unique=True,
+            name="idx_suit_cargues_periodo_unico",
+        )
 
     def _asegurar_coleccion(self, nombre: str, esquema: dict) -> None:
         if nombre not in self.db.list_collection_names():
@@ -71,15 +191,14 @@ class MongoBootstrapService:
                 validationLevel="moderate",
                 validationAction="error",
             )
+            print(f"  Colección '{nombre}' creada con validador.")
             return
 
-        try:
-            self.db.command(
-                "collMod",
-                nombre,
-                validator={"$jsonSchema": esquema},
-                validationLevel="moderate",
-                validationAction="error",
-            )
-        except OperationFailure:
-            pass
+        self.db.command(
+            "collMod",
+            nombre,
+            validator={"$jsonSchema": esquema},
+            validationLevel="moderate",
+            validationAction="error",
+        )
+        print(f"  Validador de '{nombre}' actualizado.")

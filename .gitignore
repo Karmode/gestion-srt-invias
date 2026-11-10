@@ -60,3 +60,7 @@ Desktop.ini
 # Local database/files (if used)
 *.sqlite3
 *.db
+
+.claude
+# Scratch workspace for superpowers subagent-driven-development (ledgers, briefs, reports)
+.superpowers/
