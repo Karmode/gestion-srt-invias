@@ -18,7 +18,7 @@ from app.core.autorizacion import ValidacionAutorizacion
 from app.core.catalogos import CLAVES_CAMPOS_SUIT, TRAMITES_SUIT
 from app.core.zona_horaria import utc_a_bogota
 from app.repositories.suit_asignacion_repo import SuitAsignacionRepositorio
-from app.repositories.suit_cargue_repo import SuitCargueRepositorio
+from app.repositories.suit_cargue_repo import SIN_VERIFICAR, SuitCargueRepositorio
 from app.repositories.usuario_repo import UsuarioRepositorio
 from app.services.asignacion_grupo_service import PERMISO_GESTIONAR, AsignacionGrupoService
 from app.services.suit_excel_service import ANIO_FINAL_PLANTILLA, construir_libro
@@ -33,6 +33,10 @@ MESES_POR_TRIMESTRE = 3
 
 class ErrorSuit(Exception):
     """Error de negocio del módulo SUIT (se muestra al usuario con st.warning)."""
+
+
+class ErrorConflictoSuit(ErrorSuit):
+    """El mes fue modificado por otra persona después de que el usuario lo abrió."""
 
 
 def trimestre_de_mes(mes: int) -> int:
@@ -60,8 +64,31 @@ class SuitService:
     def _es_admin(permisos_actor: list[str] | None) -> bool:
         return PERMISO_GESTIONAR in (permisos_actor or [])
 
+    def _es_apto(self, usuario_id: str) -> bool:
+        """Una asignación solo vale si el usuario sigue activo y en el grupo Permisos."""
+        usuario = self.usuarios.buscar_por_id(usuario_id)
+        return bool(
+            usuario and usuario.get("activo", False)
+            and self.grupos.asignaciones.obtener_activa(usuario_id, GRUPO_PERMISOS)
+        )
+
+    def _ids_aptos(self, ids) -> set:
+        """De los ``ids`` (ObjectId), los de usuarios activos y miembros del grupo Permisos."""
+        ids = set(ids)
+        if not ids:
+            return set()
+        miembros = {a["usuario_id"] for a in self.grupos.asignaciones.listar_por_grupo(GRUPO_PERMISOS, "activo")}
+        activos = {u["_id"] for u in self.usuarios.listar_por_ids(list(ids)) if u.get("activo", False)}
+        return ids & miembros & activos
+
     def tramites_de_usuario(self, usuario_id: str) -> list[str]:
-        """Trámites que el usuario tiene asignados (activos), en el orden del catálogo."""
+        """Trámites que el usuario tiene asignados (activos), en el orden del catálogo.
+
+        Vacío si el usuario fue desactivado o retirado del grupo Permisos: sus asignaciones
+        se conservan (historial) pero dejan de dar acceso.
+        """
+        if not self._es_apto(usuario_id):
+            return []
         propios = {a["tramite"] for a in self.asignaciones.listar_activas_por_usuario(usuario_id)}
         return [t for t in TRAMITES_SUIT if t in propios]
 
@@ -90,6 +117,8 @@ class SuitService:
     def responsables(self, tramite: str) -> list[dict]:
         """Personas encargadas hoy del trámite: [{'nombre', 'usuario'}]."""
         asignadas = self.asignaciones.listar_activas_por_tramite(tramite)
+        aptos = self._ids_aptos(a["usuario_id"] for a in asignadas)
+        asignadas = [a for a in asignadas if a["usuario_id"] in aptos]
         usuarios = {u["_id"]: u for u in self.usuarios.listar_por_ids([a["usuario_id"] for a in asignadas])}
         return [
             {
@@ -180,8 +209,14 @@ class SuitService:
         return self.cargues.obtener(tramite, anio, mes)
 
     def guardar_mes(self, tramite: str, anio: int, mes: int, valores: dict, actor: str,
-                    permisos_actor: list[str], actor_id: str | None = None) -> str:
-        """Crea o actualiza el cargue del mes. Devuelve 'creado' o 'actualizado'."""
+                    permisos_actor: list[str], actor_id: str | None = None,
+                    version_esperada=SIN_VERIFICAR) -> str:
+        """Crea o actualiza el cargue del mes. Devuelve 'creado' o 'actualizado'.
+
+        ``version_esperada`` es el ``actualizado_en`` que el usuario vio al abrir el mes (None si
+        aún no existía). Si otra persona guardó mientras tanto lanza ``ErrorConflictoSuit`` y no
+        escribe nada, para no pisar sus cambios.
+        """
         if tramite not in TRAMITES_SUIT:
             raise ErrorSuit("Trámite SUIT desconocido.")
         if not (self._es_admin(permisos_actor)
@@ -197,10 +232,15 @@ class SuitService:
             limpios[campo] = valor
 
         accion = "actualizado" if self.cargues.obtener(tramite, anio, mes) else "creado"
-        self.cargues.guardar(
+        guardado = self.cargues.guardar(
             tramite, anio, mes, trimestre_de_mes(mes), limpios, actor,
-            datetime.now(timezone.utc), accion,
+            datetime.now(timezone.utc), accion, version_esperada,
         )
+        if not guardado:
+            raise ErrorConflictoSuit(
+                "Otra persona modificó este mes mientras lo editabas. "
+                "Recarga los valores guardados para no perder sus cambios."
+            )
         return accion
 
     # ── Avance (semáforo) ─────────────────────────────────────────────────────
@@ -294,7 +334,9 @@ class SuitService:
                 docs[c["tramite"]][c["mes"]] = c
 
         asignadas = self.asignaciones.listar_activas()
-        usuarios = {u["_id"]: u for u in self.usuarios.listar_por_ids({a["usuario_id"] for a in asignadas})}
+        aptos = self._ids_aptos(a["usuario_id"] for a in asignadas)
+        asignadas = [a for a in asignadas if a["usuario_id"] in aptos]
+        usuarios = {u["_id"]: u for u in self.usuarios.listar_por_ids(list(aptos))}
         responsables: dict[str, list[str]] = {t: [] for t in TRAMITES_SUIT}
         for a in asignadas:
             u = usuarios.get(a["usuario_id"], {})
